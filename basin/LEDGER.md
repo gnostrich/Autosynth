@@ -156,6 +156,11 @@ Chronological, same listener (project owner), real corpus:
 - **emergent_trio.wav** (NMF channels ch1+ch0+ch6, coupled walkers, flux
   flow, γ=1.0, κ=0): **"actually sounds like a legit set snippet"** — the
   first positive verdict. This recipe is now the config default.
+- **emergent_set_12min** (same recipe, 12 min): reads as long expanded
+  single-track stretches ("pulled-out, not slowed") — measured: 5+ tracks
+  visited, top track 33%, in minutes-long dwells. Verdict: **"not bad,
+  lots of sets sound like this in short parts."** Dwell length identified
+  as the tunable (γ now; basin-scale pressure queued if ever needed).
 
 Pattern worth recording: audible quality improved monotonically as
 hand-designed elements were replaced by measured ones (imposed 2-channel
