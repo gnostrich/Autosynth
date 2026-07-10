@@ -74,8 +74,10 @@ class PanelEngine:
                            kernel=self.kernel, seed=0)
         self.orbit.seed_state()
         self.reader = GrainReader(self.corpus, self.atlas.memberships, self.cfg,
-                                  seed=0)
+                                  seed=0, psi=self.psi)
         self.sr = int(self.cfg["sr"])
+        self._prev_tail = None                 # flow-mode splice state
+        self._last_window = None
         self.running = True
 
     # -- naming -------------------------------------------------------------
@@ -141,6 +143,11 @@ class PanelEngine:
             self._apply_decay_and_grip()
             self.orbit.knob = self.knob
             st = self.orbit.step()
+            # flow mode: corpus momentum + walk-as-field, closed loop —
+            # the same dynamics as render_flow, live.
+            w = self.reader.sample_flow(st.a)
+            self.orbit.relocalize(self.reader.window_membership(w))
+            self._last_window = w
         self._last_orbit_state = st                     # for audio_chunk()
 
         macros = []
@@ -183,13 +190,32 @@ class PanelEngine:
         }
 
     def audio_chunk(self) -> bytes:
-        """PCM (int16 LE) for the grain of the most recent :meth:`step_state`."""
-        from basin.render import render
-        st = getattr(self, "_last_orbit_state", None)
-        if st is None:
+        """PCM (int16 LE) for one step of flow-mode audio.
+
+        Mirrors render_flow's splicing statefully: each chunk is exactly one
+        step long, crossfaded against the previous grain's tail (linear when
+        the emission was the material's own continuation, equal-power on
+        jumps), at natural amplitude so fades emerge from the material.
+        """
+        from basin.render import _equal_power_fades
+        if self._last_window is None:
             return b""
-        pcm = render([st], self.reader, self.cfg)
-        return np.clip(pcm * 32767, -32768, 32767).astype("<i2").tobytes()
+        step = int(round(float(self.cfg["step_s"]) * self.sr))
+        xfade = min(int(round(float(self.cfg["crossfade_s"]) * self.sr)), step)
+        grain_len = step + xfade
+        g = self.reader.grain_audio(self._last_window, grain_len)
+        if self._prev_tail is not None and xfade > 0:
+            if self.reader.last_jump:
+                fi, fo = _equal_power_fades(xfade)
+            else:
+                t = np.linspace(0.0, 1.0, xfade, endpoint=False)
+                fi, fo = t, 1.0 - t
+            head = self._prev_tail * fo + g[:xfade] * fi
+            chunk = np.concatenate([head, g[xfade:step]])
+        else:
+            chunk = g[:step]
+        self._prev_tail = g[step:grain_len].copy()
+        return np.clip(chunk * 0.9 * 32767, -32768, 32767).astype("<i2").tobytes()
 
 
 # ---------------------------------------------------------------------------
