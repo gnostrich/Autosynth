@@ -127,15 +127,27 @@ def track_activations(y, W, hop):
 
 
 def split_track(y, W, hop: int = 512):
-    """Synthesize each channel's audio for a track via Wiener soft-masks."""
+    """Synthesize each channel's audio for a track via Wiener soft-masks.
+
+    ``y`` may be mono (n,) or stereo (2, n); masks are estimated on the mono
+    fold and applied per side. Returns a list of K arrays shaped like ``y``
+    (stereo in → stereo channels out).
+    """
     import librosa
-    S = librosa.stft(y, n_fft=N_FFT, hop_length=hop)
-    M = np.abs(S).astype(np.float32)
-    A = activations(M.T, W)                        # [frames, K]
-    recon = (A @ W).T + 1e-9                       # [freq, frames]
+    y = np.asarray(y)
+    stereo = y.ndim == 2
+    sides = y if stereo else y[None, :]
+    n = sides.shape[1]
+    mono = sides.mean(0)
+    Sm = librosa.stft(mono, n_fft=N_FFT, hop_length=hop)
+    A = activations(np.abs(Sm).astype(np.float32).T, W)   # [frames, K]
+    recon = (A @ W).T + 1e-9                              # [freq, frames]
+    Ss = [librosa.stft(sides[c], n_fft=N_FFT, hop_length=hop)
+          for c in range(sides.shape[0])]
     outs = []
     for k in range(W.shape[0]):
-        Rk = W[k][:, None] * A[:, k][None, :]      # channel reconstruction
-        yk = librosa.istft(S * (Rk / recon), hop_length=hop, length=len(y))
-        outs.append(yk.astype(np.float32))
+        mask = (W[k][:, None] * A[:, k][None, :]) / recon
+        yk = np.stack([librosa.istft(S * mask, hop_length=hop, length=n)
+                       for S in Ss])
+        outs.append((yk if stereo else yk[0]).astype(np.float32))
     return outs

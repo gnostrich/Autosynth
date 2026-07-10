@@ -416,7 +416,7 @@ class PanelEngine:
         step = int(round(float(self.cfg["step_s"]) * self.sr))
         xfade = min(int(round(float(self.cfg["crossfade_s"]) * self.sr)), step)
         grain_len = step + xfade
-        mix = np.zeros(step, dtype=np.float32)
+        mix = np.zeros((step, 2), dtype=np.float32)
         heard = False
         for v in self.voices:
             if not v["on"]:
@@ -435,7 +435,8 @@ class PanelEngine:
             g = v["reader"].grain_audio(w, grain_len)
             if v["prev_tail"] is not None and xfade > 0:
                 if contiguous:
-                    t = np.linspace(0.0, 1.0, xfade, endpoint=False)
+                    t = np.linspace(0.0, 1.0, xfade,
+                                    endpoint=False)[:, None]
                     fi, fo = t, 1.0 - t
                 else:
                     fi, fo = _equal_power_fades(xfade)
@@ -448,7 +449,9 @@ class PanelEngine:
             heard = True
         if not heard:
             return np.zeros(step, dtype="<i2").tobytes()
-        return np.clip(mix * 0.7 * 32767, -32768, 32767).astype("<i2").tobytes()
+        mono = mix.mean(axis=1)              # panel stream stays mono
+        return np.clip(mono * 0.7 * 32767, -32768,
+                       32767).astype("<i2").tobytes()
 
 
 # ---------------------------------------------------------------------------

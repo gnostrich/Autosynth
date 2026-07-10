@@ -251,7 +251,8 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
                 s0 = int(sf * hop)
                 chan_rms_rows.append([
                     float(np.sqrt(np.mean(
-                        ca[s0:s0 + win_samples] ** 2) + 1e-12))
+                        np.atleast_2d(ca)[:, s0:s0 + win_samples] ** 2)
+                        + 1e-12))
                     for ca in chan_audio])
             handles.append(WindowHandle(
                 track_id=len(kept_paths),

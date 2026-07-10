@@ -100,7 +100,7 @@ def test_nmf_channels_build_and_play(tiny_corpus):
     r = GrainReader(c, atlas.memberships, cfg, seed=0, stem="ch0",
                     shared_cache=shared, psi=built.spectrum.psi)
     g = r.grain_audio(0, 4096)
-    assert np.isfinite(g).all() and g.shape == (4096,)
+    assert np.isfinite(g).all() and g.shape == (4096, 2)
     assert (0, "ch1") in shared                  # split cached all channels
 
 

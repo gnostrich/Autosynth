@@ -99,7 +99,12 @@ class GrainReader:
         e = np.maximum(e, 0.0)
         pos = e[e > 0]
         floor = float(np.quantile(pos, 0.05)) if pos.size else 1.0
-        self._log_presence = np.log(e + floor)
+        # capped at the corpus median: quiet-but-alive material is equal-cost
+        # (breakdowns are traversable); only near-dead material is repelled.
+        # Uncapped, presence climbs constantly toward loud material and bans
+        # quiet passages — the "everything sounds the same" flatness.
+        med = float(np.median(pos)) if pos.size else 1.0
+        self._log_presence = np.log(np.minimum(e, med) + floor)
         self._log_presence -= self._log_presence.max()
 
         # Revisit pressure (emission-level wanderlust): healthy flow never
@@ -138,15 +143,18 @@ class GrainReader:
         if mix_key not in self._audio_cache:
             import librosa
             y, _ = librosa.load(self.corpus.track_paths[track_id],
-                                sr=self.sr, mono=True)
-            self._audio_cache[mix_key] = y
+                                sr=self.sr, mono=False)
+            if y.ndim == 1:                    # mono source → duplicated sides
+                y = np.stack([y, y])
+            self._audio_cache[mix_key] = y.astype(np.float32)   # (2, n)
         if self.stem == "mix":
             return self._audio_cache[mix_key]
         if self.stem in ("harmonic", "percussive"):
             import librosa
-            y_h, y_p = librosa.effects.hpss(self._audio_cache[mix_key])
-            self._audio_cache[(track_id, "harmonic")] = y_h
-            self._audio_cache[(track_id, "percussive")] = y_p
+            mono = self._audio_cache[mix_key].mean(0)
+            y_h, y_p = librosa.effects.hpss(mono)
+            self._audio_cache[(track_id, "harmonic")] = np.stack([y_h, y_h])
+            self._audio_cache[(track_id, "percussive")] = np.stack([y_p, y_p])
             return self._audio_cache[key]
         if self.stem.startswith("ch") and \
                 getattr(self.corpus, "nmf_templates", None) is not None:
@@ -251,18 +259,19 @@ class GrainReader:
         return self.memberships[w]
 
     def grain_audio(self, w: int, n_samples: int) -> np.ndarray:
+        """Stereo grain, shape (n_samples, 2)."""
         h = self.handles[w]
-        y = self._track_audio(h.track_id)
-        seg = y[h.start_sample:h.start_sample + n_samples]
-        if seg.size < n_samples:
-            seg = np.pad(seg, (0, n_samples - seg.size))
-        return seg.astype(np.float32)
+        y = self._track_audio(h.track_id)              # (2, n)
+        seg = y[:, h.start_sample:h.start_sample + n_samples]
+        if seg.shape[1] < n_samples:
+            seg = np.pad(seg, ((0, 0), (0, n_samples - seg.shape[1])))
+        return seg.T.astype(np.float32)
 
 
 def _equal_power_fades(n: int):
-    """Equal-power (sin/cos) fade-in / fade-out curves of length ``n``."""
+    """Equal-power fade-in/out as column vectors (broadcast over channels)."""
     t = np.linspace(0, np.pi / 2, n, endpoint=False)
-    return np.sin(t), np.cos(t)
+    return np.sin(t)[:, None], np.cos(t)[:, None]
 
 
 def _rms(x: np.ndarray) -> float:
@@ -289,7 +298,7 @@ def render(states: list, reader: GrainReader, cfg: dict,
 
     target_rms = float(cfg.get("target_rms", 0.2))
 
-    out = np.zeros(step * len(states) + grain_len, dtype=np.float32)
+    out = np.zeros((step * len(states) + grain_len, 2), dtype=np.float32)
     prev_tail = None                                   # last grain's overlap tail
     for i, st in enumerate(states):
         w = reader.sample(st.m)
@@ -337,11 +346,11 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
     xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
     grain_len = step + xfade
     eq_in, eq_out = _equal_power_fades(xfade)
-    t = np.linspace(0.0, 1.0, xfade, endpoint=False)
+    t = np.linspace(0.0, 1.0, xfade, endpoint=False)[:, None]
     lin_in, lin_out = t, 1.0 - t
     target_rms = float(cfg.get("target_rms", 0.2))
 
-    out = np.zeros(step * n_steps + grain_len, dtype=np.float32)
+    out = np.zeros((step * n_steps + grain_len, 2), dtype=np.float32)
     prev_tail = None
     for i in range(n_steps):
         st = orbit.step()
@@ -384,7 +393,7 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
     xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
     grain_len = step + xfade
     eq_in, eq_out = _equal_power_fades(xfade)
-    t = np.linspace(0.0, 1.0, xfade, endpoint=False)
+    t = np.linspace(0.0, 1.0, xfade, endpoint=False)[:, None]
     lin_in, lin_out = t, 1.0 - t
     couple = float(cfg.get("couple", 0.5))
 
@@ -392,7 +401,7 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
     base_knobs = [o.knob.copy() for o in orbits]
     n_macros = orbits[0].n_macros
     a_now = [np.zeros(n_macros) for _ in range(V)]
-    outs = [np.zeros(step * n_steps + grain_len, dtype=np.float32)
+    outs = [np.zeros((step * n_steps + grain_len, 2), dtype=np.float32)
             for _ in range(V)]
     prev_tails = [None] * V
 
@@ -436,7 +445,7 @@ def render_voices(states_list: list, readers: list, cfg: dict) -> np.ndarray:
     voices = [render(sts, rd, cfg, natural=True, normalize=False)
               for sts, rd in zip(states_list, readers)]
     n = max(len(v) for v in voices)
-    out = np.zeros(n, dtype=np.float32)
+    out = np.zeros((n, 2), dtype=np.float32)
     for v in voices:
         out[:len(v)] += v
     peak = float(np.max(np.abs(out)) + 1e-9)
