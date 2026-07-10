@@ -94,6 +94,7 @@ class PanelEngine:
             self.voices.append({"stem": stem, "on": stem in default_on,
                                 "orbit": orbit, "reader": reader,
                                 "prev_tail": None, "w": None,
+                                "loop": None,           # {"win": [...], "pos"}
                                 "a": np.zeros(n_macros)})
         self.couple = float(self.cfg.get("couple", 0.5))
         self._mean_a = np.zeros(n_macros)
@@ -183,6 +184,33 @@ class PanelEngine:
                 if stem in ("all", v["stem"]):
                     v["reader"].force_jump = True
 
+    def set_loop(self, stem: str, on: bool, length: int = 8):
+        """Commit primitive: hold this voice's current phrase and cycle it.
+
+        Capture = the contiguous same-track window chain ending at the voice's
+        current window (~6 s at length 8). While looped, the voice's walk
+        pauses; on release the flow resumes *from the loop*, seamlessly.
+        """
+        with self.lock:
+            H = self.corpus.handles
+            for v in self.voices:
+                if v["stem"] != stem:
+                    continue
+                if on and v["w"] is not None:
+                    w = v["w"]
+                    chain = [w]
+                    while len(chain) < length:
+                        p = chain[0] - 1
+                        if p < 0 or H[p].track_id != H[w].track_id:
+                            break
+                        chain.insert(0, p)
+                    v["loop"] = {"win": chain, "pos": 0}
+                elif not on and v["loop"]:
+                    last = v["loop"]["win"][v["loop"]["pos"] - 1]
+                    v["reader"]._prev_emitted = last
+                    v["orbit"].relocalize(v["reader"].window_membership(last))
+                    v["loop"] = None
+
     def set_groove_depth(self, fly_index: int, value: float):
         with self.lock:
             for v in self.voices:
@@ -204,7 +232,9 @@ class PanelEngine:
         with self.lock:
             self._apply_decay_and_grip()
             enabled = [v for v in self.voices if v["on"]]
-            for v in enabled:
+            # looped voices hold their phrase; only free voices walk
+            free = [v for v in enabled if not v["loop"]]
+            for v in free:
                 others = [u["a"] for u in enabled if u is not v]
                 v["orbit"].knob = self.knob + (
                     self.couple * np.mean(others, axis=0) if others else 0.0)
@@ -212,11 +242,11 @@ class PanelEngine:
                 w = v["reader"].sample_flow(st.a)
                 v["orbit"].relocalize(v["reader"].window_membership(w))
                 v["a"], v["st"], v["w"] = st.a, st, w
-            if enabled:
-                self._mean_a = np.mean([v["a"] for v in enabled], axis=0)
+            if free:
+                self._mean_a = np.mean([v["a"] for v in free], axis=0)
                 self._mean_innov = np.mean(
-                    [v["st"].a - v["st"].a_pred for v in enabled], axis=0)
-            ref_orbit = (enabled[0] if enabled else self.voices[0])["orbit"]
+                    [v["st"].a - v["st"].a_pred for v in free], axis=0)
+            ref_orbit = ((free or enabled or self.voices)[0])["orbit"]
 
         macros = []
         for k, mi in enumerate(self.macro_indices):
@@ -261,7 +291,8 @@ class PanelEngine:
 
         return {
             "type": "state",
-            "voices": [{"stem": v["stem"], "on": v["on"]} for v in self.voices],
+            "voices": [{"stem": v["stem"], "on": v["on"],
+                        "loop": v["loop"] is not None} for v in self.voices],
             "macros": macros, "grooves": grooves, "toggles": toggles,
             "meta": {"beta": ref_orbit.beta, "gamma": ref_orbit.gamma,
                      "tau": ref_orbit.tau, "kappa": ref_orbit.kappa,
@@ -282,15 +313,26 @@ class PanelEngine:
         mix = np.zeros(step, dtype=np.float32)
         heard = False
         for v in self.voices:
-            if not v["on"] or v["w"] is None:
+            if not v["on"]:
                 continue
-            g = v["reader"].grain_audio(v["w"], grain_len)
+            if v["loop"]:
+                # cycle the held phrase; wrap point gets an equal-power splice
+                L = v["loop"]
+                w = L["win"][L["pos"]]
+                contiguous = L["pos"] != 0
+                L["pos"] = (L["pos"] + 1) % len(L["win"])
+            elif v["w"] is not None:
+                w = v["w"]
+                contiguous = not v["reader"].last_jump
+            else:
+                continue
+            g = v["reader"].grain_audio(w, grain_len)
             if v["prev_tail"] is not None and xfade > 0:
-                if v["reader"].last_jump:
-                    fi, fo = _equal_power_fades(xfade)
-                else:
+                if contiguous:
                     t = np.linspace(0.0, 1.0, xfade, endpoint=False)
                     fi, fo = t, 1.0 - t
+                else:
+                    fi, fo = _equal_power_fades(xfade)
                 head = v["prev_tail"] * fo + g[:xfade] * fi
                 chunk = np.concatenate([head, g[xfade:step]])
             else:
@@ -430,6 +472,8 @@ def _handle_control(engine, msg: dict):
         engine.set_voice(str(msg["stem"]), bool(msg["on"]))
     elif t == "jump":
         engine.jump(str(msg.get("stem", "all")))
+    elif t == "loop":
+        engine.set_loop(str(msg["stem"]), bool(msg["on"]))
     elif t == "groove_depth":
         engine.set_groove_depth(int(msg["index"]), float(msg["value"]))
     elif t == "rename":
