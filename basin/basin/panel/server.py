@@ -72,15 +72,38 @@ class PanelEngine:
         self.grip = {}                       # macro idx -> held value
         self.lock = threading.Lock()
 
-        self.orbit = Orbit(self.P, self.psi, self.cfg, knob_vector=self.knob,
-                           kernel=self.kernel, seed=0,
-                           modes=(self.eigvals, self.eig_right))
-        self.orbit.seed_state()
-        self.reader = GrainReader(self.corpus, self.atlas.memberships, self.cfg,
-                                  seed=0, psi=self.psi)
+        # Voices — the oscillator section. With an HPSS instrument the panel
+        # runs coupled stem-walkers (the layered sound of the duo renders);
+        # a whole-mix instrument gets a single mix voice.
+        stems_mode = str(self.cfg.get("stems", "none"))
+        available = (["harmonic", "percussive", "mix"] if stems_mode == "hpss"
+                     else ["mix"])
+        default_on = (["harmonic", "percussive"] if stems_mode == "hpss"
+                      else ["mix"])
+        shared_cache: dict = {}
+        n_macros = self.psi.shape[1]
+        self.voices = []
+        for vi, stem in enumerate(available):
+            orbit = Orbit(self.P, self.psi, self.cfg, knob_vector=self.knob,
+                          kernel=self.kernel, seed=101 * vi,
+                          modes=(self.eigvals, self.eig_right))
+            orbit.seed_state()
+            reader = GrainReader(self.corpus, self.atlas.memberships, self.cfg,
+                                 seed=101 * vi, stem=stem,
+                                 shared_cache=shared_cache, psi=self.psi)
+            self.voices.append({"stem": stem, "on": stem in default_on,
+                                "orbit": orbit, "reader": reader,
+                                "prev_tail": None, "w": None,
+                                "a": np.zeros(n_macros)})
+        self.couple = float(self.cfg.get("couple", 0.5))
+        self._mean_a = np.zeros(n_macros)
+        self._mean_innov = np.zeros(n_macros)
+        # eig-column of each flywheel mode (for phase nudges); mirrors
+        # Orbit._init_modes' selection
+        self._fly_eig_idx = [i for i in range(len(self.eigvals))
+                             if np.imag(self.eigvals[i]) > 1e-9][:4]
+        self._fly_max = np.full(len(self._fly_eig_idx), 1e-9)
         self.sr = int(self.cfg["sr"])
-        self._prev_tail = None                 # flow-mode splice state
-        self._last_window = None
         self.running = True
 
     # -- naming -------------------------------------------------------------
@@ -124,11 +147,13 @@ class PanelEngine:
             else:
                 self.grip.pop(macro, None)
 
-    def nudge_phase(self, mode_index: int, delta: float):
-        # push the knob along the real part of that mode's eigenvector so the
-        # orbit's projection onto it rotates (a coarse phase nudge for v0.1).
+    def nudge_phase(self, fly_index: int, delta: float):
+        # push the knob along the real part of that flywheel mode's
+        # eigenvector so the orbit's projection onto it rotates.
         with self.lock:
-            v = np.real(self.eig_right[:, mode_index])
+            if not (0 <= fly_index < len(self._fly_eig_idx)):
+                return
+            v = np.real(self.eig_right[:, self._fly_eig_idx[fly_index]])
             proj = self.psi.T @ v                      # mode -> macro space
             n = np.linalg.norm(proj)
             if n > 1e-9:
@@ -136,10 +161,28 @@ class PanelEngine:
 
     def set_meta(self, name: str, value: float):
         with self.lock:
-            if name in ("beta", "gamma", "tau", "kappa"):
-                setattr(self.orbit, name, float(value))
-            elif name == "momentum":
-                self.orbit.beta_p = float(value)
+            for v in self.voices:
+                if name in ("beta", "gamma", "tau", "kappa"):
+                    setattr(v["orbit"], name, float(value))
+                elif name == "momentum":
+                    v["orbit"].beta_p = float(value)
+            if name == "couple":
+                self.couple = float(value)
+
+    def set_voice(self, stem: str, on: bool):
+        with self.lock:
+            for v in self.voices:
+                if v["stem"] == stem:
+                    v["on"] = bool(on)
+                    v["prev_tail"] = None      # fresh splice when re-enabled
+
+    def set_groove_depth(self, fly_index: int, value: float):
+        with self.lock:
+            for v in self.voices:
+                mw = v["orbit"].mode_weights if v["orbit"]._fly is not None \
+                    else None
+                if mw is not None and 0 <= fly_index < len(mw):
+                    mw[fly_index] = float(value)
 
     # -- step + state -------------------------------------------------------
 
@@ -148,89 +191,109 @@ class PanelEngine:
         self.knob = self.slider_knob + self.nudge_knob  # faders hold absolutely
         for macro, held in self.grip.items():
             # clamp: strong restoring bias toward the held coordinate value
-            cur = self.orbit.history_a[-1][macro] if self.orbit.history_a else 0.0
-            self.knob[macro] += 3.0 * (held - cur)
+            self.knob[macro] += 3.0 * (held - self._mean_a[macro])
 
     def step_state(self) -> dict:
         with self.lock:
             self._apply_decay_and_grip()
-            self.orbit.knob = self.knob
-            st = self.orbit.step()
-            # flow mode: corpus momentum + walk-as-field, closed loop —
-            # the same dynamics as render_flow, live.
-            w = self.reader.sample_flow(st.a)
-            self.orbit.relocalize(self.reader.window_membership(w))
-            self._last_window = w
-        self._last_orbit_state = st                     # for audio_chunk()
+            enabled = [v for v in self.voices if v["on"]]
+            for v in enabled:
+                others = [u["a"] for u in enabled if u is not v]
+                v["orbit"].knob = self.knob + (
+                    self.couple * np.mean(others, axis=0) if others else 0.0)
+                st = v["orbit"].step()
+                w = v["reader"].sample_flow(st.a)
+                v["orbit"].relocalize(v["reader"].window_membership(w))
+                v["a"], v["st"], v["w"] = st.a, st, w
+            if enabled:
+                self._mean_a = np.mean([v["a"] for v in enabled], axis=0)
+                self._mean_innov = np.mean(
+                    [v["st"].a - v["st"].a_pred for v in enabled], axis=0)
+            ref_orbit = (enabled[0] if enabled else self.voices[0])["orbit"]
 
         macros = []
         for k, mi in enumerate(self.macro_indices):
             macros.append({
                 "index": int(mi),
                 "name": self.names.get(f"macro:{mi}", f"macro {k+1}"),
-                "position": float(st.a[k]),                    # absolute collar
-                "innovation": float(st.a[k] - st.a_pred[k]),   # co-moving needle
+                "position": float(self._mean_a[k]),            # true position
+                "innovation": float(self._mean_innov[k]),      # beyond prediction
                 "lean": float(self.slider_knob[k]),            # fader position
                 "gripped": k in self.grip,
             })
 
+        # groove = the LFO bank: live flywheel phase/amplitude per mode
         grooves = []
-        for mi in self.groove_modes:
-            z = st.m @ np.real(self.eig_right[:, mi]) \
-                + 1j * (st.m @ np.imag(self.eig_right[:, mi]))
-            grooves.append({
-                "index": int(mi),
-                "name": self.names.get(f"groove:{mi}", f"groove {mi}"),
-                "phase": float(np.angle(z)),
-                "depth": float(np.abs(z)),
-                "freq": float(self.classification[mi]["frequency"]),
-                "damping": float(self.classification[mi]["damping"]),
-            })
+        fly = ref_orbit._fly
+        if fly is not None and len(fly):
+            self._fly_max = np.maximum(self._fly_max[:len(fly)] * 0.995,
+                                       np.abs(fly))
+            for i in range(len(fly)):
+                lam = ref_orbit._mode_vals[i]
+                grooves.append({
+                    "index": i,
+                    "name": self.names.get(f"groove:{i}", f"groove {i+1}"),
+                    "phase": float(np.angle(fly[i])),
+                    "depth": float(np.abs(fly[i]) / self._fly_max[i]),
+                    "freq": float(np.angle(lam)),
+                    "damping": float(np.abs(lam)),
+                    "weight": float(ref_orbit.mode_weights[i]),
+                })
 
         toggles = []
-        for mi in self.alt_modes:
-            z = float(st.m @ np.real(self.eig_right[:, mi]))
-            toggles.append({
-                "index": int(mi),
-                "name": self.names.get(f"alt:{mi}", f"alt {mi}"),
-                "on": z > 0,
-            })
+        ref_st = next((v["st"] for v in self.voices if v.get("st") is not None
+                       and v["on"]), None)
+        if ref_st is not None:
+            for mi in self.alt_modes:
+                z = float(ref_st.m @ np.real(self.eig_right[:, mi]))
+                toggles.append({
+                    "index": int(mi),
+                    "name": self.names.get(f"alt:{mi}", f"alt {mi}"),
+                    "on": z > 0,
+                })
 
         return {
             "type": "state",
+            "voices": [{"stem": v["stem"], "on": v["on"]} for v in self.voices],
             "macros": macros, "grooves": grooves, "toggles": toggles,
-            "meta": {"beta": self.orbit.beta, "gamma": self.orbit.gamma,
-                     "tau": self.orbit.tau, "kappa": self.orbit.kappa,
-                     "momentum": self.orbit.beta_p},
+            "meta": {"beta": ref_orbit.beta, "gamma": ref_orbit.gamma,
+                     "tau": ref_orbit.tau, "kappa": ref_orbit.kappa,
+                     "momentum": ref_orbit.beta_p, "couple": self.couple},
         }
 
     def audio_chunk(self) -> bytes:
-        """PCM (int16 LE) for one step of flow-mode audio.
+        """PCM (int16 LE) for one step: all enabled voices spliced and summed.
 
-        Mirrors render_flow's splicing statefully: each chunk is exactly one
-        step long, crossfaded against the previous grain's tail (linear when
-        the emission was the material's own continuation, equal-power on
-        jumps), at natural amplitude so fades emerge from the material.
+        Each voice keeps its own crossfade tail (linear splice on the
+        material's own continuation, equal-power on jumps) at natural
+        amplitude, so layer fades emerge from the material.
         """
         from basin.render import _equal_power_fades
-        if self._last_window is None:
-            return b""
         step = int(round(float(self.cfg["step_s"]) * self.sr))
         xfade = min(int(round(float(self.cfg["crossfade_s"]) * self.sr)), step)
         grain_len = step + xfade
-        g = self.reader.grain_audio(self._last_window, grain_len)
-        if self._prev_tail is not None and xfade > 0:
-            if self.reader.last_jump:
-                fi, fo = _equal_power_fades(xfade)
+        mix = np.zeros(step, dtype=np.float32)
+        heard = False
+        for v in self.voices:
+            if not v["on"] or v["w"] is None:
+                continue
+            g = v["reader"].grain_audio(v["w"], grain_len)
+            if v["prev_tail"] is not None and xfade > 0:
+                if v["reader"].last_jump:
+                    fi, fo = _equal_power_fades(xfade)
+                else:
+                    t = np.linspace(0.0, 1.0, xfade, endpoint=False)
+                    fi, fo = t, 1.0 - t
+                head = v["prev_tail"] * fo + g[:xfade] * fi
+                chunk = np.concatenate([head, g[xfade:step]])
             else:
-                t = np.linspace(0.0, 1.0, xfade, endpoint=False)
-                fi, fo = t, 1.0 - t
-            head = self._prev_tail * fo + g[:xfade] * fi
-            chunk = np.concatenate([head, g[xfade:step]])
-        else:
-            chunk = g[:step]
-        self._prev_tail = g[step:grain_len].copy()
-        return np.clip(chunk * 0.9 * 32767, -32768, 32767).astype("<i2").tobytes()
+                chunk = g[:step]
+            v["prev_tail"] = g[step:grain_len].copy()
+            mix += chunk
+            heard = True
+        if not heard:
+            return np.zeros(step, dtype="<i2").tobytes()
+        return np.clip(mix * 0.7 * 32767, -32768, 32767).astype("<i2").tobytes()
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +419,10 @@ def _handle_control(engine, msg: dict):
         engine.nudge_phase(int(msg["mode"]), float(msg["delta"]))
     elif t == "meta":
         engine.set_meta(msg["name"], float(msg["value"]))
+    elif t == "voice":
+        engine.set_voice(str(msg["stem"]), bool(msg["on"]))
+    elif t == "groove_depth":
+        engine.set_groove_depth(int(msg["index"]), float(msg["value"]))
     elif t == "rename":
         engine.set_name(msg["key"], msg["name"])
 

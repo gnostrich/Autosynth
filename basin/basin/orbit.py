@@ -104,6 +104,7 @@ class Orbit:
         # left eigen-rows (biorthogonal projections) via pseudo-inverse
         self._mode_left = np.linalg.pinv(np.asarray(vecs))[idx, :]
         self._fly = np.zeros(len(idx), dtype=complex)
+        self.mode_weights = np.ones(len(idx))    # per-mode depth (panel LFO bank)
 
     def seed_state(self, chart: int | None = None) -> np.ndarray:
         """Start the orbit on a single chart (default: a random one)."""
@@ -141,7 +142,8 @@ class Orbit:
         """
         if self.beta_p == 0.0 or self._fly is None or not len(self._fly):
             return np.zeros(self.n_charts)
-        field = np.real(self._mode_vecs @ (self._mode_vals * self._fly))
+        field = np.real(self._mode_vecs
+                        @ (self._mode_vals * self._fly * self.mode_weights))
         s = field.std()
         if s > 1e-12:
             field = field / s
