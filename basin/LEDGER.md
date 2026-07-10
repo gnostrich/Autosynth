@@ -263,3 +263,16 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
 - K-on autocorr:    [0.0041]  (mean |Δ|=0.0591)
 - objective verdict: (a) K moves toward corpus — theory load-bearing
 - subjective blind A/B notes: _TODO human listener_
+
+## Performed set (2026-07-10)
+- First recorded *performance*: 10 min, 3 voices (ch1/ch0/ch6), all moves via
+  emergent controls only — mode-0 lean sweep +1.5σ→−1.5σ→0 with mode-2
+  counter-lean, scheduled γ (1.2→0.8→1.3), τ (1.1→0.8→1.1), coupling
+  (0.3→0.8→0.4), composed all-voice jumps at ⅓ and ⅔.
+- Reactive watchdog (jump + 30 s γ boost when a voice's last 60 emissions
+  hold <15 distinct windows) armed but **never fired** — local variety held
+  without intervention.
+- Script: reproducible, seed 7; every action timestamped in a printed log.
+- 44.1 kHz beat-synchronous instrument (`instrument_nmf44.npz`) built:
+  11,056 windows / 20 tracks / K=8, chan_rms baked; performance re-recorded
+  on it for the full-quality version.
