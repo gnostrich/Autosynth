@@ -42,11 +42,15 @@ def main() -> None:
     ap.add_argument("--voices", default="mix",
                     help="comma list of concurrent voices from "
                          "{mix,harmonic,percussive}; e.g. harmonic,percussive")
+    ap.add_argument("--mode", default="flow", choices=["flow", "hop"],
+                    help="flow = corpus momentum + walk-as-field (emergent "
+                         "transitions); hop = legacy per-step region sampling")
     args = ap.parse_args()
 
     from basin import store
     from basin.orbit import Orbit
-    from basin.render import GrainReader, render, render_voices
+    from basin.render import (GrainReader, render, render_voices,
+                              render_flow, render_flow_voices)
 
     inst = store.load_instrument(args.instrument or boot.instrument_path())
     cfg = dict(inst["config"])
@@ -65,17 +69,34 @@ def main() -> None:
 
     print(f"[render] {args.minutes} min = {n_steps} steps, seed={args.seed}, "
           f"kappa={cfg['kappa']}, knob_nonzero={np.count_nonzero(knob)}, "
-          f"voices={voices}")
+          f"voices={voices}, mode={args.mode}")
 
-    if voices == ["mix"]:
+    shared: dict = {}
+    if args.mode == "flow":
+        orbits, readers = [], []
+        for vi, stem in enumerate(voices):
+            vseed = args.seed + 101 * vi
+            orbits.append(Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
+                                seed=vseed))
+            readers.append(GrainReader(corpus, atlas.memberships, cfg,
+                                       seed=vseed, stem=stem,
+                                       shared_cache=shared, psi=psi))
+        if len(voices) == 1:
+            audio = render_flow(orbits[0], readers[0], n_steps, cfg)
+        else:
+            audio = render_flow_voices(orbits, readers, n_steps, cfg)
+        for vi, r in enumerate(readers):
+            rate = r.n_flow_jumps / max(1, r.n_flow_steps)
+            print(f"         voice {vi} ({voices[vi]}): jump rate "
+                  f"{rate:.2%} ({r.n_flow_jumps} jumps/{r.n_flow_steps} steps)")
+    elif voices == ["mix"]:
         orbit = Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
                       seed=args.seed)
         states = orbit.run(n_steps)
         reader = GrainReader(corpus, atlas.memberships, cfg, seed=args.seed)
         audio = render(states, reader, cfg)
     else:
-        # Polyphonic: one independent walker + stem stream per voice, summed.
-        shared: dict = {}
+        # Polyphonic hop mode: independent walkers, per-step region sampling.
         states_list, readers = [], []
         for vi, stem in enumerate(voices):
             vseed = args.seed + 101 * vi

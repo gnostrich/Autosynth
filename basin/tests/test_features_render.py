@@ -7,7 +7,7 @@ import pytest
 import soundfile as sf
 
 from basin import features, atlas as atlas_mod, operator
-from basin.render import GrainReader, render, render_voices
+from basin.render import GrainReader, render, render_voices, render_flow
 from basin.orbit import Orbit
 
 CFG = dict(sr=22050, hop=1024, window_s=1.5, overlap=0.5, pca_dims=40,
@@ -66,6 +66,23 @@ def test_two_voice_render_concurrent_and_natural(tiny_corpus):
     # HPSS computed once per track, shared between the two readers
     stems_cached = [k for k in shared if k[1] in ("harmonic", "percussive")]
     assert stems_cached, "shared stem cache unused"
+
+
+def test_flow_mode_follows_corpus_motion(tiny_corpus):
+    """Flow mode: emissions mostly continue the material; audio stays sane."""
+    c = features.build_corpus(tiny_corpus, CFG)
+    atlas = atlas_mod.build_atlas(c.features, CFG["n_charts"],
+                                  CFG["top_memberships"])
+    built = operator.build(atlas.memberships, c.track_bounds, n_basins="auto")
+    orbit = Orbit(built.P, built.spectrum.psi, CFG, seed=0)
+    reader = GrainReader(c, atlas.memberships, CFG, seed=0,
+                         psi=built.spectrum.psi)
+    audio = render_flow(orbit, reader, 20, CFG)
+    assert np.isfinite(audio).all()
+    assert np.abs(audio).max() <= 0.95 + 1e-6
+    assert reader.n_flow_steps == 20
+    # the walk relocalizes to played windows: state stays a valid mixture
+    assert abs(orbit._m.sum() - 1.0) < 1e-6
 
 
 def test_render_produces_finite_audio(tiny_corpus):

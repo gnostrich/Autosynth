@@ -159,6 +159,17 @@ class Orbit:
         s = out.sum()
         return out / s if s > 1e-12 else m
 
+    def relocalize(self, m: np.ndarray) -> None:
+        """Snap the walk's state to a given chart-membership (flow coupling).
+
+        Used by flow-mode rendering: after a grain is actually emitted, the
+        walk continues from where playback *is*, so walk and sound stay one
+        trajectory instead of two.
+        """
+        s = m.sum()
+        if s > 1e-12:
+            self._m = m / s
+
     def run(self, n_steps: int) -> list:
         """Run ``n_steps`` and return the list of :class:`OrbitState`."""
         return [self.step() for _ in range(n_steps)]

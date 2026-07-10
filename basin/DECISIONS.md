@@ -98,6 +98,36 @@ One line of reasoning per call, as required by the spec's definition of done.
   through, so channels fade in/out on their own. Only the summed mix is
   peak-guarded. The monophonic path keeps fixed-target as its stable default.
 
+## M2.6 — flow mode (emergent transitions, no extrinsic rules)
+
+- **Inverted the walk↔playback hierarchy** — hop mode let the walk dictate and
+  forced playback to find a grain in the current mixture every 0.75 s: ~80
+  source changes/min = scrambled, regardless of navigation quality. Flow mode
+  makes the corpus's own time-flow the default motion (each window's most
+  likely emission is its own successor, or anything that *sounds* like it) and
+  the walk acts as a **field** tilting it:
+  `p(w) ∝ exp(−d(w, succ(prev))²/2σ²) · exp(β_read·ψ_w·a_t)`.
+  Dwell, transition timing and destination all emerge: wanderlust/knobs move
+  the orbit's coordinate away from what's playing until a jump wins, and the
+  jump lands on sonically matching material (loop copies, parallel moments of
+  other tracks). Measured on the real corpus: track changes dropped from ~80
+  effective/min to **~1.5/min**, with same-track re-edit hops at consecutive-
+  pair feature distance. No dwell counters, no beat grid.
+
+- **Flow-kernel bandwidth is corpus-calibrated, not hand-set** — the successor
+  must outweigh the *summed* mass of all ~N unrelated windows, so a typical
+  random-pair distance must cost > ln N nats (we use 3·ln N /2 for field
+  headroom): `2σ² = median_random_pair_d² / (1.5·ln N)`. Derived from corpus
+  statistics; the earlier median-consecutive-distance bandwidth let 10k soft
+  candidates collectively swamp the one successor (measured 100% jump rate).
+
+- **Closed the loop** — after each emission the orbit re-localizes to the
+  played window's chart membership (`Orbit.relocalize`), so walk and sound are
+  one trajectory; knobs/kernel act on what is actually sounding.
+
+- **Splice type follows contiguity** — successor emissions are contiguous
+  audio → linear (sums-to-one) splice; jumps → equal-power crossfade.
+
 ## M4
 
 - **Websocket server** — implemented directly on the Python standard library
