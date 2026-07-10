@@ -3,7 +3,8 @@
 # cheap to change. Scripts load this and pass it down through the pipeline.
 
 # --- windowing / features (M1) ---
-stems: none         # none | hpss (2 imposed layers) | nmf (emergent channels, K measured)
+stems: nmf          # none | hpss (2 imposed layers) | nmf (emergent channels, K measured)
+                    # nmf is the listening-validated default (LEDGER: emergent_trio)
 n_channels: auto    # nmf only: 'auto' = held-out elbow, or an int
 sr: 22050           # load mono at this rate
 hop: 1024           # frame hop (~46 ms per frame)
@@ -24,7 +25,7 @@ prony_order: 2      # damped-oscillator modes to fit (spec allows <=3)
 
 # --- orbit (M2/M3) ---
 beta: 1.0           # knob-bias lean strength (grip)
-gamma: 0.3          # wanderlust (recent-visitation repulsion)
+gamma: 1.0          # wanderlust (validated: 0.3 camps in one track; 1.0 roams)
 tau: 1.0            # temperature (drift): low = mode-following, high = diffuse
 kappa: 0.3          # memory-term strength (kappa=0 reproduces M2; >~0.7 over-sticks)
 

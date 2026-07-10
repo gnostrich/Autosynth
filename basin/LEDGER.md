@@ -145,6 +145,23 @@ Launch: `python scripts/run_panel.py` → open the printed URL → "enable audio
 - **Patchy atlas / islands** — none on this corpus (100% coverage). Reporter is
   in place for corpora that do fragment.
 
+## Listening verdicts (the subjective protocol, filled in)
+
+Chronological, same listener (project owner), real corpus:
+
+- hop-mode renders (all voices/settings): **"sounds scrambled"** — rejected.
+- flow-mode solo/duo: coherent-but-chopped; **duo_coupled judged most
+  coherent** of the mono/duo generation; coupled 8-min held up.
+- momentum v1/v2 renders: indistinguishable-to-worse at clip length; parked.
+- **emergent_trio.wav** (NMF channels ch1+ch0+ch6, coupled walkers, flux
+  flow, γ=1.0, κ=0): **"actually sounds like a legit set snippet"** — the
+  first positive verdict. This recipe is now the config default.
+
+Pattern worth recording: audible quality improved monotonically as
+hand-designed elements were replaced by measured ones (imposed 2-channel
+split → measured channels; scheduled transitions → flux objective; solo
+walk → coupled concurrent walks).
+
 ## Theory-faithfulness audit (quick pass)
 
 Checked every spec formula against the code. Verdicts: **F** = faithful as
