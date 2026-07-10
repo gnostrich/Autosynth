@@ -172,6 +172,16 @@ class GrainReader:
                                         self.corpus.nmf_templates)
             for k, yk in enumerate(outs):
                 self._audio_cache[(track_id, f"ch{k}")] = yk
+            # LRU: full-band stereo channel audio is heavy — keep ~4 tracks
+            order = self._audio_cache.setdefault("__lru__", [])
+            order.append(track_id)
+            while len(order) > 4:
+                old_t = order.pop(0)
+                if old_t in order:
+                    continue
+                for kk in list(self._audio_cache):
+                    if isinstance(kk, tuple) and kk[0] == old_t:
+                        del self._audio_cache[kk]
             return self._audio_cache[key]
         raise ValueError(f"unknown stem: {self.stem!r}")
 
@@ -196,60 +206,27 @@ class GrainReader:
         self._prev_emitted = w
         return w
 
-    def beat_grid(self, track_id: int):
-        """Measured beat positions (samples) for a track; cached & shared."""
-        cache = self._audio_cache.setdefault(self._beat_key, {})
-        if track_id in cache:
-            return cache[track_id]
-        import librosa
-        y = self._track_audio(track_id)
-        mono = y.mean(0) if y.ndim == 2 else y
-        try:
-            tempo, beats = librosa.beat.beat_track(y=mono, sr=self.sr,
-                                                   hop_length=512)
-            samples = (np.asarray(beats) * 512).astype(int)
-            tempo = float(np.atleast_1d(tempo)[0])
-            if samples.size < 4:
-                samples, tempo = None, 0.0
-        except Exception:
-            samples, tempo = None, 0.0
-        cache[track_id] = (samples, tempo)
-        return cache[track_id]
-
-    def master_step_samples(self, step_s: float) -> int:
-        """Emission step snapped to a whole-beat multiple of the corpus's
-        median measured tempo (falls back to step_s if unmeasurable)."""
-        cache = self._audio_cache.setdefault(self._beat_key, {})
-        if "__master__" in cache:
-            return cache["__master__"]
-        tempos = []
-        for t in range(len(self.corpus.track_paths)):
-            _, bpm = self.beat_grid(t)
-            if bpm > 0:
-                tempos.append(bpm)
-        if tempos:
-            beat = 60.0 / float(np.median(tempos)) * self.sr
-            bps = max(1, int(round(step_s * self.sr / beat)))
-            step = int(round(bps * beat))
-        else:
-            step = int(round(step_s * self.sr))
-        cache["__master__"] = step
-        return step
-
-    def snap_to_beat(self, w: int) -> int:
-        """Start sample for window ``w``, snapped to its material's nearest
-        beat at/after the window start (falls back to the raw start)."""
+    def native_stride(self, w: int) -> int:
+        """The material's own step at window ``w``: distance to the next
+        window of the same track (beat-synchronous representation), i.e. the
+        local clock. Fast material paces the trace faster — tempo is a
+        coordinate of the landscape, not something to normalize away."""
         h = self.handles[w]
-        grid, _ = self.beat_grid(h.track_id)
-        if grid is None:
-            return h.start_sample
-        i = int(np.searchsorted(grid, h.start_sample))
-        if i >= len(grid):
-            return h.start_sample
-        s = int(grid[i])
-        if s - h.start_sample > h.n_samples:
-            return h.start_sample
-        return s
+        if w + 1 < len(self.handles) and \
+                self.handles[w + 1].track_id == h.track_id:
+            d = self.handles[w + 1].start_sample - h.start_sample
+            if d > 0:
+                return int(d)
+        return max(1, h.n_samples // 2)
+
+    def median_stride(self) -> int:
+        if not hasattr(self, "_med_stride"):
+            ds = [self.handles[i + 1].start_sample - self.handles[i].start_sample
+                  for i in range(len(self.handles) - 1)
+                  if self.handles[i + 1].track_id == self.handles[i].track_id]
+            self._med_stride = int(np.median(ds)) if ds else \
+                max(1, self.handles[0].n_samples // 2)
+        return self._med_stride
 
     def _successor(self, v: int) -> int:
         """In-corpus successor window of ``v`` within its track, else ``v``."""
@@ -321,13 +298,13 @@ class GrainReader:
         """Chart-membership row of window ``w`` (for orbit re-localization)."""
         return self.memberships[w]
 
-    def grain_audio(self, w: int, n_samples: int,
-                    beat_snap: bool = True) -> np.ndarray:
-        """Stereo grain, shape (n_samples, 2); starts ON a measured beat."""
+    def grain_audio(self, w: int, n_samples: int) -> np.ndarray:
+        """Stereo grain, shape (n_samples, 2). With the beat-synchronous
+        representation every window already starts ON a beat of its own
+        material — no read-time alignment exists."""
         h = self.handles[w]
         y = self._track_audio(h.track_id)              # (2, n)
-        start = self.snap_to_beat(w) if beat_snap else h.start_sample
-        seg = y[:, start:start + n_samples]
+        seg = y[:, h.start_sample:h.start_sample + n_samples]
         if seg.shape[1] < n_samples:
             seg = np.pad(seg, ((0, 0), (0, n_samples - seg.shape[1])))
         return seg.T.astype(np.float32)
@@ -397,45 +374,42 @@ def render(states: list, reader: GrainReader, cfg: dict,
 
 def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
                 natural: bool = True, normalize: bool = True) -> np.ndarray:
-    """Coupled walk↔playback realization (flow mode).
+    """Coupled walk↔playback on the material's OWN clock.
 
-    Each tick: the orbit steps (PULL + knobs + wanderlust + kernel), the reader
-    samples via :meth:`GrainReader.sample_flow` with the orbit's coordinate as
-    a field, and the orbit **re-localizes to the window actually played** — one
-    closed dynamics, so the walk can't teleport away from what is sounding.
-    Successor emissions are contiguous audio and get a linear (sums-to-one)
-    splice; jumps get an equal-power crossfade.
+    Each emission advances time by the emitted window's native stride —
+    fast material paces the trace faster, slow slower (tempo is part of the
+    landscape). Grains are enveloped (fade-in/out over the crossfade span)
+    and overlap-added; contiguous successors reconstruct seamlessly.
     """
     sr = int(cfg["sr"])
-    step = reader.master_step_samples(float(cfg["step_s"]))
-    xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
-    grain_len = step + xfade
-    eq_in, eq_out = _equal_power_fades(xfade)
-    t = np.linspace(0.0, 1.0, xfade, endpoint=False)[:, None]
-    lin_in, lin_out = t, 1.0 - t
+    xfade = int(round(float(cfg["crossfade_s"]) * sr))
+    est = reader.median_stride()
+    cap = int(n_steps * est * 1.35) + 8 * xfade
+    out = np.zeros((cap, 2), dtype=np.float32)
+    eq_in, _ = _equal_power_fades(xfade)
+    lin = np.linspace(0.0, 1.0, xfade, endpoint=False)[:, None]
     target_rms = float(cfg.get("target_rms", 0.2))
 
-    out = np.zeros((step * n_steps + grain_len, 2), dtype=np.float32)
-    prev_tail = None
+    t = 0
     for i in range(n_steps):
         st = orbit.step()
         w = reader.sample_flow(st.a)
         orbit.relocalize(reader.window_membership(w))
-        g = reader.grain_audio(w, grain_len).copy()
+        stride = min(reader.native_stride(w), 4 * est)
+        glen = stride + xfade
+        if t + glen >= cap:
+            break
+        g = reader.grain_audio(w, glen).copy()
         if not natural:
             r = _rms(g)
             if r > 1e-5:
                 g *= np.clip(target_rms / r, 0.25, 4.0)
-
-        pos = i * step
-        if prev_tail is not None and xfade > 0:
-            fi, fo = (eq_in, eq_out) if reader.last_jump else (lin_in, lin_out)
-            out[pos:pos + xfade] = prev_tail * fo + g[:xfade] * fi
-            out[pos + xfade:pos + grain_len] = g[xfade:]
-        else:
-            out[pos:pos + grain_len] = g
-        prev_tail = out[pos + step:pos + grain_len].copy()
-
+        if i > 0:
+            g[:xfade] *= eq_in if reader.last_jump else lin
+        g[-xfade:] *= (1.0 - lin)
+        out[t:t + glen] += g
+        t += stride
+    out = out[:t + xfade]
     if normalize:
         peak = float(np.max(np.abs(out)) + 1e-9)
         if peak > 0.95:
@@ -445,57 +419,55 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
 
 def render_flow_voices(orbits: list, readers: list, n_steps: int,
                        cfg: dict) -> np.ndarray:
-    """N concurrent flow-mode voices in lockstep, mutually coupled, summed.
-
-    Voices step together, and each voice's knob is tilted toward the mean
-    coordinate of the *other* voices (strength ``couple``): the drums-walker
-    feels where the harmony-walker is and vice versa, so the layers converge
-    on compatible territory instead of coexisting by accident. ``couple: 0``
-    reproduces fully independent voices.
+    """N concurrent voices, each on its material's OWN clock, mixed on the
+    absolute timeline. Voices step in time order; coupling reads the others'
+    live coordinates. Beat alignment between voices is not enforced — it
+    emerges when coupling co-locates them in tempo-compatible material.
     """
     sr = int(cfg["sr"])
-    step = readers[0].master_step_samples(float(cfg["step_s"]))
-    xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
-    grain_len = step + xfade
-    eq_in, eq_out = _equal_power_fades(xfade)
-    t = np.linspace(0.0, 1.0, xfade, endpoint=False)[:, None]
-    lin_in, lin_out = t, 1.0 - t
+    xfade = int(round(float(cfg["crossfade_s"]) * sr))
     couple = float(cfg.get("couple", 0.5))
+    est = readers[0].median_stride()
+    total = n_steps * est
+    cap = int(total * 1.1) + 8 * xfade
+    out = np.zeros((cap, 2), dtype=np.float32)
+    eq_in, _ = _equal_power_fades(xfade)
+    lin = np.linspace(0.0, 1.0, xfade, endpoint=False)[:, None]
 
     V = len(orbits)
     base_knobs = [o.knob.copy() for o in orbits]
     n_macros = orbits[0].n_macros
-    a_now = [np.zeros(n_macros) for _ in range(V)]
-    outs = [np.zeros((step * n_steps + grain_len, 2), dtype=np.float32)
-            for _ in range(V)]
-    prev_tails = [None] * V
+    vs = [{"t": 0, "i": 0, "a": np.zeros(n_macros)} for _ in range(V)]
 
-    for i in range(n_steps):
-        pos = i * step
-        for v in range(V):
-            if V > 1 and couple != 0.0:
-                others = np.mean([a_now[u] for u in range(V) if u != v],
-                                 axis=0)
-                orbits[v].knob = base_knobs[v] + couple * others
-            st = orbits[v].step()
-            w = readers[v].sample_flow(st.a)
-            orbits[v].relocalize(readers[v].window_membership(w))
-            a_now[v] = st.a
-            g = readers[v].grain_audio(w, grain_len)
-            if prev_tails[v] is not None and xfade > 0:
-                fi, fo = (eq_in, eq_out) if readers[v].last_jump \
-                    else (lin_in, lin_out)
-                outs[v][pos:pos + xfade] = prev_tails[v] * fo + g[:xfade] * fi
-                outs[v][pos + xfade:pos + grain_len] = g[xfade:]
-            else:
-                outs[v][pos:pos + grain_len] = g
-            prev_tails[v] = outs[v][pos + step:pos + grain_len].copy()
+    while True:
+        live = [v for v in range(V) if vs[v]["t"] < total]
+        if not live:
+            break
+        v = min(live, key=lambda u: vs[u]["t"])
+        S = vs[v]
+        if V > 1 and couple != 0.0:
+            others = np.mean([vs[u]["a"] for u in range(V) if u != v], axis=0)
+            orbits[v].knob = base_knobs[v] + couple * others
+        st = orbits[v].step()
+        w = readers[v].sample_flow(st.a)
+        orbits[v].relocalize(readers[v].window_membership(w))
+        vs[v]["a"] = st.a
+        stride = min(readers[v].native_stride(w), 4 * est)
+        glen = stride + xfade
+        if S["t"] + glen < cap:
+            g = readers[v].grain_audio(w, glen).copy()
+            if S["i"] > 0:
+                g[:xfade] *= eq_in if readers[v].last_jump else lin
+            g[-xfade:] *= (1.0 - lin)
+            out[S["t"]:S["t"] + glen] += g
+        S["t"] += stride
+        S["i"] += 1
 
-    out = np.sum(outs, axis=0)
+    out = out[:total + xfade]
     peak = float(np.max(np.abs(out)) + 1e-9)
     if peak > 0.95:
         out *= 0.95 / peak
-    return out.astype(np.float32)
+    return out
 
 
 def render_voices(states_list: list, readers: list, cfg: dict) -> np.ndarray:

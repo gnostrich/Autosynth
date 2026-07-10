@@ -57,6 +57,9 @@ class Corpus:
     # the measured channel count; channel audio is synthesized by masking.
     nmf_templates: np.ndarray = field(default=None)  # [K, freq]
     n_channels: int = 0
+    # the corpus's own clock: median measured beat length (samples); the
+    # render step is a whole-beat multiple of this — no clock is imposed.
+    master_beat_samples: float = 0.0
     # measured per-window loudness of each SYNTHESIZED channel (absolute,
     # corpus-comparable) — the honest presence measure; activations are
     # per-track-relative and can report presence where masked audio is silent.
@@ -124,6 +127,35 @@ def stem_frame_features(y: np.ndarray, sr: int, hop: int,
         F = min(fh.shape[1], fp.shape[1])
         return np.vstack([fh[:, :F], fp[:, :F]])          # [2*78, F]
     raise ValueError(f"unknown stems mode: {stems!r}")
+
+
+def beat_windows(y: np.ndarray, sr: int, window_s: float):
+    """Beat-synchronous window boundaries for one track (measured grid).
+
+    Windows span a whole number of measured beats (closest to ``window_s``),
+    strided by half that (the spec's 50% overlap), each starting ON a beat.
+    Returns ``(starts, spans, tempo)`` in samples, or ``None`` when the
+    material has no measurable pulse (falls back to clock windows).
+    """
+    import librosa
+    try:
+        tempo, beats = librosa.beat.beat_track(y=y, sr=sr, hop_length=512)
+    except Exception:
+        return None
+    tempo = float(np.atleast_1d(tempo)[0])
+    b = (np.asarray(beats) * 512).astype(int)
+    if b.size < 8 or tempo <= 0:
+        return None
+    beat_s = 60.0 / tempo
+    bpw = max(2, int(round(window_s / beat_s)))
+    stride = max(1, bpw // 2)
+    starts, spans = [], []
+    for i in range(0, b.size - bpw, stride):
+        starts.append(int(b[i]))
+        spans.append(int(b[i + bpw] - b[i]))
+    if len(starts) < 2:
+        return None
+    return np.asarray(starts), np.asarray(spans), tempo
 
 
 def _window_frames(window_s: float, overlap: float, sr: int, hop: int):
@@ -218,7 +250,7 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         n_channels = nmf_W.shape[0]
 
     raw_rows, handles, bounds, kept_paths = [], [], [], []
-    head_rows, mid_rows, chan_rms_rows = [], [], []
+    head_rows, mid_rows, chan_rms_rows, track_tempos = [], [], [], []
     cursor = 0
     for track_id, path in enumerate(sorted(paths)):
         y, _ = librosa.load(path, sr=sr, mono=True)
@@ -237,29 +269,53 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
             chan_audio = channels.split_track(y, nmf_W)
         else:
             frames = stem_frame_features(y, sr, hop, stems_mode)
-        vecs, start_frames = aggregate_windows(frames, window_s, overlap, sr, hop)
-        if vecs.size == 0:
-            continue
-        win_samples = fpw * hop
-        start = cursor
+
+        # beat-synchronous windows (the material's own units); clock fallback
+        bw = beat_windows(y, sr, window_s)
         F = frames.shape[1]
-        for v, sf in zip(vecs, start_frames):
-            raw_rows.append(v)
-            head_rows.append(frames[:, min(sf, F - 1)])
-            mid_rows.append(frames[:, min(sf + step_frames, F - 1)])
-            if stems_mode == "nmf":
-                s0 = int(sf * hop)
-                chan_rms_rows.append([
-                    float(np.sqrt(np.mean(
-                        np.atleast_2d(ca)[:, s0:s0 + win_samples] ** 2)
-                        + 1e-12))
-                    for ca in chan_audio])
-            handles.append(WindowHandle(
-                track_id=len(kept_paths),
-                start_sample=int(sf * hop),
-                n_samples=int(win_samples),
-            ))
-            cursor += 1
+        start = cursor
+        if bw is not None:
+            b_starts, b_spans, tempo = bw
+            track_tempos.append(tempo)
+            for s0, span in zip(b_starts, b_spans):
+                f0 = min(int(s0 // hop), F - 1)
+                f1 = min(max(int((s0 + span) // hop), f0 + 2), F)
+                block = frames[:, f0:f1]
+                raw_rows.append(np.concatenate([block.mean(1), block.std(1)]))
+                head_rows.append(frames[:, f0])
+                fm = min(int((s0 + span // 2) // hop), F - 1)
+                mid_rows.append(frames[:, fm])
+                if stems_mode == "nmf":
+                    chan_rms_rows.append([
+                        float(np.sqrt(np.mean(
+                            np.atleast_2d(ca)[:, s0:s0 + span] ** 2) + 1e-12))
+                        for ca in chan_audio])
+                handles.append(WindowHandle(
+                    track_id=len(kept_paths),
+                    start_sample=int(s0), n_samples=int(span)))
+                cursor += 1
+        else:
+            vecs, start_frames = aggregate_windows(frames, window_s, overlap,
+                                                   sr, hop)
+            if vecs.size == 0:
+                continue
+            win_samples = fpw * hop
+            for v, sf in zip(vecs, start_frames):
+                raw_rows.append(v)
+                head_rows.append(frames[:, min(sf, F - 1)])
+                mid_rows.append(frames[:, min(sf + step_frames, F - 1)])
+                if stems_mode == "nmf":
+                    s0 = int(sf * hop)
+                    chan_rms_rows.append([
+                        float(np.sqrt(np.mean(
+                            np.atleast_2d(ca)[:, s0:s0 + win_samples] ** 2)
+                            + 1e-12))
+                        for ca in chan_audio])
+                handles.append(WindowHandle(
+                    track_id=len(kept_paths),
+                    start_sample=int(sf * hop),
+                    n_samples=int(win_samples)))
+                cursor += 1
         bounds.append((start, cursor))
         kept_paths.append(path)
 
@@ -280,5 +336,7 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         mid_frames=np.asarray(mid_rows),
         nmf_templates=nmf_W,
         n_channels=n_channels,
+        master_beat_samples=(60.0 / float(np.median(track_tempos)) * sr
+                             if track_tempos else 0.0),
         chan_rms=np.asarray(chan_rms_rows) if chan_rms_rows else None,
     )
