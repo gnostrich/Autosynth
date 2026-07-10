@@ -1,0 +1,11 @@
+# build artifacts + user data (regenerate with scripts/)
+corpus/*
+!corpus/.gitkeep
+corpus_real/
+instrument.npz
+panel_names.json
+debug/
+renders/
+*.wav
+__pycache__/
+.pytest_cache/

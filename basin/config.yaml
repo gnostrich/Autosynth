@@ -1,0 +1,31 @@
+# The Basin — v0.1 configuration.
+# Every value here is a [default] from the build spec: build as stated,
+# cheap to change. Scripts load this and pass it down through the pipeline.
+
+# --- windowing / features (M1) ---
+sr: 22050           # load mono at this rate
+hop: 1024           # frame hop (~46 ms per frame)
+window_s: 1.5       # window length (atomic corpus unit)
+overlap: 0.5        # window overlap fraction
+
+# --- atlas (M1) ---
+pca_dims: 40        # PCA-whitened feature dimensionality
+n_charts: 256       # k-means charts
+top_memberships: 8  # soft-assignment neighbours kept per window
+
+# --- spectrum / basins (M1) ---
+n_macros: auto      # 'auto' = spectral-gap detection, else an int
+n_basins: auto      # 'auto' = silhouette over [4, 10], else an int
+
+# --- kernel (M3) ---
+prony_order: 2      # damped-oscillator modes to fit (spec allows <=3)
+
+# --- orbit (M2/M3) ---
+beta: 1.0           # knob-bias lean strength (grip)
+gamma: 0.3          # wanderlust (recent-visitation repulsion)
+tau: 1.0            # temperature (drift): low = mode-following, high = diffuse
+kappa: 1.0          # memory-term strength (kappa=0 reproduces M2)
+
+# --- render (M2) ---
+crossfade_s: 0.375  # equal-power crossfade (half a hop)
+step_s: 0.75        # orbit step / grain emission rate
