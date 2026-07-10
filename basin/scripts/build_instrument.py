@@ -22,16 +22,21 @@ def main() -> None:
     ap.add_argument("--corpus", default=None)
     ap.add_argument("--config", default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--stems", default=None, choices=["none", "hpss"],
+                    help="override features.stems (whole-mix vs HPSS split)")
+    ap.add_argument("--out", default=None, help="instrument output path")
     args = ap.parse_args()
 
     from basin import features, atlas as atlas_mod, operator, kernel as kern
     from basin import debugplots, store
 
     cfg = boot.load_config(args.config)
+    if args.stems is not None:
+        cfg["stems"] = args.stems
     paths = boot.corpus_paths(args.corpus)
     if not paths:
         raise SystemExit(f"No audio in corpus folder {args.corpus or 'corpus/'}")
-    print(f"[build] {len(paths)} tracks")
+    print(f"[build] {len(paths)} tracks  stems={cfg.get('stems','none')}")
 
     print("[M1] windowing + features ...")
     corpus = features.build_corpus(paths, cfg)
@@ -80,7 +85,7 @@ def main() -> None:
     debugplots.spectrum(sp.eigvals, sp.macro_indices,
                         os.path.join(dbg, "spectrum.png"))
 
-    out = boot.instrument_path()
+    out = args.out or boot.instrument_path()
     store.save_instrument(out, corpus, atlas, built, kfit, cfg)
     print(f"[done] wrote {out}")
 

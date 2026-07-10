@@ -90,6 +90,29 @@ def frame_features(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     return np.vstack(blocks)                                          # [78, F]
 
 
+def stem_frame_features(y: np.ndarray, sr: int, hop: int,
+                        stems: str = "none") -> np.ndarray:
+    """Per-frame features, optionally split into parallel source streams.
+
+    ``stems='none'`` → the plain 78-d/frame block over the whole mix.
+    ``stems='hpss'`` → classical (NN-free) harmonic/percussive separation
+    (`librosa.effects.hpss`): features are computed on each stream and stacked,
+    so a window vector distinguishes "percussion doing X while harmony does Y"
+    instead of blending them into one texture. Grain audio is still read from
+    the original mix — only *navigation* uses the richer coordinates.
+    """
+    if stems in ("none", None, ""):
+        return frame_features(y, sr, hop)
+    if stems == "hpss":
+        import librosa
+        y_h, y_p = librosa.effects.hpss(y)
+        fh = frame_features(y_h, sr, hop)
+        fp = frame_features(y_p, sr, hop)
+        F = min(fh.shape[1], fp.shape[1])
+        return np.vstack([fh[:, :F], fp[:, :F]])          # [2*78, F]
+    raise ValueError(f"unknown stems mode: {stems!r}")
+
+
 def _window_frames(window_s: float, overlap: float, sr: int, hop: int):
     """Return ``(frames_per_window, frame_stride)`` in frame units."""
     frames_per_window = max(1, int(round(window_s * sr / hop)))
@@ -169,7 +192,7 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         y, _ = librosa.load(path, sr=sr, mono=True)
         if y.size < hop:
             continue
-        frames = frame_features(y, sr, hop)
+        frames = stem_frame_features(y, sr, hop, cfg.get("stems", "none"))
         vecs, start_frames = aggregate_windows(frames, window_s, overlap, sr, hop)
         if vecs.size == 0:
             continue
