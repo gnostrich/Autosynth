@@ -84,6 +84,7 @@ class GrainReader:
         else:
             self._flux_scale2 = None
         self._prev_emitted = None
+        self.force_jump = False        # event-typed: leave the groove NOW
         self._audio_cache: dict = shared_cache if shared_cache is not None else {}
         # window diffusion coordinates (for flow-mode field alignment)
         self.win_psi = memberships @ psi if psi is not None else None
@@ -173,6 +174,13 @@ class GrainReader:
                 logp -= flux / (2.0 * self._flux_scale2)
             if s == self._prev_emitted:        # track end: must move on
                 logp[s] = -np.inf
+
+        if self.force_jump and self._prev_emitted is not None:
+            # trigger gate: one step of pure field — drop the flow term so the
+            # walk's tilt alone picks the destination, and bar the successor.
+            logp = tilt.astype(float).copy()
+            logp[self._successor(self._prev_emitted)] = -np.inf
+            self.force_jump = False
 
         logp -= logp.max()
         p = np.exp(logp)

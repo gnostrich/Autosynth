@@ -176,6 +176,13 @@ class PanelEngine:
                     v["on"] = bool(on)
                     v["prev_tail"] = None      # fresh splice when re-enabled
 
+    def jump(self, stem: str = "all"):
+        """Trigger: force the voice(s) to leave the groove on the next step."""
+        with self.lock:
+            for v in self.voices:
+                if stem in ("all", v["stem"]):
+                    v["reader"].force_jump = True
+
     def set_groove_depth(self, fly_index: int, value: float):
         with self.lock:
             for v in self.voices:
@@ -421,6 +428,8 @@ def _handle_control(engine, msg: dict):
         engine.set_meta(msg["name"], float(msg["value"]))
     elif t == "voice":
         engine.set_voice(str(msg["stem"]), bool(msg["on"]))
+    elif t == "jump":
+        engine.jump(str(msg.get("stem", "all")))
     elif t == "groove_depth":
         engine.set_groove_depth(int(msg["index"]), float(msg["value"]))
     elif t == "rename":

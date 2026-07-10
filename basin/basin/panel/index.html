@@ -50,10 +50,11 @@
   <button id="audiobtn">enable audio</button>
 </header>
 <main id="panel"></main>
-<p class="hint">lean = slide a macro fader (double-click it to zero) · grip = clamp
-   button holds that coordinate · phase dial drag = nudge · double-click a name
-   to rename. The round dial is a display: needle = motion beyond prediction,
-   outer arc = true position.</p>
+<p class="hint">typed like a modular: <b>position</b> faders set destinations (σ) ·
+   <b>motion</b> sliders are speeds · <b>inertia</b> is how motion persists ·
+   <b>patch</b> sliders are path gains · <b>jump</b> is a trigger. Readout lane:
+   marker = true position, glow = motion beyond prediction. Double-click names
+   to rename; double-click a fader to zero it.</p>
 <script>
 const TAU = Math.PI * 2;
 let ws, audioCtx = null, playHead = 0;
@@ -129,7 +130,7 @@ function build(state) {
 
   // VOICES — the oscillator section: which layers are sounding
   if (state.voices && state.voices.length > 1) {
-    addGroup('voices');
+    addGroup('voices — sources');
     state.voices.forEach(v => {
       const cell = mkCell();
       const tg = document.createElement('div');
@@ -139,14 +140,19 @@ function build(state) {
         tg.classList.toggle('on', on);
         send({type:'voice', stem:v.stem, on}); };
       cell.appendChild(tg);
+      const jb = document.createElement('button');
+      jb.className = 'gripbtn'; jb.textContent = 'jump';
+      jb.style.marginTop = '8px';
+      jb.onclick = () => send({type:'jump', stem:v.stem});
+      cell.appendChild(jb);
       addName(cell, v.stem, null);
-      addSub(cell, 'voice on/off');
+      addSub(cell, 'on/off · jump = leave groove now');
       panel.appendChild(cell);
     });
   }
 
-  // MACROS — texture-space faders with a position readout bar
-  addGroup('macros');
+  // POSITION — order 0: where in texture space (faders set destination)
+  addGroup('position — where (σ)');
   state.macros.forEach((m, i) => {
     const cell = mkCell();
     const bar = document.createElement('canvas');
@@ -167,27 +173,50 @@ function build(state) {
       send({type:'grip', macro:i, on, value:k.lastPos || 0}); };
     row.appendChild(inp); row.appendChild(grip); cell.appendChild(row);
     addName(cell, m.name, 'macro:' + m.index);
-    addSub(cell, 'slide = lean · dbl-click = zero');
+    addSub(cell, 'destination (σ) · dbl-click = zero');
     panel.appendChild(cell);
   });
-
-  // GROOVE — the LFO bank: phase dial display + depth fader per mode
-  if (state.grooves.length) addGroup('groove (momentum per mode)');
+  // groove phase dials are position-typed too (position on a cycle)
   state.grooves.forEach((gr, i) => {
     const cell = mkCell();
     const k = knobCanvas(cell, { i, mode: gr.index });
     grooveK.push(k);
     wireGroove(k, cell, gr);
+    addName(cell, gr.name, 'groove:' + gr.index);
+    addSub(cell, 'phase (rad) · drag = nudge');
+    panel.appendChild(cell);
+  });
+
+  // MOTION — order 1: speeds
+  addGroup('motion — speeds');
+  mkMeta('beta', 'response β', 'how fast leans take effect', 2,
+         state.meta.beta);
+  mkMeta('gamma', 'travel γ', 'speed through territory', 2, state.meta.gamma);
+  mkMeta('tau', 'spread τ', 'diffusion around the path', 3, state.meta.tau);
+
+  // INERTIA — order 2: persistence of motion
+  addGroup('inertia — persistence');
+  mkMeta('momentum', 'momentum β_p (master)', 'how much motion carries', 2,
+         state.meta.momentum);
+  state.grooves.forEach(gr => {
+    const cell = mkCell(); cell.classList.add('meta');
     const dep = document.createElement('input');
     dep.type = 'range'; dep.min = 0; dep.max = 2; dep.step = 0.05;
     dep.value = gr.weight != null ? gr.weight : 1;
     dep.oninput = () => send({type:'groove_depth', index:gr.index,
                               value:+dep.value});
     cell.appendChild(dep);
-    addName(cell, gr.name, 'groove:' + gr.index);
-    addSub(cell, 'dial = live phase · slider = depth');
+    addName(cell, gr.name + ' depth', null);
+    addSub(cell, 'this mode’s swing');
     panel.appendChild(cell);
   });
+
+  // PATCH — dimensionless gains between modules
+  addGroup('patch — path gains');
+  mkMeta('kappa', 'memory κ', 'history → position path', 2, state.meta.kappa);
+  mkMeta('couple', 'voice couple', 'voice ↔ voice path', 1.5,
+         state.meta.couple);
+
   if (state.toggles.length) addGroup('alternation');
   state.toggles.forEach(t => {
     const cell = mkCell();
@@ -198,19 +227,16 @@ function build(state) {
     addSub(cell, 'alternation · toggle');
     panel.appendChild(cell);
   });
-  addGroup('meta');
-  ['beta','gamma','tau','kappa','momentum','couple'].forEach(name => {
-    const cell = mkCell(); cell.classList.add('meta');
-    const label = {beta:'grip β', gamma:'wanderlust γ', tau:'temperature τ',
-                   kappa:'memory κ', momentum:'momentum β_p',
-                   couple:'voice couple'}[name];
-    const inp = document.createElement('input');
-    inp.type = 'range'; inp.min = 0; inp.max = name==='tau'?3:2;
-    inp.step = 0.05; inp.value = state.meta[name];
-    inp.oninput = () => send({type:'meta', name, value:+inp.value});
-    cell.appendChild(inp); addName(cell, label, null); panel.appendChild(cell);
-  });
   built = true;
+}
+function mkMeta(name, label, sub, max, value){
+  const cell = mkCell(); cell.classList.add('meta');
+  const inp = document.createElement('input');
+  inp.type = 'range'; inp.min = 0; inp.max = max; inp.step = 0.05;
+  inp.value = value != null ? value : 1;
+  inp.oninput = () => send({type:'meta', name, value:+inp.value});
+  cell.appendChild(inp); addName(cell, label, null); addSub(cell, sub);
+  panel.appendChild(cell);
 }
 function mkCell(){ const d=document.createElement('div'); d.className='cell'; return d; }
 function addGroup(t){ const s=document.createElement('section');
