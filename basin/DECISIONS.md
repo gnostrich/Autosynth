@@ -153,6 +153,17 @@ One line of reasoning per call, as required by the spec's definition of done.
   phrase-scale structure the original M3 position-history formulation failed
   to produce: the kernel acts as *velocity* memory, not a position nudge.
 
+- **Listening outcome (honest)**: coordinate-level success did **not** yet
+  translate to audible arcs — at any tested strength (1.0, 0.4) the momentum
+  tilt raises per-step read churn (continuation-miss 32→67%) and the loudness
+  arc stays flat, because the oscillating field jostles the grain read at
+  step scale instead of steering drift at arc scale. Open item: timescale
+  separation — momentum should modulate the walk's slow drift (e.g. acting on
+  the knob at multi-step cadence, or low-passed before the tilt), not the
+  per-step emission. Until then the audibly-best recipe is the coupled duo
+  *without* momentum (γ=1.0, couple=0.5, flux term, seed-0 territory:
+  continuation-miss 32–35%, judged most coherent by ear).
+
 ## M4
 
 - **Websocket server** — implemented directly on the Python standard library
