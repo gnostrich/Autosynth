@@ -58,31 +58,87 @@
    to rename; double-click a fader to zero it.</p>
 <script>
 const TAU = Math.PI * 2;
-let ws, audioCtx = null, playHead = 0;
+let ws, audioCtx = null, playHead = 0, ringNode = null;
 const panel = document.getElementById('panel');
 const statusEl = document.getElementById('status');
 
-// ---- Web Audio: schedule int16 PCM chunks ----
-document.getElementById('audiobtn').onclick = () => {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  playHead = audioCtx.currentTime + 0.2;
-  document.getElementById('audiobtn').textContent = 'audio on';
+// ---- Web Audio: AudioWorklet ring buffer (robust path) ----
+// A fixed ring on the realtime audio thread: immune to main-thread jank,
+// latency bounded by construction (skips ahead if >1.2s behind live).
+const WORKLET_SRC = `
+class RingPlayer extends AudioWorkletProcessor {
+  constructor(){ super();
+    this.N = sampleRate * 8; this.buf = new Float32Array(this.N);
+    this.r = 0; this.w = 0;
+    this.port.onmessage = e => {
+      const x = e.data;
+      for (let i = 0; i < x.length; i++){ this.buf[this.w % this.N] = x[i]; this.w++; }
+      if (this.w - this.r > sampleRate * 1.2)
+        this.r = this.w - Math.floor(sampleRate * 0.4);
+    };
+  }
+  process(inputs, outputs){
+    const out = outputs[0][0];
+    for (let i = 0; i < out.length; i++){
+      out[i] = (this.r < this.w) ? this.buf[this.r % this.N] : 0;
+      if (this.r < this.w) this.r++;
+    }
+    return true;
+  }
+}
+registerProcessor('ring-player', RingPlayer);`;
+
+document.getElementById('audiobtn').onclick = async () => {
+  try { audioCtx = new AudioContext({sampleRate: 22050}); }
+  catch(e) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  try {
+    const url = URL.createObjectURL(
+      new Blob([WORKLET_SRC], {type:'application/javascript'}));
+    await audioCtx.audioWorklet.addModule(url);
+    ringNode = new AudioWorkletNode(audioCtx, 'ring-player',
+                                    {outputChannelCount:[1]});
+    ringNode.connect(audioCtx.destination);
+  } catch(e) { ringNode = null; playHead = audioCtx.currentTime + 0.2; }
+  document.getElementById('audiobtn').textContent =
+    ringNode ? 'audio on (ring)' : 'audio on';
 };
 function playPCM(int16, sr) {
   if (!audioCtx) return;
-  const f = new Float32Array(int16.length);
+  let f = new Float32Array(int16.length);
   for (let i = 0; i < int16.length; i++) f[i] = int16[i] / 32768;
+  if (ringNode) {
+    if (audioCtx.sampleRate !== sr) {           // linear resample if needed
+      const ratio = audioCtx.sampleRate / sr;
+      const out = new Float32Array(Math.floor(f.length * ratio));
+      for (let i = 0; i < out.length; i++) {
+        const x = i / ratio, i0 = Math.floor(x), t = x - i0;
+        out[i] = f[i0] * (1 - t) + (f[Math.min(i0 + 1, f.length - 1)]) * t;
+      }
+      f = out;
+    }
+    ringNode.port.postMessage(f, [f.buffer]);
+    return;
+  }
+  // legacy fallback: main-thread scheduling with a bounded backlog
   const buf = audioCtx.createBuffer(1, f.length, sr);
   buf.copyToChannel(f, 0);
   const src = audioCtx.createBufferSource();
   src.buffer = buf; src.connect(audioCtx.destination);
   const now = audioCtx.currentTime;
   if (playHead < now) playHead = now + 0.1;
-  // cap the backlog: unbounded queue = listening seconds in the past, which
-  // kills control feel. If we're >1.5s behind live, skip ahead.
   if (playHead - now > 1.5) playHead = now + 0.4;
   src.start(playHead);
   playHead += buf.duration;
+}
+
+// hover + wheel = slide (no click-grab needed); feeds the same control path
+function addWheel(inp, step, cb) {
+  inp.addEventListener('wheel', e => {
+    e.preventDefault();
+    const d = (e.deltaY < 0 ? 1 : -1) * step;
+    inp.value = Math.min(+inp.max, Math.max(+inp.min, (+inp.value) + d));
+    cb(+inp.value);
+  }, {passive: false});
 }
 
 // ---- control channel ----
@@ -176,6 +232,7 @@ function build(state) {
     inp.oninput = () => send({type:'set_lean', macro:i, value:+inp.value});
     inp.ondblclick = () => { inp.value = 0;
       send({type:'set_lean', macro:i, value:0}); };
+    addWheel(inp, 0.15, v => send({type:'set_lean', macro:i, value:v}));
     const grip = document.createElement('button');
     grip.className = 'gripbtn'; grip.textContent = 'grip';
     grip.onclick = () => { const on = grip.classList.toggle('on');
@@ -215,6 +272,8 @@ function build(state) {
     dep.value = gr.weight != null ? gr.weight : 1;
     dep.oninput = () => send({type:'groove_depth', index:gr.index,
                               value:+dep.value});
+    addWheel(dep, 0.1, v => send({type:'groove_depth', index:gr.index,
+                                  value:v}));
     cell.appendChild(dep);
     addName(cell, gr.name + ' depth', null);
     addSub(cell, 'this mode’s swing');
@@ -245,6 +304,7 @@ function mkMeta(name, label, sub, max, value){
   inp.type = 'range'; inp.min = 0; inp.max = max; inp.step = 0.05;
   inp.value = value != null ? value : 1;
   inp.oninput = () => send({type:'meta', name, value:+inp.value});
+  addWheel(inp, 0.1, v => send({type:'meta', name, value:v}));
   cell.appendChild(inp); addName(cell, label, null); addSub(cell, sub);
   panel.appendChild(cell);
 }
