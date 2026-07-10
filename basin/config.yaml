@@ -32,3 +32,4 @@ crossfade_s: 0.375  # equal-power crossfade (half a hop)
 step_s: 0.75        # orbit step / grain emission rate
 beta_read: 1.0      # flow mode: strength of the walk's field on the grain read
 couple: 0.5         # multi-voice: pull of each voice toward the others' territory
+momentum: 0.0       # momentum-orbit strength (0 = off; oscillator params from kernel fit)

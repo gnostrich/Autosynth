@@ -128,6 +128,31 @@ One line of reasoning per call, as required by the spec's definition of done.
 - **Splice type follows contiguity** — successor emissions are contiguous
   audio → linear (sums-to-one) splice; jumps → equal-power crossfade.
 
+## M2.7 — momentum orbit (the brachistochrone principle)
+
+- **Why**: the memoryless walk is overdamped diffusion — it wanders but never
+  commits, so it cannot do what buildups/drops do (dip to buy speed, spend it
+  on the release). Mori–Zwanzig says the projection onto slow coordinates
+  *necessarily* carries a memory/momentum term — M2 was the approximation, and
+  the M3 kernel's damped-cosine fit is precisely the measured signature of
+  underdamped (momentum-carrying) motion in the corpus.
+
+- **What**: a damped oscillator per macro in diffusion coordinates,
+  `p ← e^{−γ}·p + Δa − ω²·a`, with (γ, ω) taken **from the fitted kernel
+  modes** (corpus-measured damping and build/release frequency — nothing
+  hand-picked), driven by the walk's actual motion; contributes one more
+  additive tilt `β_p·ψ·p` in the same pathway as knobs/wanderlust/kernel.
+  `momentum: 0` reproduces the memoryless walk bit-for-bit (unit-tested).
+
+- **Regression (real corpus)**: knob deltas identical with momentum on/off
+  (6.9/3.6/6.2/6.9 vs 6.9/3.6/6.1/6.9) — all controls remain modifiers.
+
+- **Result (real corpus)**: the orbit's drive coordinate develops phrase-scale
+  oscillation at the fitted periods — autocorr at 12/27 steps goes from
+  ≈0 (memoryless) to **+0.83 / +0.59** with momentum on. This is the
+  phrase-scale structure the original M3 position-history formulation failed
+  to produce: the kernel acts as *velocity* memory, not a position nudge.
+
 ## M4
 
 - **Websocket server** — implemented directly on the Python standard library

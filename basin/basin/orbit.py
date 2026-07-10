@@ -55,6 +55,27 @@ class Orbit:
         self.kernel = kernel                 # None → pure M2
         self.rng = np.random.default_rng(seed)
 
+        # Momentum orbit (brachistochrone principle): a damped oscillator per
+        # macro, (γ, ω) taken from the corpus-fitted kernel modes — the
+        # measured signature of the genre's own build/release dynamics. The
+        # oscillator is driven by the walk's *actual* motion and acts as one
+        # more additive tilt (β_p·ψ·p); momentum=0 reproduces the memoryless
+        # walk exactly (p is updated deterministically but contributes 0).
+        self.beta_p = float(cfg.get("momentum", 0.0))
+        g, w = [], []
+        modes = getattr(kernel, "modes", None) if kernel is not None else None
+        for m in range(self.n_macros):
+            if modes is not None and m < len(modes) and len(modes[m]):
+                g.append(float(modes[m][0][1]))     # fitted damping
+                w.append(float(modes[m][0][2]))     # fitted frequency (rad/step)
+            else:
+                g.append(0.1)
+                w.append(0.2)
+        self.osc_gamma = np.array(g)
+        self.osc_omega = np.array(w)
+        self.p = np.zeros(self.n_macros)
+        self._a_prev = None
+
         self.visitation = np.zeros(self.n_charts)
         self.visit_decay = 0.9
         self.history_a: list = []            # resolved macro coords a(t)
@@ -110,7 +131,8 @@ class Orbit:
         pulled = m @ self.P                            # PULL
         log_tilt = (self.beta * self._bias_align()
                     - self.gamma * self.visitation
-                    + self.kappa * self._memory_tilt())
+                    + self.kappa * self._memory_tilt()
+                    + self.beta_p * (self.psi @ self.p))
         # stabilise exp
         log_tilt = log_tilt - log_tilt.max()
         raw = pulled * np.exp(log_tilt)
@@ -128,6 +150,16 @@ class Orbit:
         self.history_a.append(a)
         self.visitation = self.visit_decay * self.visitation + m_new
         top = np.nonzero(m_new)[0]
+
+        # momentum update: velocity accumulation with fitted damping, plus a
+        # harmonic restoring force −ω²a (potential energy in diffusion coords)
+        # — downhill motion grows |p| (the drop's rush), climbing bleeds it
+        # (breakdown tension), and ω sets the corpus's own build/release period.
+        if self._a_prev is not None:
+            self.p = (np.exp(-self.osc_gamma) * self.p
+                      + (a - self._a_prev)
+                      - (self.osc_omega ** 2) * a)
+        self._a_prev = a.copy()
 
         # Re-localize to a concrete chart sampled from the emission mixture.
         # Propagating the full mixture through P instead converges to the
