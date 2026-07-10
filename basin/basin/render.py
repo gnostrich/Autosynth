@@ -54,18 +54,35 @@ class GrainReader:
         # continuity bandwidth = median nearest-neighbour feature distance scale
         self._cont_scale = float(np.median(np.linalg.norm(
             np.diff(self.features, axis=0), axis=1)) + 1e-9)
-        # Flow-kernel bandwidth, calibrated from the corpus itself: the one
-        # true successor must outweigh the *summed* mass of all ~N unrelated
-        # windows, i.e. a typical random-pair distance must cost > ln N nats
-        # (×1.5 headroom so the walk's field decides ties, not noise). Windows
-        # at consecutive-pair distance stay cheap → sonically-matching jump
-        # targets (loop copies, parallel moments) remain reachable.
-        n = self.features.shape[0]
-        idx = np.random.default_rng(0).integers(0, n, size=(min(4000, n), 2))
-        rand_d2 = ((self.features[idx[:, 0]] - self.features[idx[:, 1]]) ** 2
-                   ).sum(1)
-        med_rand_d2 = float(np.median(rand_d2) + 1e-9)
-        self._flow_scale2 = med_rand_d2 / (3.0 * np.log(max(n, 2)))
+        # --- flow-mode geometry (corpus-calibrated, no hand rules) -----------
+        # Two terms, one objective — the geodesic-mixing loss applied locally:
+        # 1. Region similarity in whitened feature space (medium scale).
+        # 2. Splice flux: the actual spectral discontinuity the candidate
+        #    would create at the splice point — distance between the outgoing
+        #    grain's frame at the splice offset (mid_frames[prev]) and the
+        #    candidate's opening frame (head_frames[w]). Zero for the true
+        #    successor, small for phase-aligned copies, large for
+        #    harmonically/rhythmically incompatible material.
+        # Bandwidths: the one true successor must outweigh the *summed* mass of
+        # all ~N unrelated windows → a typical random-pair distance must cost
+        # > ln N nats (×1.5 headroom so the walk's field decides ties).
+        X = self.features
+        n = X.shape[0]
+        rng0 = np.random.default_rng(0)
+        i0 = rng0.integers(0, n, size=min(4000, n))
+        i1 = rng0.integers(0, n, size=min(4000, n))
+        self._flow_X = X
+        rand_d2 = ((X[i1] - X[i0]) ** 2).sum(1)
+        self._flow_scale2 = float(np.median(rand_d2) + 1e-9) \
+            / (3.0 * np.log(max(n, 2)))
+        self._head = getattr(corpus, "head_frames", None)
+        self._mid = getattr(corpus, "mid_frames", None)
+        if self._head is not None and self._mid is not None and self._head.size:
+            flux_d2 = ((self._head[i1] - self._mid[i0]) ** 2).sum(1)
+            self._flux_scale2 = float(np.median(flux_d2) + 1e-9) \
+                / (3.0 * np.log(max(n, 2)))
+        else:
+            self._flux_scale2 = None
         self._prev_emitted = None
         self._audio_cache: dict = shared_cache if shared_cache is not None else {}
         # window diffusion coordinates (for flow-mode field alignment)
@@ -147,8 +164,13 @@ class GrainReader:
             logp = tilt.astype(float).copy()
         else:
             s = self._successor(self._prev_emitted)
-            d2 = ((self.features - self.features[s]) ** 2).sum(1)
+            d2 = ((self._flow_X - self._flow_X[s]) ** 2).sum(1)
             logp = -d2 / (2.0 * self._flow_scale2) + tilt
+            if self._flux_scale2 is not None:
+                # spectral flux across the actual splice (the paper's loss)
+                flux = ((self._head - self._mid[self._prev_emitted]) ** 2
+                        ).sum(1)
+                logp -= flux / (2.0 * self._flux_scale2)
             if s == self._prev_emitted:        # track end: must move on
                 logp[s] = -np.inf
 

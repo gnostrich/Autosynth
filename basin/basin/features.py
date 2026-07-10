@@ -48,6 +48,11 @@ class Corpus:
     scale: np.ndarray = field(default=None)
     pca_mean: np.ndarray = field(default=None)
     pca_components: np.ndarray = field(default=None)  # [pca_dims, RAW_WINDOW_DIM]
+    # boundary frames for the splice-flux term (geodesic objective, local):
+    # the per-frame feature vector at each window's start, and at one orbit
+    # step (step_s) into it — i.e. exactly where the next grain splices in.
+    head_frames: np.ndarray = field(default=None)   # [n_windows, frame_dim]
+    mid_frames: np.ndarray = field(default=None)    # [n_windows, frame_dim]
 
     @property
     def n_windows(self) -> int:
@@ -186,7 +191,10 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
     pca_dims = int(cfg["pca_dims"])
     fpw, _ = _window_frames(window_s, overlap, sr, hop)
 
+    step_frames = max(1, int(round(float(cfg.get("step_s", 0.75)) * sr / hop)))
+
     raw_rows, handles, bounds, kept_paths = [], [], [], []
+    head_rows, mid_rows = [], []
     cursor = 0
     for track_id, path in enumerate(sorted(paths)):
         y, _ = librosa.load(path, sr=sr, mono=True)
@@ -198,8 +206,11 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
             continue
         win_samples = fpw * hop
         start = cursor
+        F = frames.shape[1]
         for v, sf in zip(vecs, start_frames):
             raw_rows.append(v)
+            head_rows.append(frames[:, min(sf, F - 1)])
+            mid_rows.append(frames[:, min(sf + step_frames, F - 1)])
             handles.append(WindowHandle(
                 track_id=len(kept_paths),
                 start_sample=int(sf * hop),
@@ -222,4 +233,6 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         track_bounds=bounds,
         track_paths=kept_paths,
         mean=mean, scale=scale, pca_mean=pca_mean, pca_components=components,
+        head_frames=np.asarray(head_rows),
+        mid_frames=np.asarray(mid_rows),
     )

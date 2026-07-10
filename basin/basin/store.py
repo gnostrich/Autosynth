@@ -37,6 +37,10 @@ def save_instrument(path: str, corpus: Corpus, atlas: Atlas, built, kernel,
         track_paths=np.array(corpus.track_paths, dtype=object),
         mean=corpus.mean, scale=corpus.scale,
         pca_mean=corpus.pca_mean, pca_components=corpus.pca_components,
+        head_frames=corpus.head_frames if corpus.head_frames is not None
+        else np.zeros((0, 0)),
+        mid_frames=corpus.mid_frames if corpus.mid_frames is not None
+        else np.zeros((0, 0)),
         # atlas
         centers=atlas.centers, bandwidth=np.float64(atlas.bandwidth),
         memberships=atlas.memberships, top_k=np.int64(atlas.top_k),
@@ -72,12 +76,16 @@ def load_instrument(path: str) -> dict:
     out = {k: d[k] for k in d.files}
 
     handles = [WindowHandle(int(t), int(s), int(n)) for t, s, n in out["handles"]]
+    hf = out.get("head_frames")
+    mf = out.get("mid_frames")
     corpus = Corpus(
         raw=out["raw"], features=out["features"], handles=handles,
         track_bounds=[tuple(map(int, b)) for b in out["track_bounds"]],
         track_paths=list(out["track_paths"]),
         mean=out["mean"], scale=out["scale"],
         pca_mean=out["pca_mean"], pca_components=out["pca_components"],
+        head_frames=hf if hf is not None and hf.size else None,
+        mid_frames=mf if mf is not None and mf.size else None,
     )
     atlas = Atlas(centers=out["centers"], bandwidth=float(out["bandwidth"]),
                   memberships=out["memberships"], top_k=int(out["top_k"]))
