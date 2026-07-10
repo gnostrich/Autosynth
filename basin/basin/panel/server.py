@@ -308,6 +308,7 @@ class PanelEngine:
         for k, mi in enumerate(self.macro_indices):
             macros.append({
                 "index": int(mi),
+                "lam": float(np.abs(self.eigvals[mi])),
                 "name": self.names.get(f"macro:{mi}", f"macro {k+1}"),
                 "position": float(self._mean_a[k]),            # true position
                 "innovation": float(self._mean_innov[k]),      # beyond prediction
