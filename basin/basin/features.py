@@ -57,6 +57,10 @@ class Corpus:
     # the measured channel count; channel audio is synthesized by masking.
     nmf_templates: np.ndarray = field(default=None)  # [K, freq]
     n_channels: int = 0
+    # measured per-window loudness of each SYNTHESIZED channel (absolute,
+    # corpus-comparable) — the honest presence measure; activations are
+    # per-track-relative and can report presence where masked audio is silent.
+    chan_rms: np.ndarray = field(default=None)       # [n_windows, K]
 
     @property
     def n_windows(self) -> int:
@@ -214,7 +218,7 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         n_channels = nmf_W.shape[0]
 
     raw_rows, handles, bounds, kept_paths = [], [], [], []
-    head_rows, mid_rows = [], []
+    head_rows, mid_rows, chan_rms_rows = [], [], []
     cursor = 0
     for track_id, path in enumerate(sorted(paths)):
         y, _ = librosa.load(path, sr=sr, mono=True)
@@ -228,6 +232,9 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
             # normalize activations to comparable scale (per-track max)
             act = act[:, :F] / (act.max() + 1e-9) * 10.0
             frames = np.vstack([base[:, :F], act])
+            # measured channel loudness per window: synthesize the masked
+            # channels once and take each window's actual RMS (absolute)
+            chan_audio = channels.split_track(y, nmf_W)
         else:
             frames = stem_frame_features(y, sr, hop, stems_mode)
         vecs, start_frames = aggregate_windows(frames, window_s, overlap, sr, hop)
@@ -240,6 +247,12 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
             raw_rows.append(v)
             head_rows.append(frames[:, min(sf, F - 1)])
             mid_rows.append(frames[:, min(sf + step_frames, F - 1)])
+            if stems_mode == "nmf":
+                s0 = int(sf * hop)
+                chan_rms_rows.append([
+                    float(np.sqrt(np.mean(
+                        ca[s0:s0 + win_samples] ** 2) + 1e-12))
+                    for ca in chan_audio])
             handles.append(WindowHandle(
                 track_id=len(kept_paths),
                 start_sample=int(sf * hop),
@@ -266,4 +279,5 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         mid_frames=np.asarray(mid_rows),
         nmf_templates=nmf_W,
         n_channels=n_channels,
+        chan_rms=np.asarray(chan_rms_rows) if chan_rms_rows else None,
     )

@@ -84,16 +84,21 @@ class GrainReader:
         # stored features), as a log term — silence self-penalizes exactly as
         # much as the channel is absent.
         stems_mode = str(cfg.get("stems", "none"))
-        if self.stem.startswith("ch") and stems_mode == "nmf":
-            pdim = 78 + int(self.stem[2:])
-        elif self.stem == "percussive" and stems_mode == "hpss":
-            pdim = 142
+        chan_rms = getattr(corpus, "chan_rms", None)
+        if self.stem.startswith("ch") and chan_rms is not None:
+            # measured loudness of the SYNTHESIZED channel — absolute and
+            # corpus-comparable (activations are per-track-relative and can
+            # report presence where the masked audio is actually silent)
+            e = chan_rms[:, int(self.stem[2:])].astype(float)
         else:
-            pdim = 64                       # mix / harmonic: mean RMS dim
-        e = corpus.raw[:, pdim] * corpus.scale[pdim] + corpus.mean[pdim]
+            if self.stem == "percussive" and stems_mode == "hpss":
+                pdim = 142
+            else:
+                pdim = 64                   # mix / harmonic: mean RMS dim
+            e = corpus.raw[:, pdim] * corpus.scale[pdim] + corpus.mean[pdim]
         e = np.maximum(e, 0.0)
         pos = e[e > 0]
-        floor = float(np.quantile(pos, 0.10)) if pos.size else 1.0
+        floor = float(np.quantile(pos, 0.05)) if pos.size else 1.0
         self._log_presence = np.log(e + floor)
         self._log_presence -= self._log_presence.max()
 

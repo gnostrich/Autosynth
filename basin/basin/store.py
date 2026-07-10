@@ -44,6 +44,8 @@ def save_instrument(path: str, corpus: Corpus, atlas: Atlas, built, kernel,
         nmf_templates=corpus.nmf_templates if corpus.nmf_templates is not None
         else np.zeros((0, 0)),
         n_channels=np.int64(corpus.n_channels),
+        chan_rms=corpus.chan_rms if corpus.chan_rms is not None
+        else np.zeros((0, 0)),
         # atlas
         centers=atlas.centers, bandwidth=np.float64(atlas.bandwidth),
         memberships=atlas.memberships, top_k=np.int64(atlas.top_k),
@@ -82,6 +84,7 @@ def load_instrument(path: str) -> dict:
     hf = out.get("head_frames")
     mf = out.get("mid_frames")
     nt = out.get("nmf_templates")
+    cr = out.get("chan_rms")
     corpus = Corpus(
         raw=out["raw"], features=out["features"], handles=handles,
         track_bounds=[tuple(map(int, b)) for b in out["track_bounds"]],
@@ -92,6 +95,7 @@ def load_instrument(path: str) -> dict:
         mid_frames=mf if mf is not None and mf.size else None,
         nmf_templates=nt if nt is not None and nt.size else None,
         n_channels=int(out["n_channels"]) if "n_channels" in out else 0,
+        chan_rms=cr if cr is not None and cr.size else None,
     )
     atlas = Atlas(centers=out["centers"], bandwidth=float(out["bandwidth"]),
                   memberships=out["memberships"], top_k=int(out["top_k"]))
