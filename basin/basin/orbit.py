@@ -39,7 +39,7 @@ class Orbit:
 
     def __init__(self, P: np.ndarray, psi: np.ndarray, cfg: dict,
                  knob_vector: np.ndarray | None = None,
-                 kernel=None, seed: int = 0, modes=None):
+                 kernel=None, seed: int = 0, modes=None, basins=None):
         self.P = P
         self.psi = psi                       # [n_charts, n_macros]
         self.n_charts = P.shape[0]
@@ -70,6 +70,21 @@ class Orbit:
         # so momentum can be raised live from 0 mid-orbit (panel slider).
         if self.beta_p != 0.0 or modes is not None:
             self._init_modes(modes)
+
+        # Territory-scale wanderlust: dwelling pressure accumulated per
+        # DISCOVERED BASIN (differential — only relative over-occupancy
+        # pushes), γ-gated, timescale = median track length (pure corpus
+        # statistic, supplied by the caller as basin_halflife_steps). This is
+        # the escape force for large traps (e.g. the quiet-material basin)
+        # that chart-level visitation cannot build pressure against.
+        self.chart_basin = np.asarray(basins) if basins is not None else None
+        if self.chart_basin is not None:
+            self.n_basins = int(self.chart_basin.max()) + 1
+            self.basin_visit = np.zeros(self.n_basins)
+            hl = float(cfg.get("basin_halflife_steps") or 0) or None
+            self.basin_decay = (0.5 ** (1.0 / hl)) if hl else None
+        else:
+            self.basin_decay = None
 
         self.visitation = np.zeros(self.n_charts)
         self.visit_decay = 0.9
@@ -132,6 +147,13 @@ class Orbit:
             macro_knob = macro_knob / n
         return self.psi @ macro_knob
 
+    def _basin_pressure(self) -> np.ndarray:
+        """γ-scaled differential dwelling pressure over discovered basins."""
+        if self.basin_decay is None or self.gamma == 0.0:
+            return np.zeros(self.n_charts)
+        diff = self.basin_visit - self.basin_visit.mean()
+        return self.gamma * diff[self.chart_basin]
+
     def _momentum_tilt(self) -> np.ndarray:
         """Phase-advanced eigenmode field, standardized over charts.
 
@@ -172,7 +194,8 @@ class Orbit:
         log_tilt = (self.beta * self._bias_align()
                     - self.gamma * self.visitation
                     + self.kappa * self._memory_tilt()
-                    + self._momentum_tilt())
+                    + self._momentum_tilt()
+                    - self._basin_pressure())
         # stabilise exp
         log_tilt = log_tilt - log_tilt.max()
         raw = pulled * np.exp(log_tilt)
@@ -196,6 +219,13 @@ class Orbit:
         if self._fly is not None and len(self._fly):
             z = self._mode_left @ m_new
             self._fly = self._mode_vals * self._fly + z
+
+        # basin dwelling pressure (EMA of basin occupancy)
+        if self.basin_decay is not None:
+            bm = np.bincount(self.chart_basin, weights=m_new,
+                             minlength=self.n_basins)
+            self.basin_visit = (self.basin_decay * self.basin_visit
+                                + (1.0 - self.basin_decay) * bm)
 
         # Re-localize to a concrete chart sampled from the emission mixture.
         # Propagating the full mixture through P instead converges to the

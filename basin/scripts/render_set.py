@@ -85,12 +85,15 @@ def main() -> None:
 
     shared: dict = {}
     modes = (inst["eigvals"], inst["eig_right"])
+    basins = inst["chart_basin"]
+    cfg["basin_halflife_steps"] = float(np.median(
+        [e - s for (s, e) in corpus.track_bounds]))
     if args.mode == "flow":
         orbits, readers = [], []
         for vi, stem in enumerate(voices):
             vseed = args.seed + 101 * vi
             orbits.append(Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
-                                seed=vseed, modes=modes))
+                                seed=vseed, modes=modes, basins=basins))
             readers.append(GrainReader(corpus, atlas.memberships, cfg,
                                        seed=vseed, stem=stem,
                                        shared_cache=shared, psi=psi))

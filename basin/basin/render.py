@@ -65,7 +65,7 @@ class GrainReader:
         #    harmonically/rhythmically incompatible material.
         # Bandwidths: the one true successor must outweigh the *summed* mass of
         # all ~N unrelated windows → a typical random-pair distance must cost
-        # > ln N nats (×1.5 headroom so the walk's field decides ties).
+        # > ln N nats (exact — trace carries no hand factors).
         X = self.features
         n = X.shape[0]
         rng0 = np.random.default_rng(0)
@@ -74,7 +74,7 @@ class GrainReader:
         self._flow_X = X
         rand_d2 = ((X[i1] - X[i0]) ** 2).sum(1)
         self._flow_scale2 = float(np.median(rand_d2) + 1e-9) \
-            / (3.0 * np.log(max(n, 2)))
+            / (2.0 * np.log(max(n, 2)))
         # Presence weight: a voice belongs where its channel exists. Without
         # this, silence is an ABSORBING STATE of the flux objective (two
         # silent windows splice perfectly), and the whole walk carries a
@@ -107,9 +107,9 @@ class GrainReader:
         # ONLY on literal repetition — it breaks the small recurrent cycles
         # the flux objective can trap into (measured: a 12-window cycle held
         # for 30 minutes at the 36-min horizon). Strength = γ; memory
-        # timescale derived from the corpus (quarter median track length).
+        # timescale = median track length (pure corpus statistic).
         med_track = float(np.median([e - s for (s, e) in corpus.track_bounds]))
-        self._revisit_decay = 0.5 ** (4.0 / max(med_track, 4.0))
+        self._revisit_decay = 0.5 ** (1.0 / max(med_track, 4.0))
         self._revisit = np.zeros(len(self.handles))
         self._wander = float(cfg.get("gamma", 0.3))
 
@@ -118,7 +118,7 @@ class GrainReader:
         if self._head is not None and self._mid is not None and self._head.size:
             flux_d2 = ((self._head[i1] - self._mid[i0]) ** 2).sum(1)
             self._flux_scale2 = float(np.median(flux_d2) + 1e-9) \
-                / (3.0 * np.log(max(n, 2)))
+                / (2.0 * np.log(max(n, 2)))
         else:
             self._flux_scale2 = None
         self._prev_emitted = None

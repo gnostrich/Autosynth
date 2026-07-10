@@ -90,11 +90,14 @@ class PanelEngine:
             default_on = ["mix"]
         shared_cache: dict = {}
         n_macros = self.psi.shape[1]
+        self.cfg["basin_halflife_steps"] = float(np.median(
+            [e - s for (s, e) in self.corpus.track_bounds]))
+        basins = inst["chart_basin"]
         self.voices = []
         for vi, stem in enumerate(available):
             orbit = Orbit(self.P, self.psi, self.cfg, knob_vector=self.knob,
                           kernel=self.kernel, seed=101 * vi,
-                          modes=(self.eigvals, self.eig_right))
+                          modes=(self.eigvals, self.eig_right), basins=basins)
             orbit.seed_state()
             reader = GrainReader(self.corpus, self.atlas.memberships, self.cfg,
                                  seed=101 * vi, stem=stem,
