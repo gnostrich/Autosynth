@@ -148,11 +148,6 @@ function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o));
   if (o.type !== 'rename') ctlFlag = true; }
 
 // ---- rendering primitives ----
-function knobCanvas(cell, opts) {
-  const c = document.createElement('canvas');
-  c.width = 140; c.height = 140; cell.appendChild(c);
-  return { canvas: c, ctx: c.getContext('2d'), ...opts };
-}
 function drawMacroBar(k, st) {
   // thin readout lane: marker = true position (±3σ), glow = innovation
   const g = k.bctx, W = 150, H = 16;
@@ -168,21 +163,16 @@ function drawMacroBar(k, st) {
   g.fillRect(pos - 2, 2, 4, 12);                                // position
 }
 function drawGroove(k, st) {
-  const g = k.ctx, R = 50, cx = 70, cy = 70;
-  g.clearRect(0, 0, 140, 140);
-  // endless phase dial
-  g.beginPath(); g.arc(cx, cy, R, 0, TAU);
-  g.strokeStyle = '#39405a'; g.lineWidth = 2; g.stroke();
-  // depth ring
-  const d = Math.min(1, st.depth * 3);
-  g.beginPath(); g.arc(cx, cy, R - 8, 0, d * TAU);
-  g.strokeStyle = 'var(--warn)'; g.lineWidth = 4; g.stroke();
-  // phase needle
-  const a = st.phase;
-  g.beginPath(); g.moveTo(cx, cy);
-  g.lineTo(cx + R*0.8*Math.cos(a), cy + R*0.8*Math.sin(a));
-  g.strokeStyle = '#6fd3c7'; g.lineWidth = 3; g.stroke();
-  g.beginPath(); g.arc(cx, cy, 4, 0, TAU); g.fillStyle = '#e7e9f0'; g.fill();
+  // same readout lane as every other control: cycling tick = measured phase,
+  // brightness = live amplitude
+  const g = k.bctx, W = 150, H = 16;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = '#20232e'; g.fillRect(0, 5, W, 6);
+  const x = ((st.phase / TAU + 0.5) % 1) * W;
+  g.fillStyle = '#e0a458';
+  g.globalAlpha = 0.35 + 0.65 * Math.min(1, st.depth);
+  g.fillRect(x - 2, 2, 4, 12);
+  g.globalAlpha = 1;
 }
 
 // ---- flow view: tracks × channels, density = where it could go next ----
@@ -412,27 +402,30 @@ function build(state) {
     addSub(cell, '|λ| ' + (m.lam != null ? m.lam.toFixed(3) : '—'));
     panel.appendChild(cell);
   });
-  // oscillatory modes: dial = measured phase, slider = weight
+  // oscillatory modes: SAME control as every other mode (uniform type) —
+  // lane shows measured phase, fader = this mode's weight
   state.grooves.forEach((gr, i) => {
     const cell = mkCell();
-    const k = knobCanvas(cell, { i, mode: gr.index });
-    grooveK.push(k);
-    wireGroove(k, cell, gr);
-    const dep = document.createElement('input');
-    dep.type = 'range'; dep.min = 0; dep.max = 2; dep.step = 0.05;
-    dep.value = gr.weight != null ? gr.weight : 1;
-    dep.oninput = () => send({type:'groove_depth', index:gr.index,
-                              value:+dep.value});
-    addWheel(dep, 0.1, v => send({type:'groove_depth', index:gr.index,
+    const bar = document.createElement('canvas');
+    bar.width = 150; bar.height = 16; cell.appendChild(bar);
+    grooveK.push({ bar, bctx: bar.getContext('2d') });
+    const row = document.createElement('div'); row.className = 'macrow';
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = 0; inp.max = 2; inp.step = 0.05;
+    inp.value = gr.weight != null ? gr.weight : 1;
+    inp.className = 'vslider';
+    inp.oninput = () => send({type:'groove_depth', index:gr.index,
+                              value:+inp.value});
+    addWheel(inp, 0.1, v => send({type:'groove_depth', index:gr.index,
                                   value:v}));
-    cell.appendChild(dep);
+    row.appendChild(inp); cell.appendChild(row);
     addName(cell, gr.name, 'groove:' + gr.index);
     const period = gr.freq > 1e-6 ? (2*Math.PI/gr.freq*0.75).toFixed(0) : '∞';
     addSub(cell, '|λ| ' + gr.damping.toFixed(2) + ' · ~' + period + 's');
     panel.appendChild(cell);
   });
 
-  // CONSTANTS — the dynamics' coefficients, symbols only (nothing named)
+  // constants — same control again, bare symbols
   addGroup('constants');
   mkMeta('beta', 'β', '', 2, state.meta.beta);
   mkMeta('gamma', 'γ', '', 2, state.meta.gamma);
@@ -454,13 +447,16 @@ function build(state) {
   built = true;
 }
 function mkMeta(name, label, sub, max, value){
-  const cell = mkCell(); cell.classList.add('meta');
+  const cell = mkCell();
+  const row = document.createElement('div'); row.className = 'macrow';
   const inp = document.createElement('input');
   inp.type = 'range'; inp.min = 0; inp.max = max; inp.step = 0.05;
   inp.value = value != null ? value : 1;
+  inp.className = 'vslider';
   inp.oninput = () => send({type:'meta', name, value:+inp.value});
   addWheel(inp, 0.1, v => send({type:'meta', name, value:v}));
-  cell.appendChild(inp); addName(cell, label, null);
+  row.appendChild(inp); cell.appendChild(row);
+  addName(cell, label, null);
   if (sub) addSub(cell, sub);
   panel.appendChild(cell);
 }
@@ -475,17 +471,6 @@ function addName(cell, text, key){
 }
 function addSub(cell,t){ const s=document.createElement('div');
   s.className='sub'; s.textContent=t; cell.appendChild(s); }
-
-// ---- gestures ----
-function wireGroove(k, cell, gr){
-  let down=false, sa=0;
-  k.canvas.onpointerdown=e=>{ down=true; sa=e.clientX;
-    k.canvas.setPointerCapture(e.pointerId); };
-  k.canvas.onpointermove=e=>{ if(!down) return;
-    const dx=e.clientX-sa; send({type:'nudge', mode:gr.index, delta:dx*0.02});
-    sa=e.clientX; };
-  k.canvas.onpointerup=()=>down=false;
-}
 
 // ---- state stream ----
 function connect(){
