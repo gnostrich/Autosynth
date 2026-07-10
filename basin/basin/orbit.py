@@ -66,7 +66,9 @@ class Orbit:
         # reproduces the memoryless walk bit-for-bit.
         self.beta_p = float(cfg.get("momentum", 0.0))
         self._fly = None
-        if self.beta_p != 0.0:
+        # init the flywheel whenever modes are available (not just when β_p>0)
+        # so momentum can be raised live from 0 mid-orbit (panel slider).
+        if self.beta_p != 0.0 or modes is not None:
             self._init_modes(modes)
 
         self.visitation = np.zeros(self.n_charts)

@@ -155,10 +155,10 @@ function build(state) {
     panel.appendChild(cell);
   });
   addGroup('meta');
-  ['beta','gamma','tau','kappa'].forEach(name => {
+  ['beta','gamma','tau','kappa','momentum'].forEach(name => {
     const cell = mkCell(); cell.classList.add('meta');
     const label = {beta:'grip β', gamma:'wanderlust γ', tau:'temperature τ',
-                   kappa:'memory κ'}[name];
+                   kappa:'memory κ', momentum:'momentum β_p'}[name];
     const inp = document.createElement('input');
     inp.type = 'range'; inp.min = 0; inp.max = name==='tau'?3:2;
     inp.step = 0.05; inp.value = state.meta[name];

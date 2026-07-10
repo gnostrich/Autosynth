@@ -129,6 +129,8 @@ class PanelEngine:
         with self.lock:
             if name in ("beta", "gamma", "tau", "kappa"):
                 setattr(self.orbit, name, float(value))
+            elif name == "momentum":
+                self.orbit.beta_p = float(value)
 
     # -- step + state -------------------------------------------------------
 
@@ -187,7 +189,8 @@ class PanelEngine:
             "type": "state",
             "macros": macros, "grooves": grooves, "toggles": toggles,
             "meta": {"beta": self.orbit.beta, "gamma": self.orbit.gamma,
-                     "tau": self.orbit.tau, "kappa": self.orbit.kappa},
+                     "tau": self.orbit.tau, "kappa": self.orbit.kappa,
+                     "momentum": self.orbit.beta_p},
         }
 
     def audio_chunk(self) -> bytes:
