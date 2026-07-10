@@ -190,39 +190,64 @@ const STEM_COLOR = {harmonic:'#6fd3c7', percussive:'#e0a458', mix:'#8890a6'};
 let flowCanvas = null, flowCtx = null;
 const FLOW = {gutter: 210, rowGap: 4, subH: 11};
 function drawFlow(st) {
-  if (!flowCanvas || !st.tracks || !st.flow) return;
-  const nT = st.tracks.length, nV = st.flow.length || 1;
+  if (!flowCanvas || !st.tracks) return;
+  // lanes = the channels: one labeled lane per active voice, always visible
+  const lanes = (st.flow && st.flow.length) ? st.flow
+                : [{stem:'mix', heat:null, track:-1}];
+  const nT = st.tracks.length, nV = lanes.length;
   const rowH = nV * FLOW.subH + FLOW.rowGap;
   const W = flowCanvas.width, H = nT * rowH + 8;
   if (flowCanvas.height !== H) flowCanvas.height = H;
   const g = flowCtx, laneW = W - FLOW.gutter;
   g.clearRect(0, 0, W, H);
-  g.font = '10px ui-sans-serif,system-ui';
   st.tracks.forEach((name, t) => {
     const y0 = t * rowH + 4;
-    g.fillStyle = '#8890a6';
-    g.fillText(name.slice(0, 34), 4, y0 + rowH/2 + 2);
-    st.flow.forEach((f, vi) => {
+    g.font = '10px ui-sans-serif,system-ui';
+    g.fillStyle = '#aab1c4';
+    g.fillText(name.slice(0, 30), 4, y0 + 9);
+    lanes.forEach((f, vi) => {
       const y = y0 + vi * FLOW.subH;
       const col = STEM_COLOR[f.stem] || '#8890a6';
-      // density strip: p(next window) aggregated over this track's timeline
-      if (f.heat && f.heat[t]) {
-        const bins = f.heat[t], bw = laneW / bins.length;
-        for (let b = 0; b < bins.length; b++) {
-          if (!bins[b]) continue;
-          g.globalAlpha = 0.06 + 0.094 * bins[b];          // heat 0..9
+      const bw = laneW / 24;
+      // lane background — the decomposition is visible even when cold
+      g.fillStyle = '#1b1e28';
+      g.fillRect(FLOW.gutter, y, laneW, FLOW.subH - 2);
+      // channel label in the gutter, per lane
+      g.font = '8px ui-sans-serif,system-ui';
+      g.fillStyle = col; g.globalAlpha = 0.9;
+      g.fillText(f.stem.slice(0, 4), FLOW.gutter - 26, y + FLOW.subH - 4);
+      g.globalAlpha = 1;
+      // base layer: this track's own channel content along its timeline
+      const cont = st.content && st.content[f.stem] && st.content[f.stem][t];
+      if (cont) {
+        for (let b = 0; b < cont.length; b++) {
+          if (!cont[b]) continue;
+          g.globalAlpha = 0.05 + 0.03 * cont[b];           // dim structure
           g.fillStyle = col;
           g.fillRect(FLOW.gutter + b * bw, y, Math.ceil(bw), FLOW.subH - 2);
         }
         g.globalAlpha = 1;
       }
-      // playhead: where this voice is reading right now
+      // live layer: p(next window) — where this voice could go now
+      if (f.heat && f.heat[t]) {
+        const bins = f.heat[t];
+        for (let b = 0; b < bins.length; b++) {
+          if (!bins[b]) continue;
+          g.globalAlpha = 0.12 + 0.088 * Math.sqrt(bins[b] * 9); // lift tail
+          g.fillStyle = col;
+          g.fillRect(FLOW.gutter + b * bw, y + 1, Math.ceil(bw), FLOW.subH - 4);
+        }
+        g.globalAlpha = 1;
+      }
+      // playhead: what's sounding (boxed when looped)
       if (f.track === t) {
         const x = FLOW.gutter + f.pos * laneW;
+        g.fillStyle = '#ffffff';
+        g.fillRect(x - 1, y - 1, 2, FLOW.subH);
         g.fillStyle = col;
-        g.fillRect(x - 1.5, y - 1, 3, FLOW.subH);
-        if (f.loop) { g.strokeStyle = col; g.lineWidth = 1;
-          g.strokeRect(x - 6, y - 1, 12, FLOW.subH); }   // looped = boxed
+        g.fillRect(x - 2.5, y - 1, 5, 3);
+        if (f.loop) { g.strokeStyle = col; g.lineWidth = 1.5;
+          g.strokeRect(x - 8, y - 1.5, 16, FLOW.subH + 1); }
       }
     });
   });

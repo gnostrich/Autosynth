@@ -114,6 +114,28 @@ class PanelEngine:
             self.win_bin[s:e] = np.minimum(
                 (np.arange(n) * self.FLOW_BINS) // n, self.FLOW_BINS - 1)
             self.win_frac[s:e] = np.arange(n) / n
+        # static per-channel content map: each track's own decomposition along
+        # its timeline (mean stem loudness per bin), the base layer of the
+        # flow view. raw layout (hpss): mean_h RMS at 64, mean_p RMS at 142.
+        raw = self.corpus.raw
+        rms_dims = ({"harmonic": 64, "percussive": 142}
+                    if stems_mode == "hpss" and raw.shape[1] >= 156 * 2
+                    else {"mix": 64})
+        self.content = {}
+        nT = len(self.track_names)
+        for stem_name, dim in rms_dims.items():
+            cm = np.zeros((nT, self.FLOW_BINS))
+            cnt = np.ones((nT, self.FLOW_BINS))
+            np.add.at(cm, (self.win_track, self.win_bin), raw[:, dim])
+            np.add.at(cnt, (self.win_track, self.win_bin), 1.0)
+            cm = cm / cnt
+            lo, hi = cm.min(), cm.max()
+            cm = (cm - lo) / (hi - lo + 1e-9)
+            self.content[stem_name] = (cm * 9).astype(int).tolist()
+        if stems_mode == "hpss" and "mix" not in self.content:
+            h = np.array(self.content["harmonic"])
+            p = np.array(self.content["percussive"])
+            self.content["mix"] = ((h + p) // 2).tolist()
         # eig-column of each flywheel mode (for phase nudges); mirrors
         # Orbit._init_modes' selection
         self._fly_eig_idx = [i for i in range(len(self.eigvals))
@@ -355,6 +377,7 @@ class PanelEngine:
         return {
             "type": "state",
             "tracks": self.track_names,
+            "content": self.content,
             "flow": flow,
             "voices": [{"stem": v["stem"], "on": v["on"],
                         "loop": v["loop"] is not None} for v in self.voices],
