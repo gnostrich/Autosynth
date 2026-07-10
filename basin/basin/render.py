@@ -185,6 +185,7 @@ class GrainReader:
         logp -= logp.max()
         p = np.exp(logp)
         p /= p.sum()
+        self.last_p = p                    # the live flow field (for displays)
         w = int(self.rng.choice(n, p=p))
 
         succ = None if self._prev_emitted is None \

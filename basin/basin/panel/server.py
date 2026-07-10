@@ -100,6 +100,20 @@ class PanelEngine:
         self.couple = float(self.cfg.get("couple", 0.5))
         self._mean_a = np.zeros(n_macros)
         self._mean_innov = np.zeros(n_macros)
+        # provenance index for the flow view: window -> (track, time bin)
+        self.FLOW_BINS = 24
+        H = self.corpus.handles
+        self.track_names = [os.path.splitext(os.path.basename(p))[0][:48]
+                            for p in self.corpus.track_paths]
+        self.win_track = np.array([h.track_id for h in H])
+        n_win = len(H)
+        self.win_bin = np.zeros(n_win, dtype=int)
+        self.win_frac = np.zeros(n_win)
+        for (s, e) in self.corpus.track_bounds:
+            n = max(1, e - s)
+            self.win_bin[s:e] = np.minimum(
+                (np.arange(n) * self.FLOW_BINS) // n, self.FLOW_BINS - 1)
+            self.win_frac[s:e] = np.arange(n) / n
         # eig-column of each flywheel mode (for phase nudges); mirrors
         # Orbit._init_modes' selection
         self._fly_eig_idx = [i for i in range(len(self.eigvals))
@@ -309,8 +323,39 @@ class PanelEngine:
                     "on": z > 0,
                 })
 
+        # flow view: per-voice sampling distribution aggregated to
+        # (track, time-bin) heat + current playhead — the live "where it is /
+        # where it could go" field; deforms visibly as knobs move.
+        flow = []
+        for v in self.voices:
+            if not v["on"]:
+                continue
+            p = getattr(v["reader"], "last_p", None)
+            heat = None
+            if p is not None:
+                hm = np.zeros((len(self.track_names), self.FLOW_BINS))
+                np.add.at(hm, (self.win_track, self.win_bin), p)
+                mx = hm.max()
+                if mx > 1e-12:
+                    hm = hm / mx
+                heat = (hm * 9).astype(int).tolist()
+            if v["loop"]:
+                L = v["loop"]
+                w = L["win"][L["pos"] % len(L["win"])]
+            else:
+                w = v["w"]
+            flow.append({
+                "stem": v["stem"],
+                "track": int(self.win_track[w]) if w is not None else -1,
+                "pos": float(self.win_frac[w]) if w is not None else 0.0,
+                "loop": v["loop"] is not None,
+                "heat": heat,
+            })
+
         return {
             "type": "state",
+            "tracks": self.track_names,
+            "flow": flow,
             "voices": [{"stem": v["stem"], "on": v["on"],
                         "loop": v["loop"] is not None} for v in self.voices],
             "macros": macros, "grooves": grooves, "toggles": toggles,
