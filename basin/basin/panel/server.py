@@ -67,6 +67,8 @@ class PanelEngine:
 
         self.names = self._load_names()
         self.knob = np.zeros(self.psi.shape[1])
+        self.slider_knob = np.zeros(self.psi.shape[1])   # absolute fader leans
+        self.nudge_knob = np.zeros(self.psi.shape[1])    # transient, decays
         self.grip = {}                       # macro idx -> held value
         self.lock = threading.Lock()
 
@@ -104,9 +106,16 @@ class PanelEngine:
     # -- controls -----------------------------------------------------------
 
     def lean(self, macro: int, delta: float):
+        """Transient lean (legacy drag gesture): decays after release."""
         with self.lock:
-            if 0 <= macro < len(self.knob):
-                self.knob[macro] += delta
+            if 0 <= macro < len(self.nudge_knob):
+                self.nudge_knob[macro] += delta
+
+    def set_lean(self, macro: int, value: float):
+        """Absolute fader lean in σ units: holds until the fader moves."""
+        with self.lock:
+            if 0 <= macro < len(self.slider_knob):
+                self.slider_knob[macro] = float(value)
 
     def set_grip(self, macro: int, on: bool, value: float = 0.0):
         with self.lock:
@@ -123,7 +132,7 @@ class PanelEngine:
             proj = self.psi.T @ v                      # mode -> macro space
             n = np.linalg.norm(proj)
             if n > 1e-9:
-                self.knob += delta * proj / n
+                self.nudge_knob += delta * proj / n
 
     def set_meta(self, name: str, value: float):
         with self.lock:
@@ -135,7 +144,8 @@ class PanelEngine:
     # -- step + state -------------------------------------------------------
 
     def _apply_decay_and_grip(self):
-        self.knob *= 0.9                                # lean decays on release
+        self.nudge_knob *= 0.9                          # transient leans decay
+        self.knob = self.slider_knob + self.nudge_knob  # faders hold absolutely
         for macro, held in self.grip.items():
             # clamp: strong restoring bias toward the held coordinate value
             cur = self.orbit.history_a[-1][macro] if self.orbit.history_a else 0.0
@@ -160,7 +170,8 @@ class PanelEngine:
                 "name": self.names.get(f"macro:{mi}", f"macro {k+1}"),
                 "position": float(st.a[k]),                    # absolute collar
                 "innovation": float(st.a[k] - st.a_pred[k]),   # co-moving needle
-                "gripped": mi in self.grip,
+                "lean": float(self.slider_knob[k]),            # fader position
+                "gripped": k in self.grip,
             })
 
         grooves = []
@@ -337,6 +348,8 @@ def _handle_control(engine, msg: dict):
     t = msg.get("type")
     if t == "lean":
         engine.lean(int(msg["macro"]), float(msg["delta"]))
+    elif t == "set_lean":
+        engine.set_lean(int(msg["macro"]), float(msg["value"]))
     elif t == "grip":
         engine.set_grip(int(msg["macro"]), bool(msg["on"]), float(msg.get("value", 0)))
     elif t == "nudge":

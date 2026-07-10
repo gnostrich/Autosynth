@@ -26,6 +26,13 @@
   .cell canvas { touch-action:none; cursor:grab; }
   .cell .name { margin-top:8px; font-size:13px; font-weight:600; cursor:text; }
   .cell .sub { font-size:11px; color:var(--dim); }
+  .macrow { display:flex; align-items:center; gap:12px; margin-top:8px; }
+  input.vslider { writing-mode: vertical-lr; direction: rtl;
+                  -webkit-appearance: slider-vertical; appearance: slider-vertical;
+                  width:30px; height:120px; cursor:pointer; }
+  .gripbtn { background:#2a2d38; color:var(--dim); border:1px solid #39405a;
+             border-radius:6px; padding:6px 10px; cursor:pointer; font-size:11px; }
+  .gripbtn.on { background:var(--grip); color:#fff; border-color:var(--grip); }
   .toggle { width:54px; height:30px; border-radius:16px; background:#2a2d38;
             position:relative; cursor:pointer; transition:background .2s; }
   .toggle.on { background:var(--accent); }
@@ -43,8 +50,10 @@
   <button id="audiobtn">enable audio</button>
 </header>
 <main id="panel"></main>
-<p class="hint">lean = drag needle · grip = click-hold (no drag) clamps the coordinate ·
-   phase dial drag = nudge · double-click a name to rename.</p>
+<p class="hint">lean = slide a macro fader (double-click it to zero) · grip = clamp
+   button holds that coordinate · phase dial drag = nudge · double-click a name
+   to rename. The round dial is a display: needle = motion beyond prediction,
+   outer arc = true position.</p>
 <script>
 const TAU = Math.PI * 2;
 let ws, audioCtx = null, playHead = 0;
@@ -127,11 +136,23 @@ function build(state) {
   addGroup('macros');
   state.macros.forEach((m, i) => {
     const cell = mkCell();
-    const k = knobCanvas(cell, { i });
+    const k = knobCanvas(cell, { i });      // display only: innovation + collar
     macroK.push(k);
-    wireMacro(k, cell, m, i);
+    const row = document.createElement('div'); row.className = 'macrow';
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = -2; inp.max = 2; inp.step = 0.05;
+    inp.value = m.lean || 0; inp.className = 'vslider';
+    inp.oninput = () => send({type:'set_lean', macro:i, value:+inp.value});
+    inp.ondblclick = () => { inp.value = 0;
+      send({type:'set_lean', macro:i, value:0}); };
+    const grip = document.createElement('button');
+    grip.className = 'gripbtn'; grip.textContent = 'grip';
+    grip.onclick = () => { const on = grip.classList.toggle('on');
+      cell.classList.toggle('gripped', on);
+      send({type:'grip', macro:i, on, value:k.lastPos || 0}); };
+    row.appendChild(inp); row.appendChild(grip); cell.appendChild(row);
     addName(cell, m.name, 'macro:' + m.index);
-    addSub(cell, 'linear · bounded');
+    addSub(cell, 'slide = lean · dbl-click slider = zero');
     panel.appendChild(cell);
   });
   if (state.grooves.length) addGroup('groove');
@@ -180,18 +201,6 @@ function addSub(cell,t){ const s=document.createElement('div');
   s.className='sub'; s.textContent=t; cell.appendChild(s); }
 
 // ---- gestures ----
-function wireMacro(k, cell, m, idx){
-  let down=false, dragged=false, sx=0;
-  k.canvas.onpointerdown=e=>{ down=true; dragged=false; sx=e.clientX;
-    k.canvas.setPointerCapture(e.pointerId); };
-  k.canvas.onpointermove=e=>{ if(!down) return;
-    const dx=e.clientX-sx; if(Math.abs(dx)>3){ dragged=true;
-      send({type:'lean', macro:idx, delta:dx*0.01}); sx=e.clientX; } };
-  k.canvas.onpointerup=()=>{ if(down && !dragged){        // click-hold = grip
-      const on=!cell.classList.toggle('gripped')?false:true;
-      send({type:'grip', macro:idx, on, value:k.lastPos||0}); }
-    down=false; };
-}
 function wireGroove(k, cell, gr){
   let down=false, sa=0;
   k.canvas.onpointerdown=e=>{ down=true; sa=e.clientX;
