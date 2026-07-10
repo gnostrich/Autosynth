@@ -128,6 +128,14 @@ class GrainReader:
             self._flux_scale2 = None
         self._prev_emitted = None
         self.force_jump = False        # event-typed: leave the groove NOW
+
+        # Beat grid (measured): each track's own pulse via onset
+        # autocorrelation. Grains are cut ON beats and the emission step is a
+        # whole-beat multiple of the corpus's median tempo, so all voices
+        # share the material's own clock — the vertical (voice-vs-voice) part
+        # of the summed-signal objective. No hand-set grid anywhere.
+        self._beat_key = "__beats__"
+
         self._audio_cache: dict = shared_cache if shared_cache is not None else {}
         # window diffusion coordinates (for flow-mode field alignment)
         self.win_psi = memberships @ psi if psi is not None else None
@@ -187,6 +195,61 @@ class GrainReader:
             w = int(self.rng.choice(len(p), p=p / s))
         self._prev_emitted = w
         return w
+
+    def beat_grid(self, track_id: int):
+        """Measured beat positions (samples) for a track; cached & shared."""
+        cache = self._audio_cache.setdefault(self._beat_key, {})
+        if track_id in cache:
+            return cache[track_id]
+        import librosa
+        y = self._track_audio(track_id)
+        mono = y.mean(0) if y.ndim == 2 else y
+        try:
+            tempo, beats = librosa.beat.beat_track(y=mono, sr=self.sr,
+                                                   hop_length=512)
+            samples = (np.asarray(beats) * 512).astype(int)
+            tempo = float(np.atleast_1d(tempo)[0])
+            if samples.size < 4:
+                samples, tempo = None, 0.0
+        except Exception:
+            samples, tempo = None, 0.0
+        cache[track_id] = (samples, tempo)
+        return cache[track_id]
+
+    def master_step_samples(self, step_s: float) -> int:
+        """Emission step snapped to a whole-beat multiple of the corpus's
+        median measured tempo (falls back to step_s if unmeasurable)."""
+        cache = self._audio_cache.setdefault(self._beat_key, {})
+        if "__master__" in cache:
+            return cache["__master__"]
+        tempos = []
+        for t in range(len(self.corpus.track_paths)):
+            _, bpm = self.beat_grid(t)
+            if bpm > 0:
+                tempos.append(bpm)
+        if tempos:
+            beat = 60.0 / float(np.median(tempos)) * self.sr
+            bps = max(1, int(round(step_s * self.sr / beat)))
+            step = int(round(bps * beat))
+        else:
+            step = int(round(step_s * self.sr))
+        cache["__master__"] = step
+        return step
+
+    def snap_to_beat(self, w: int) -> int:
+        """Start sample for window ``w``, snapped to its material's nearest
+        beat at/after the window start (falls back to the raw start)."""
+        h = self.handles[w]
+        grid, _ = self.beat_grid(h.track_id)
+        if grid is None:
+            return h.start_sample
+        i = int(np.searchsorted(grid, h.start_sample))
+        if i >= len(grid):
+            return h.start_sample
+        s = int(grid[i])
+        if s - h.start_sample > h.n_samples:
+            return h.start_sample
+        return s
 
     def _successor(self, v: int) -> int:
         """In-corpus successor window of ``v`` within its track, else ``v``."""
@@ -258,11 +321,13 @@ class GrainReader:
         """Chart-membership row of window ``w`` (for orbit re-localization)."""
         return self.memberships[w]
 
-    def grain_audio(self, w: int, n_samples: int) -> np.ndarray:
-        """Stereo grain, shape (n_samples, 2)."""
+    def grain_audio(self, w: int, n_samples: int,
+                    beat_snap: bool = True) -> np.ndarray:
+        """Stereo grain, shape (n_samples, 2); starts ON a measured beat."""
         h = self.handles[w]
         y = self._track_audio(h.track_id)              # (2, n)
-        seg = y[:, h.start_sample:h.start_sample + n_samples]
+        start = self.snap_to_beat(w) if beat_snap else h.start_sample
+        seg = y[:, start:start + n_samples]
         if seg.shape[1] < n_samples:
             seg = np.pad(seg, ((0, 0), (0, n_samples - seg.shape[1])))
         return seg.T.astype(np.float32)
@@ -342,7 +407,7 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
     splice; jumps get an equal-power crossfade.
     """
     sr = int(cfg["sr"])
-    step = int(round(float(cfg["step_s"]) * sr))
+    step = reader.master_step_samples(float(cfg["step_s"]))
     xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
     grain_len = step + xfade
     eq_in, eq_out = _equal_power_fades(xfade)
@@ -389,7 +454,7 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
     reproduces fully independent voices.
     """
     sr = int(cfg["sr"])
-    step = int(round(float(cfg["step_s"]) * sr))
+    step = readers[0].master_step_samples(float(cfg["step_s"]))
     xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
     grain_len = step + xfade
     eq_in, eq_out = _equal_power_fades(xfade)
