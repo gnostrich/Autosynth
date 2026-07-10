@@ -64,13 +64,14 @@ def main() -> None:
     ap.add_argument("--pairs", type=int, default=5)
     ap.add_argument("--clamp", action="store_true",
                     help="clamp kernel spectral radius (outcome-(c) guard)")
+    ap.add_argument("--instrument", default=None, help="instrument .npz path")
     args = ap.parse_args()
 
     from basin import store
     from basin.orbit import Orbit
     from basin.render import GrainReader, render
 
-    inst = store.load_instrument(boot.instrument_path())
+    inst = store.load_instrument(args.instrument or boot.instrument_path())
     cfg = dict(inst["config"])
     psi, P = inst["psi"], inst["P"]
     corpus, atlas, kernel = inst["corpus"], inst["atlas"], inst["kernel"]

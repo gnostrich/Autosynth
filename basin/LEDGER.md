@@ -169,13 +169,21 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
    for dead macros; here it's the first alternative for a dead kernel.)
 2. **Per-stem decomposition (the "monolith" fix).** Today each window is one
    156-d vector over the *whole* mix, so the atlas captures overall texture, not
-   "bass doing X while drums do Y." Decompose each track into a few classical
-   NN-free streams — **HPSS** (harmonic vs percussive, `librosa.effects.hpss`)
-   and/or a **multiband** split — extract features per stream, and either
-   concatenate them into a richer window vector or build parallel per-stem
-   operators orbited jointly. This is the most promising route to coordinates
-   with real structure for K to be load-bearing over. Planned as a `stems:`
-   config option in v0.2.
+   "bass doing X while drums do Y." Decompose each track into classical NN-free
+   streams — **HPSS** (harmonic vs percussive, `librosa.effects.hpss`) and/or a
+   multiband split — feature each stream, concatenate into a richer window
+   vector. Shipped as `stems: hpss` (config) / `--stems hpss` (build).
+
+   **HPSS result (built, real corpus, `--stems hpss`):** richer chart structure
+   — **basins 4 → 6**, the atlas now separates harmonic-led from percussion-led
+   sections. Macros stay live (knob deltas 3.4–6.9). Kernel ablation nudges from
+   whole-mix **outcome (b)** toward a **weak outcome (a)**: K-on mean |Δ| 0.059
+   vs K-off 0.069 (still per-seed noisy). So the layer-split *helps* — modestly,
+   not transformatively — and is the right base for the next projection work
+   (e.g. HPSS **+ beat-sync windows** together, or a percussion-only operator).
+   Top-4 macros remain smooth global coordinates with thin oscillation, so K is
+   still not strongly load-bearing; blind A/B on the HPSS renders is the open
+   question.
 
 ---
 
@@ -192,4 +200,13 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
 - K-off autocorr:   [0.011, -0.0041]  (mean |Δ|=0.0108)
 - K-on autocorr:    [0.0499, -0.0008]  (mean |Δ|=0.0319)
 - objective verdict: **(b) no clear objective difference — a result, not a failure**
+- subjective blind A/B notes: _TODO human listener_
+
+## M3 ablation (auto-appended)
+- renders: 3 seed pairs × 2.0 min, kappa=0.3
+- measured periods (s): [13.98]  (7 overdamped modes excluded)
+- corpus autocorr:  [0.0632]
+- K-off autocorr:   [-0.0056]  (mean |Δ|=0.0687)
+- K-on autocorr:    [0.0041]  (mean |Δ|=0.0591)
+- objective verdict: (a) K moves toward corpus — theory load-bearing
 - subjective blind A/B notes: _TODO human listener_

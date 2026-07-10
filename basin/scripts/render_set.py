@@ -38,13 +38,14 @@ def main() -> None:
     ap.add_argument("--macro", nargs="*", default=[],
                     help="pairs: MACRO_INDEX VALUE_IN_SIGMA ...")
     ap.add_argument("--kappa", type=float, default=None)
+    ap.add_argument("--instrument", default=None, help="instrument .npz path")
     args = ap.parse_args()
 
     from basin import store
     from basin.orbit import Orbit
     from basin.render import GrainReader, render
 
-    inst = store.load_instrument(boot.instrument_path())
+    inst = store.load_instrument(args.instrument or boot.instrument_path())
     cfg = dict(inst["config"])
     if args.kappa is not None:
         cfg["kappa"] = args.kappa
