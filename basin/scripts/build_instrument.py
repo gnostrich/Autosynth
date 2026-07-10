@@ -22,8 +22,9 @@ def main() -> None:
     ap.add_argument("--corpus", default=None)
     ap.add_argument("--config", default=None)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--stems", default=None, choices=["none", "hpss"],
-                    help="override features.stems (whole-mix vs HPSS split)")
+    ap.add_argument("--stems", default=None, choices=["none", "hpss", "nmf"],
+                    help="features.stems: whole-mix | HPSS 2-split | "
+                         "emergent NMF channels (K measured)")
     ap.add_argument("--out", default=None, help="instrument output path")
     args = ap.parse_args()
 
