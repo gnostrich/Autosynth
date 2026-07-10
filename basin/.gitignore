@@ -2,7 +2,7 @@
 corpus/*
 !corpus/.gitkeep
 corpus_real/
-instrument.npz
+instrument*.npz
 panel_names.json
 debug/
 renders/
