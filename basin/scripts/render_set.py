@@ -39,11 +39,14 @@ def main() -> None:
                     help="pairs: MACRO_INDEX VALUE_IN_SIGMA ...")
     ap.add_argument("--kappa", type=float, default=None)
     ap.add_argument("--instrument", default=None, help="instrument .npz path")
+    ap.add_argument("--voices", default="mix",
+                    help="comma list of concurrent voices from "
+                         "{mix,harmonic,percussive}; e.g. harmonic,percussive")
     args = ap.parse_args()
 
     from basin import store
     from basin.orbit import Orbit
-    from basin.render import GrainReader, render
+    from basin.render import GrainReader, render, render_voices
 
     inst = store.load_instrument(args.instrument or boot.instrument_path())
     cfg = dict(inst["config"])
@@ -58,15 +61,32 @@ def main() -> None:
 
     n_steps = int(round(args.minutes * 60.0 / float(cfg["step_s"])))
     knob = build_knob(args.macro, psi.shape[1], psi)
+    voices = [v.strip() for v in args.voices.split(",") if v.strip()]
 
     print(f"[render] {args.minutes} min = {n_steps} steps, seed={args.seed}, "
-          f"kappa={cfg['kappa']}, knob_nonzero={np.count_nonzero(knob)}")
+          f"kappa={cfg['kappa']}, knob_nonzero={np.count_nonzero(knob)}, "
+          f"voices={voices}")
 
-    orbit = Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel, seed=args.seed)
-    states = orbit.run(n_steps)
-
-    reader = GrainReader(corpus, atlas.memberships, cfg, seed=args.seed)
-    audio = render(states, reader, cfg)
+    if voices == ["mix"]:
+        orbit = Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
+                      seed=args.seed)
+        states = orbit.run(n_steps)
+        reader = GrainReader(corpus, atlas.memberships, cfg, seed=args.seed)
+        audio = render(states, reader, cfg)
+    else:
+        # Polyphonic: one independent walker + stem stream per voice, summed.
+        shared: dict = {}
+        states_list, readers = [], []
+        for vi, stem in enumerate(voices):
+            vseed = args.seed + 101 * vi
+            orbit = Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
+                          seed=vseed)
+            states_list.append(orbit.run(n_steps))
+            readers.append(GrainReader(corpus, atlas.memberships, cfg,
+                                       seed=vseed, stem=stem,
+                                       shared_cache=shared))
+            print(f"         voice {vi}: stem={stem} seed={vseed}")
+        audio = render_voices(states_list, readers, cfg)
 
     out = args.out or boot.project_dir() + "/set.wav"
     # 16-bit PCM — universally playable. float64 WAV (soundfile's default for a

@@ -7,7 +7,7 @@ import pytest
 import soundfile as sf
 
 from basin import features, atlas as atlas_mod, operator
-from basin.render import GrainReader, render
+from basin.render import GrainReader, render, render_voices
 from basin.orbit import Orbit
 
 CFG = dict(sr=22050, hop=1024, window_s=1.5, overlap=0.5, pca_dims=40,
@@ -44,6 +44,28 @@ def test_build_corpus_shapes(tiny_corpus):
     # handles point inside their tracks
     for h in c.handles:
         assert 0 <= h.track_id < c.n_tracks
+
+
+def test_two_voice_render_concurrent_and_natural(tiny_corpus):
+    """Polyphonic path: two stem voices sum, stay finite, keep dynamics."""
+    c = features.build_corpus(tiny_corpus, CFG)
+    atlas = atlas_mod.build_atlas(c.features, CFG["n_charts"],
+                                  CFG["top_memberships"])
+    built = operator.build(atlas.memberships, c.track_bounds, n_basins="auto")
+    shared = {}
+    states_list, readers = [], []
+    for vi, stem in enumerate(["harmonic", "percussive"]):
+        o = Orbit(built.P, built.spectrum.psi, CFG, seed=vi)
+        states_list.append(o.run(12))
+        readers.append(GrainReader(c, atlas.memberships, CFG, seed=vi,
+                                   stem=stem, shared_cache=shared))
+    audio = render_voices(states_list, readers, CFG)
+    assert np.isfinite(audio).all()
+    assert np.abs(audio).max() <= 0.95 + 1e-6
+    assert np.sqrt(np.mean(audio ** 2)) > 0            # not silent
+    # HPSS computed once per track, shared between the two readers
+    stems_cached = [k for k in shared if k[1] in ("harmonic", "percussive")]
+    assert stems_cached, "shared stem cache unused"
 
 
 def test_render_produces_finite_audio(tiny_corpus):

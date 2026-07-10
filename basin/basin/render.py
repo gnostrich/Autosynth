@@ -31,29 +31,49 @@ def _predecessor(handles: list, w: int) -> int:
 
 
 class GrainReader:
-    """Samples corpus windows from chart-mixtures with a continuity prior."""
+    """Samples corpus windows from chart-mixtures with a continuity prior.
+
+    ``stem`` selects which audio stream grains are read from: ``'mix'`` (the
+    original blend, default), or ``'harmonic'`` / ``'percussive'`` — classical
+    NN-free HPSS streams computed lazily per track. Pass one ``shared_cache``
+    dict to several readers so the mix load and the HPSS split are done once.
+    """
 
     def __init__(self, corpus, memberships: np.ndarray, cfg: dict,
-                 seed: int = 0):
+                 seed: int = 0, stem: str = "mix",
+                 shared_cache: dict | None = None):
         self.corpus = corpus
         self.features = corpus.features
         self.handles = corpus.handles
         self.W = _col_normalize(memberships)
         self.sr = int(cfg["sr"])
+        self.stem = stem
         self.rng = np.random.default_rng(seed)
         # continuity bandwidth = median nearest-neighbour feature distance scale
         self._cont_scale = float(np.median(np.linalg.norm(
             np.diff(self.features, axis=0), axis=1)) + 1e-9)
         self._prev_emitted = None
-        self._audio_cache: dict = {}
+        self._audio_cache: dict = shared_cache if shared_cache is not None else {}
 
     def _track_audio(self, track_id: int) -> np.ndarray:
-        if track_id not in self._audio_cache:
+        key = (track_id, self.stem)
+        if key in self._audio_cache:
+            return self._audio_cache[key]
+        mix_key = (track_id, "mix")
+        if mix_key not in self._audio_cache:
             import librosa
             y, _ = librosa.load(self.corpus.track_paths[track_id],
                                 sr=self.sr, mono=True)
-            self._audio_cache[track_id] = y
-        return self._audio_cache[track_id]
+            self._audio_cache[mix_key] = y
+        if self.stem == "mix":
+            return self._audio_cache[mix_key]
+        if self.stem in ("harmonic", "percussive"):
+            import librosa
+            y_h, y_p = librosa.effects.hpss(self._audio_cache[mix_key])
+            self._audio_cache[(track_id, "harmonic")] = y_h
+            self._audio_cache[(track_id, "percussive")] = y_p
+            return self._audio_cache[key]
+        raise ValueError(f"unknown stem: {self.stem!r}")
 
     def sample(self, m: np.ndarray) -> int:
         """Sample a window index from chart-mixture ``m`` with continuity bias."""
@@ -95,8 +115,17 @@ def _rms(x: np.ndarray) -> float:
     return float(np.sqrt(np.mean(x ** 2) + 1e-12))
 
 
-def render(states: list, reader: GrainReader, cfg: dict) -> np.ndarray:
-    """Realize a sequence of :class:`~basin.orbit.OrbitState` to a mono signal."""
+def render(states: list, reader: GrainReader, cfg: dict,
+           natural: bool = False, normalize: bool = True) -> np.ndarray:
+    """Realize a sequence of :class:`~basin.orbit.OrbitState` to a mono signal.
+
+    ``natural=False`` (default): each grain is normalized to a fixed target RMS
+    — stable, but it flattens the corpus's loudness structure.
+    ``natural=True``: grains play at their native amplitude, so the loudness
+    information already in the audio (quiet breakdown vs full-on drop; a stem
+    falling silent) passes straight through — channel fades *emerge* instead of
+    being imposed. Used by :func:`render_voices`.
+    """
     sr = int(cfg["sr"])
     step = int(round(float(cfg["step_s"]) * sr))
     xfade = int(round(float(cfg["crossfade_s"]) * sr))
@@ -112,13 +141,14 @@ def render(states: list, reader: GrainReader, cfg: dict) -> np.ndarray:
         w = reader.sample(st.m)
         g = reader.grain_audio(w, grain_len).copy()
 
-        # Normalize each grain to a *fixed* target RMS. Matching to the previous
-        # grain's tail instead chains multiplicatively and collapses to silence
-        # once any quiet grain appears; a fixed reference keeps loudness stable
-        # across the splice without that feedback.
-        r = _rms(g)
-        if r > 1e-5:
-            g *= np.clip(target_rms / r, 0.25, 4.0)
+        if not natural:
+            # Normalize each grain to a *fixed* target RMS. Matching to the
+            # previous grain's tail instead chains multiplicatively and
+            # collapses to silence once any quiet grain appears; a fixed
+            # reference keeps loudness stable across the splice.
+            r = _rms(g)
+            if r > 1e-5:
+                g *= np.clip(target_rms / r, 0.25, 4.0)
 
         pos = i * step
         if prev_tail is not None and xfade > 0:
@@ -130,7 +160,29 @@ def render(states: list, reader: GrainReader, cfg: dict) -> np.ndarray:
 
         prev_tail = out[pos + step:pos + grain_len].copy()
 
-    peak = np.max(np.abs(out)) + 1e-9
-    if peak > 1.0:
-        out /= peak
+    if normalize:
+        peak = np.max(np.abs(out)) + 1e-9
+        if peak > 1.0:
+            out /= peak
+    return out
+
+
+def render_voices(states_list: list, readers: list, cfg: dict) -> np.ndarray:
+    """Polyphonic realization: N concurrent voices, summed.
+
+    Each (states, reader) pair is an independent voice — its own orbit through
+    the index, its own stem stream, its own crossfaded grain chain — rendered
+    at *natural* amplitude and summed. Concurrency and channel fades come from
+    the material itself: when a voice's walk passes through regions where its
+    stem is quiet, that channel recedes; nothing imposes it.
+    """
+    voices = [render(sts, rd, cfg, natural=True, normalize=False)
+              for sts, rd in zip(states_list, readers)]
+    n = max(len(v) for v in voices)
+    out = np.zeros(n, dtype=np.float32)
+    for v in voices:
+        out[:len(v)] += v
+    peak = float(np.max(np.abs(out)) + 1e-9)
+    if peak > 0.95:
+        out *= 0.95 / peak
     return out

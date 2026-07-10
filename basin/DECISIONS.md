@@ -81,6 +81,23 @@ One line of reasoning per call, as required by the spec's definition of done.
   1.0 to 0.3: κ≈0.3–0.5 adds phrase-memory while keeping the orbit alive; κ≳0.7
   over-sticks. κ=0 still reproduces M2 exactly.
 
+## M2.5 — polyphony (the concurrency fix)
+
+- **Multi-voice rendering (`render_voices`, `--voices`)** — v0.1 was strictly
+  monophonic: one walker, one whole-mix grain per step, so "mixing" was really
+  sequential collage. Now N independent voices — each its own orbit through the
+  same index, each reading a different stem stream (`mix`/`harmonic`/
+  `percussive`, classical HPSS at read time, cached & shared) — are rendered in
+  parallel and summed. Drums from one region can sound *under* harmony from
+  another: genuine concurrency, region-to-region per channel.
+
+- **Natural amplitude for voices (loudness fades emerge, not imposed)** — the
+  fixed-target grain RMS (added to stop the silence collapse) also flattened
+  all loudness structure. In voice mode grains play at native amplitude: the
+  corpus's own dynamics (a stem falling silent, a breakdown, a drop) pass
+  through, so channels fade in/out on their own. Only the summed mix is
+  peak-guarded. The monophonic path keeps fixed-target as its stable default.
+
 ## M4
 
 - **Websocket server** — implemented directly on the Python standard library

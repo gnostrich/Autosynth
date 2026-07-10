@@ -145,6 +145,37 @@ Launch: `python scripts/run_panel.py` → open the printed URL → "enable audio
 - **Patchy atlas / islands** — none on this corpus (100% coverage). Reporter is
   in place for corpora that do fragment.
 
+## Theory-faithfulness audit (quick pass)
+
+Checked every spec formula against the code. Verdicts: **F** = faithful as
+written · **D** = deliberate deviation (logged in DECISIONS) · **T** = genuine
+tension between spec text and theory intent.
+
+| Spec item | Code | Verdict |
+|---|---|---|
+| 156-d windows (mean+std of 78/frame), 1.5 s / 50% | `features.py` | **F** (unit-tested) |
+| Standardize → PCA-whiten 40 | `features.py` | **F** (rank-capped) |
+| Atlas k=256, Gaussian soft-assign, top-8, median bandwidth | `atlas.py` | **F** |
+| `P[a,b]=Σ m_t(a)m_{t+1}(b)` within-track, row-normalized | `operator.py` | **F** (unit-tested) |
+| Eig classify real+/complex/real− → knob/dial/toggle | `operator.py`, panel | **F** |
+| Spectral-gap cut, default-4 + flag | `operator.py` | **F** (`[open]` heuristic logged) |
+| `ψ_i = λ_i^t·right-eigvec, t=1` | `operator.py:145` | **F**, then standardized per macro — **D** (dead-knob fix; pure coordinate rescale) |
+| `m' ∝ (m@P)·exp(β·align − γ·visit)` ; sharpen τ ; top-8 | `orbit.py:110-125` | **F** for the *emission* mixture |
+| State stays a soft mixture step-to-step | `orbit.py` re-localizes by sampling a chart | **T** — the spec's literal recursion `m←m@P` converges to the stationary density and **freezes** (measured: 1 chart / 240 steps). A transfer operator evolves *densities*; an "orbit" is a *sample path*. We sample. Truer to the word "orbit," not to the pseudocode line. |
+| Memory `κ·Σ K(t−s)·a(s)` projected via ψ | `orbit.py` | **D** — unit-normalized + κ→0.3; raw form self-reinforces → outcome (c) collapse |
+| κ=0 ≡ M2, γ=0 ≡ pure PULL | tests | **F** (bit-exact) |
+| Kernel = damped-cosine fit of C(τ), identity documented | `kernel.py` | **F** (spec's sanctioned practical route) |
+| "Match RMS across the splice" | `render.py` | **D** → **T** — chained matching collapses to silence; the fixed-target replacement is stable but **flattens all dynamics**, which is precisely what suppressed natural channel fades. Fixed in multi-voice mode (below): stems play at *natural amplitude*, so loudness structure re-emerges from the audio itself. |
+| Grain = sample from m' + continuity prior, equal-power 0.375 s | `render.py` | **F** |
+| One grain per step (monophonic) | `render.py` | **T** with the theory's multi-channel picture — v0.1 spec is explicitly monophonic; multi-voice added below as the concurrency fix |
+| Panel: topology-from-spectrum, co-moving needles, collar | `panel/` | **F** |
+| HPSS stems | `features.py` | extension beyond spec (NN-free, so compliant in spirit) |
+
+Net: the mechanics are faithful; the three real tensions are (1) density-vs-
+sample-path, (2) raw memory term unstable, (3) loudness normalization erasing
+dynamics — all three are places where the spec's letter and the theory's
+intent disagree, and we sided with intent, logged.
+
 ## Definition of done — where we are
 
 - **M1 + M2**: implemented and **passing on real audio** (100% connectivity;
