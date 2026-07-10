@@ -38,6 +38,10 @@ def main() -> None:
     ap.add_argument("--macro", nargs="*", default=[],
                     help="pairs: MACRO_INDEX VALUE_IN_SIGMA ...")
     ap.add_argument("--kappa", type=float, default=None)
+    ap.add_argument("--gamma", type=float, default=None,
+                    help="wanderlust override (restlessness; default from config)")
+    ap.add_argument("--couple", type=float, default=None,
+                    help="multi-voice mutual-pull override (default from config)")
     ap.add_argument("--instrument", default=None, help="instrument .npz path")
     ap.add_argument("--voices", default="mix",
                     help="comma list of concurrent voices from "
@@ -56,6 +60,10 @@ def main() -> None:
     cfg = dict(inst["config"])
     if args.kappa is not None:
         cfg["kappa"] = args.kappa
+    if args.gamma is not None:
+        cfg["gamma"] = args.gamma
+    if args.couple is not None:
+        cfg["couple"] = args.couple
 
     psi = inst["psi"]
     P = inst["P"]

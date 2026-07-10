@@ -312,17 +312,57 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
 
 def render_flow_voices(orbits: list, readers: list, n_steps: int,
                        cfg: dict) -> np.ndarray:
-    """N concurrent flow-mode voices, each a closed walk↔playback loop, summed."""
-    voices = [render_flow(o, r, n_steps, cfg, natural=True, normalize=False)
-              for o, r in zip(orbits, readers)]
-    n = max(len(v) for v in voices)
-    out = np.zeros(n, dtype=np.float32)
-    for v in voices:
-        out[:len(v)] += v
+    """N concurrent flow-mode voices in lockstep, mutually coupled, summed.
+
+    Voices step together, and each voice's knob is tilted toward the mean
+    coordinate of the *other* voices (strength ``couple``): the drums-walker
+    feels where the harmony-walker is and vice versa, so the layers converge
+    on compatible territory instead of coexisting by accident. ``couple: 0``
+    reproduces fully independent voices.
+    """
+    sr = int(cfg["sr"])
+    step = int(round(float(cfg["step_s"]) * sr))
+    xfade = min(int(round(float(cfg["crossfade_s"]) * sr)), step)
+    grain_len = step + xfade
+    eq_in, eq_out = _equal_power_fades(xfade)
+    t = np.linspace(0.0, 1.0, xfade, endpoint=False)
+    lin_in, lin_out = t, 1.0 - t
+    couple = float(cfg.get("couple", 0.5))
+
+    V = len(orbits)
+    base_knobs = [o.knob.copy() for o in orbits]
+    n_macros = orbits[0].n_macros
+    a_now = [np.zeros(n_macros) for _ in range(V)]
+    outs = [np.zeros(step * n_steps + grain_len, dtype=np.float32)
+            for _ in range(V)]
+    prev_tails = [None] * V
+
+    for i in range(n_steps):
+        pos = i * step
+        for v in range(V):
+            if V > 1 and couple != 0.0:
+                others = np.mean([a_now[u] for u in range(V) if u != v],
+                                 axis=0)
+                orbits[v].knob = base_knobs[v] + couple * others
+            st = orbits[v].step()
+            w = readers[v].sample_flow(st.a)
+            orbits[v].relocalize(readers[v].window_membership(w))
+            a_now[v] = st.a
+            g = readers[v].grain_audio(w, grain_len)
+            if prev_tails[v] is not None and xfade > 0:
+                fi, fo = (eq_in, eq_out) if readers[v].last_jump \
+                    else (lin_in, lin_out)
+                outs[v][pos:pos + xfade] = prev_tails[v] * fo + g[:xfade] * fi
+                outs[v][pos + xfade:pos + grain_len] = g[xfade:]
+            else:
+                outs[v][pos:pos + grain_len] = g
+            prev_tails[v] = outs[v][pos + step:pos + grain_len].copy()
+
+    out = np.sum(outs, axis=0)
     peak = float(np.max(np.abs(out)) + 1e-9)
     if peak > 0.95:
         out *= 0.95 / peak
-    return out
+    return out.astype(np.float32)
 
 
 def render_voices(states_list: list, readers: list, cfg: dict) -> np.ndarray:
