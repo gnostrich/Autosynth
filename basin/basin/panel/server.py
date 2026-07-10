@@ -77,10 +77,17 @@ class PanelEngine:
         # runs coupled stem-walkers (the layered sound of the duo renders);
         # a whole-mix instrument gets a single mix voice.
         stems_mode = str(self.cfg.get("stems", "none"))
-        available = (["harmonic", "percussive", "mix"] if stems_mode == "hpss"
-                     else ["mix"])
-        default_on = (["harmonic", "percussive"] if stems_mode == "hpss"
-                      else ["mix"])
+        n_ch = int(getattr(self.corpus, "n_channels", 0) or 0)
+        if stems_mode == "nmf" and n_ch:
+            chans = [f"ch{k}" for k in range(n_ch)]
+            available = chans + ["mix"]
+            default_on = chans
+        elif stems_mode == "hpss":
+            available = ["harmonic", "percussive", "mix"]
+            default_on = ["harmonic", "percussive"]
+        else:
+            available = ["mix"]
+            default_on = ["mix"]
         shared_cache: dict = {}
         n_macros = self.psi.shape[1]
         self.voices = []
@@ -118,9 +125,14 @@ class PanelEngine:
         # its timeline (mean stem loudness per bin), the base layer of the
         # flow view. raw layout (hpss): mean_h RMS at 64, mean_p RMS at 142.
         raw = self.corpus.raw
-        rms_dims = ({"harmonic": 64, "percussive": 142}
-                    if stems_mode == "hpss" and raw.shape[1] >= 156 * 2
-                    else {"mix": 64})
+        if stems_mode == "nmf" and n_ch:
+            # channel content = mean activation dims (78..78+K-1 in the mean block)
+            rms_dims = {f"ch{k}": 78 + k for k in range(n_ch)}
+            rms_dims["mix"] = 64
+        elif stems_mode == "hpss" and raw.shape[1] >= 156 * 2:
+            rms_dims = {"harmonic": 64, "percussive": 142}
+        else:
+            rms_dims = {"mix": 64}
         self.content = {}
         nT = len(self.track_names)
         for stem_name, dim in rms_dims.items():

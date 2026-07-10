@@ -110,6 +110,15 @@ class GrainReader:
             self._audio_cache[(track_id, "harmonic")] = y_h
             self._audio_cache[(track_id, "percussive")] = y_p
             return self._audio_cache[key]
+        if self.stem.startswith("ch") and \
+                getattr(self.corpus, "nmf_templates", None) is not None:
+            # emergent channel: synthesize all K masks for this track at once
+            from . import channels
+            outs = channels.split_track(self._audio_cache[mix_key],
+                                        self.corpus.nmf_templates)
+            for k, yk in enumerate(outs):
+                self._audio_cache[(track_id, f"ch{k}")] = yk
+            return self._audio_cache[key]
         raise ValueError(f"unknown stem: {self.stem!r}")
 
     def sample(self, m: np.ndarray) -> int:

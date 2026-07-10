@@ -53,6 +53,10 @@ class Corpus:
     # step (step_s) into it — i.e. exactly where the next grain splices in.
     head_frames: np.ndarray = field(default=None)   # [n_windows, frame_dim]
     mid_frames: np.ndarray = field(default=None)    # [n_windows, frame_dim]
+    # emergent channels (stems='nmf'): corpus-global spectral templates and
+    # the measured channel count; channel audio is synthesized by masking.
+    nmf_templates: np.ndarray = field(default=None)  # [K, freq]
+    n_channels: int = 0
 
     @property
     def n_windows(self) -> int:
@@ -193,6 +197,22 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
 
     step_frames = max(1, int(round(float(cfg.get("step_s", 0.75)) * sr / hop)))
 
+    # emergent channels: measure K and fit corpus-global templates up front
+    stems_mode = str(cfg.get("stems", "none"))
+    nmf_W, n_channels = None, 0
+    if stems_mode == "nmf":
+        from . import channels
+        n_cfg = cfg.get("n_channels", "auto")
+        if n_cfg == "auto" or n_cfg is None:
+            K, flagged, errs = channels.choose_rank(paths, sr, hop,
+                                                    log=print)
+            print(f"      measured K={K}"
+                  f"{' (no clear elbow — flagged)' if flagged else ''}")
+        else:
+            K = int(n_cfg)
+        nmf_W = channels.fit_templates(paths, sr, hop, K)
+        n_channels = nmf_W.shape[0]
+
     raw_rows, handles, bounds, kept_paths = [], [], [], []
     head_rows, mid_rows = [], []
     cursor = 0
@@ -200,7 +220,16 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         y, _ = librosa.load(path, sr=sr, mono=True)
         if y.size < hop:
             continue
-        frames = stem_frame_features(y, sr, hop, cfg.get("stems", "none"))
+        if stems_mode == "nmf":
+            from . import channels
+            base = frame_features(y, sr, hop)
+            act = channels.track_activations(y, nmf_W, hop)   # [K, frames]
+            F = min(base.shape[1], act.shape[1])
+            # normalize activations to comparable scale (per-track max)
+            act = act[:, :F] / (act.max() + 1e-9) * 10.0
+            frames = np.vstack([base[:, :F], act])
+        else:
+            frames = stem_frame_features(y, sr, hop, stems_mode)
         vecs, start_frames = aggregate_windows(frames, window_s, overlap, sr, hop)
         if vecs.size == 0:
             continue
@@ -235,4 +264,6 @@ def build_corpus(paths: list, cfg: dict) -> Corpus:
         mean=mean, scale=scale, pca_mean=pca_mean, pca_components=components,
         head_frames=np.asarray(head_rows),
         mid_frames=np.asarray(mid_rows),
+        nmf_templates=nmf_W,
+        n_channels=n_channels,
     )

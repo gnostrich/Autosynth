@@ -180,6 +180,12 @@ function drawGroove(k, st) {
 
 // ---- flow view: tracks × channels, density = where it could go next ----
 const STEM_COLOR = {harmonic:'#6fd3c7', percussive:'#e0a458', mix:'#8890a6'};
+function stemColor(stem){
+  if (STEM_COLOR[stem]) return STEM_COLOR[stem];
+  const m = /^ch(\d+)$/.exec(stem);          // emergent channels: golden-angle hues
+  if (m) return `hsl(${(+m[1] * 137.5 + 40) % 360} 62% 62%)`;
+  return '#8890a6';
+}
 let flowCanvas = null, flowCtx = null;
 const FLOW = {gutter: 210, rowGap: 4, subH: 11};
 function drawFlow(st) {
@@ -200,7 +206,7 @@ function drawFlow(st) {
     g.fillText(name.slice(0, 30), 4, y0 + 9);
     lanes.forEach((f, vi) => {
       const y = y0 + vi * FLOW.subH;
-      const col = STEM_COLOR[f.stem] || '#8890a6';
+      const col = stemColor(f.stem);
       const bw = laneW / 24;
       // lane background — the decomposition is visible even when cold
       g.fillStyle = '#1b1e28';
@@ -287,7 +293,7 @@ function drawWaterfall(st) {
     // field history wash
     row.heat.forEach((hv, vi) => {
       if (!hv) return;
-      const col = STEM_COLOR[row.vs[vi].stem] || '#8890a6';
+      const col = stemColor(row.vs[vi].stem);
       for (let t = 0; t < nT; t++) {
         if (hv[t] < 0.5) continue;
         g.globalAlpha = 0.015 + 0.02 * hv[t];
@@ -303,7 +309,7 @@ function drawWaterfall(st) {
   // worldlines: one thread per voice; diagonals = jumps, verticals = dwell.
   // widths differ per voice so braided (converged) threads show both colors.
   wfRows[0] && st.flow.forEach((f, vi) => {
-    const col = STEM_COLOR[f.stem] || '#8890a6';
+    const col = stemColor(f.stem);
     g.strokeStyle = col; g.lineWidth = 3.2 - vi * 1.5; g.beginPath();
     let started = false;
     wfRows.forEach((row, r) => {

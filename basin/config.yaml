@@ -3,7 +3,8 @@
 # cheap to change. Scripts load this and pass it down through the pipeline.
 
 # --- windowing / features (M1) ---
-stems: none         # 'none' = whole-mix features; 'hpss' = harmonic+percussive split
+stems: none         # none | hpss (2 imposed layers) | nmf (emergent channels, K measured)
+n_channels: auto    # nmf only: 'auto' = held-out elbow, or an int
 sr: 22050           # load mono at this rate
 hop: 1024           # frame hop (~46 ms per frame)
 window_s: 1.5       # window length (atomic corpus unit)

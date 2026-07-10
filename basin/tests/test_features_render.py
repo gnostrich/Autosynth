@@ -85,6 +85,25 @@ def test_flow_mode_follows_corpus_motion(tiny_corpus):
     assert abs(orbit._m.sum() - 1.0) < 1e-6
 
 
+def test_nmf_channels_build_and_play(tiny_corpus):
+    """Emergent channels: K measured, templates stored, channels playable."""
+    cfg = dict(CFG, stems="nmf", n_channels=2)   # fixed K for test speed
+    c = features.build_corpus(tiny_corpus, cfg)
+    assert c.n_channels == 2
+    assert c.nmf_templates is not None and c.nmf_templates.shape[0] == 2
+    # per-frame dim = 78 + K → raw window dim = 2*(78+K)
+    assert c.raw.shape[1] == 2 * (78 + 2)
+    atlas = atlas_mod.build_atlas(c.features, CFG["n_charts"],
+                                  CFG["top_memberships"])
+    built = operator.build(atlas.memberships, c.track_bounds, n_basins="auto")
+    shared = {}
+    r = GrainReader(c, atlas.memberships, cfg, seed=0, stem="ch0",
+                    shared_cache=shared, psi=built.spectrum.psi)
+    g = r.grain_audio(0, 4096)
+    assert np.isfinite(g).all() and g.shape == (4096,)
+    assert (0, "ch1") in shared                  # split cached all channels
+
+
 def test_render_produces_finite_audio(tiny_corpus):
     c = features.build_corpus(tiny_corpus, CFG)
     atlas = atlas_mod.build_atlas(c.features, CFG["n_charts"],

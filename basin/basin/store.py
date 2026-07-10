@@ -41,6 +41,9 @@ def save_instrument(path: str, corpus: Corpus, atlas: Atlas, built, kernel,
         else np.zeros((0, 0)),
         mid_frames=corpus.mid_frames if corpus.mid_frames is not None
         else np.zeros((0, 0)),
+        nmf_templates=corpus.nmf_templates if corpus.nmf_templates is not None
+        else np.zeros((0, 0)),
+        n_channels=np.int64(corpus.n_channels),
         # atlas
         centers=atlas.centers, bandwidth=np.float64(atlas.bandwidth),
         memberships=atlas.memberships, top_k=np.int64(atlas.top_k),
@@ -78,6 +81,7 @@ def load_instrument(path: str) -> dict:
     handles = [WindowHandle(int(t), int(s), int(n)) for t, s, n in out["handles"]]
     hf = out.get("head_frames")
     mf = out.get("mid_frames")
+    nt = out.get("nmf_templates")
     corpus = Corpus(
         raw=out["raw"], features=out["features"], handles=handles,
         track_bounds=[tuple(map(int, b)) for b in out["track_bounds"]],
@@ -86,6 +90,8 @@ def load_instrument(path: str) -> dict:
         pca_mean=out["pca_mean"], pca_components=out["pca_components"],
         head_frames=hf if hf is not None and hf.size else None,
         mid_frames=mf if mf is not None and mf.size else None,
+        nmf_templates=nt if nt is not None and nt.size else None,
+        n_channels=int(out["n_channels"]) if "n_channels" in out else 0,
     )
     atlas = Atlas(centers=out["centers"], bandwidth=float(out["bandwidth"]),
                   memberships=out["memberships"], top_k=int(out["top_k"]))
