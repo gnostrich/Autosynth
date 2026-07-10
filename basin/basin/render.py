@@ -121,6 +121,16 @@ class GrainReader:
         self._head = getattr(corpus, "head_frames", None)
         self._mid = getattr(corpus, "mid_frames", None)
         if self._head is not None and self._mid is not None and self._head.size:
+            # The splice happens at the window's native stride — the start of
+            # its in-track successor. So the outgoing frame at the splice IS
+            # the successor's head frame, by identity of the beat-synchronous
+            # representation (stored mid_frames were measured at the old
+            # fixed half-window offset and misreport the splice: they charge
+            # the true successor a discontinuity that playback never makes).
+            self._mid = self._mid.copy()
+            for w in range(len(self.handles) - 1):
+                if self.handles[w + 1].track_id == self.handles[w].track_id:
+                    self._mid[w] = self._head[w + 1]
             flux_d2 = ((self._head[i1] - self._mid[i0]) ** 2).sum(1)
             self._flux_scale2 = float(np.median(flux_d2) + 1e-9) \
                 / (2.0 * np.log(max(n, 2)))
@@ -235,19 +245,25 @@ class GrainReader:
             return v + 1
         return v
 
-    def sample_flow(self, a_t: np.ndarray) -> int:
-        """Flow-mode read: the corpus's own motion, tilted by the walk's field.
+    def sample_flow(self, a_t: np.ndarray, m: np.ndarray = None) -> int:
+        """Flow-mode read: the corpus's own motion, gated by the walk's region.
 
-        ``p(w) ∝ exp(−|feat(w) − feat(succ(prev))|²/2σ²)·exp(β_read·ψ_w·a_t)``
+        ``p(w) ∝ [W@m]_w · exp(−|feat(w) − feat(succ(prev))|²/2σ²)
+                 · exp(β_read·ψ_w·a_t)``
 
-        The first factor is the material's momentum: the overwhelmingly most
-        likely emission is the previous window's own successor (or anything
-        that sounds like it — e.g. the parallel moment of another track). The
-        second is the walk acting as a field in diffusion coordinates: as
-        knobs/wanderlust/kernel move the orbit's coordinate ``a_t`` away from
-        where playback is, pressure builds until a jump wins — and it lands on
-        sonically matching material. Dwell time and transition points emerge;
-        no dwell counters, no beat grid.
+        The gate ``[W@m]_w`` is the orbit's chart mixture pushed down to
+        windows: emission happens *inside the region the walk occupies*. This
+        is the region-to-region trace acting at read time — the orbit walks
+        chart-to-chart (where knobs, wanderlust, momentum and basin pressure
+        have authority at the region scale), and the reader only chooses
+        *which window within the region* by the material's own momentum: the
+        locality/flux factor makes the previous window's successor (or its
+        sonic parallel in another track) the default. When the knob leans,
+        the chart walk migrates in diffusion space, the gate moves with it,
+        and playback is carried across tracks/parts — navigation lives in the
+        region walk, not in a tilt fighting the locality term. Zero lean =
+        the corpus's own chart-to-chart routing. Dwell time and transition
+        points emerge; no dwell counters, no beat grid.
         """
         n = len(self.handles)
         if self.win_psi is not None and a_t is not None and a_t.size \
@@ -256,12 +272,21 @@ class GrainReader:
         else:
             tilt = np.zeros(n)
 
+        # region gate: log of the orbit's mixture pushed to windows.
+        # Zero-mass windows are simply outside the region (barred).
+        if m is not None:
+            g = self.W @ m
+            with np.errstate(divide="ignore"):
+                gate = np.where(g > 0, np.log(np.maximum(g, 1e-300)), -np.inf)
+        else:
+            gate = np.zeros(n)
+
         if self._prev_emitted is None:
-            logp = tilt.astype(float) + self._log_presence
+            logp = tilt.astype(float) + self._log_presence + gate
         else:
             s = self._successor(self._prev_emitted)
             d2 = ((self._flow_X - self._flow_X[s]) ** 2).sum(1)
-            logp = (-d2 / (2.0 * self._flow_scale2) + tilt
+            logp = (-d2 / (2.0 * self._flow_scale2) + tilt + gate
                     + self._log_presence - self._wander * self._revisit)
             if self._flux_scale2 is not None:
                 # spectral flux across the actual splice (the paper's loss)
@@ -273,10 +298,19 @@ class GrainReader:
 
         if self.force_jump and self._prev_emitted is not None:
             # trigger gate: one step of pure field — drop the flow term so the
-            # walk's tilt alone picks the destination, and bar the successor.
-            logp = tilt.astype(float) + self._log_presence
-            logp[self._successor(self._prev_emitted)] = -np.inf
+            # walk's region + tilt alone pick the destination, and bar the
+            # successor's whole track (a jump must actually leave).
+            logp = tilt.astype(float) + self._log_presence + gate
+            prev_track = self.handles[self._prev_emitted].track_id
+            same = np.array([h.track_id == prev_track for h in self.handles])
+            if not np.all(same | ~np.isfinite(logp)):
+                logp[same] = -np.inf
+            else:
+                logp[self._successor(self._prev_emitted)] = -np.inf
             self.force_jump = False
+
+        if not np.any(np.isfinite(logp)):      # region excludes everything
+            logp = tilt.astype(float) + self._log_presence
 
         logp -= logp.max()
         p = np.exp(logp)
@@ -393,8 +427,12 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
     t = 0
     for i in range(n_steps):
         st = orbit.step()
-        w = reader.sample_flow(st.a)
-        orbit.relocalize(reader.window_membership(w))
+        # The region gate IS the walk↔playback coupling: emission is always
+        # drawn inside the walk's one-step measure, so sound cannot leave the
+        # walk and no relocalization back onto playback is needed. (Snapping
+        # the walk to the played window — even only on jumps — erases its
+        # accumulated drift and no lean can ever move the set.)
+        w = reader.sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
         stride = min(reader.native_stride(w), 4 * est)
         glen = stride + xfade
         if t + glen >= cap:
@@ -449,8 +487,8 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
             others = np.mean([vs[u]["a"] for u in range(V) if u != v], axis=0)
             orbits[v].knob = base_knobs[v] + couple * others
         st = orbits[v].step()
-        w = readers[v].sample_flow(st.a)
-        orbits[v].relocalize(readers[v].window_membership(w))
+        # gate = coupling; see render_flow — the walk stays free to navigate
+        w = readers[v].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
         vs[v]["a"] = st.a
         stride = min(readers[v].native_stride(w), 4 * est)
         glen = stride + xfade

@@ -310,8 +310,9 @@ class PanelEngine:
                 v["orbit"].knob = self.knob + (
                     self.couple * np.mean(others, axis=0) if others else 0.0)
                 st = v["orbit"].step()
-                w = v["reader"].sample_flow(st.a)
-                v["orbit"].relocalize(v["reader"].window_membership(w))
+                # gate = coupling: emission stays inside the walk's region,
+                # so the walk roams free and faders steer territory directly
+                w = v["reader"].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
                 v["a"], v["st"], v["w"] = st.a, st, w
             if free:
                 self._mean_a = np.mean([v["a"] for v in free], axis=0)

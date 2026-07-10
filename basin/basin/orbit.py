@@ -32,6 +32,10 @@ class OrbitState:
     a: np.ndarray            # resolved macro coordinate  = m @ psi
     a_pred: np.ndarray       # PULL(+kernel) prediction of this step's a
     top_charts: np.ndarray   # indices of the kept charts
+    m_full: np.ndarray = None  # untruncated tilted one-step mixture (region
+    #                            gate for flow reads: the walk's own full
+    #                            posterior — top-k truncation is an emission
+    #                            device and would jitter the gate)
 
 
 class Orbit:
@@ -237,7 +241,8 @@ class Orbit:
         nxt = np.zeros(self.n_charts)
         nxt[c] = 1.0
         self._m = nxt
-        return OrbitState(m=m_new, a=a, a_pred=a_pred, top_charts=top)
+        return OrbitState(m=m_new, a=a, a_pred=a_pred, top_charts=top,
+                          m_full=raw)
 
     def _sharpen(self, m: np.ndarray) -> np.ndarray:
         """Temperature sharpening: exponent 1/τ. Low τ → peaky (mode-follow)."""

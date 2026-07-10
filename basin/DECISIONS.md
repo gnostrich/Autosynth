@@ -181,3 +181,34 @@ One line of reasoning per call, as required by the spec's definition of done.
   streams int16 PCM frames over the socket; the page schedules them through the
   Web Audio API. Latency of seconds is acceptable per the spec (not
   performance-grade).
+
+## Navigation consolidation (2026-07-10, after "track dominant throughout")
+Measured: seed-7 performance spent 91% of its time inside one track; both
+composed jumps landed back in it. Chain of causes, each fixed at the level
+it lived at:
+1. **Knob tilt vs locality scale.** The window-level tilt exp(β·ψ·a) is
+   O(few) nats against a locality term calibrated to ln N — a whisper. The
+   knobs' proper scale is the REGION walk (charts), where tilt spread ≈
+   P-row log-spread (measured 5.6 vs 5.8). → Emission is now *gated* by the
+   orbit's chart mixture (`p(w) ∝ [W@m]·locality·flux·presence`): the walk
+   picks the region, the reader picks the window within it.
+2. **Coupling direction.** Relocalizing the orbit to every played window
+   pinned the walk to playback (one chart-step of drift, then snapped
+   home). With the gate, coupling is structural — emission cannot leave the
+   walk's region — so external relocalization is deleted from flow loops.
+3. **Flux term charged the true successor.** mid_frames were baked at the
+   old half-window offset; under beat-synchronous windows the actual splice
+   is at the successor's start, so the stored frame misreported the splice
+   and flux(successor) was −2..−24 nats (siblings beat it → micro-jump
+   churn = the "looping locally" sound). Fixed by identity:
+   mid[w] := head[w+1] within a track. No rebuild, no constants.
+4. **Gate uses the untruncated mixture** (OrbitState.m_full): top-k
+   truncation is an emission device; as a gate it jitters chart-to-chart
+   and randomly bars the successor.
+Measured after: zero lean = 10 tracks / 21 transitions / 7.5 min (corpus
+routing); lean ±1.5σ on any mode relocates playback to that mode's pole
+territory within seconds and holds it (m1+→t5, m1−→t14/15, m0−→t18,
+m2−→t12). Territory map is measurable per instrument. Caveat: ψ poles are
+skewed (e.g. ψ0 ∈ [−3.7, +0.5]) — the bulk sits at one end; leaning into
+the ceiling is a no-op. The panel's flow view shows position; ears + map
+name the poles.
