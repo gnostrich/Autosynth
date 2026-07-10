@@ -24,7 +24,7 @@ prony_order: 2      # damped-oscillator modes to fit (spec allows <=3)
 beta: 1.0           # knob-bias lean strength (grip)
 gamma: 0.3          # wanderlust (recent-visitation repulsion)
 tau: 1.0            # temperature (drift): low = mode-following, high = diffuse
-kappa: 1.0          # memory-term strength (kappa=0 reproduces M2)
+kappa: 0.3          # memory-term strength (kappa=0 reproduces M2; >~0.7 over-sticks)
 
 # --- render (M2) ---
 crossfade_s: 0.375  # equal-power crossfade (half a hop)

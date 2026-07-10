@@ -68,7 +68,9 @@ def main() -> None:
     audio = render(states, reader, cfg)
 
     out = args.out or boot.project_dir() + "/set.wav"
-    sf.write(out, audio, int(cfg["sr"]))
+    # 16-bit PCM — universally playable. float64 WAV (soundfile's default for a
+    # float64 array) is silently unplayable in many players/browsers.
+    sf.write(out, audio, int(cfg["sr"]), subtype="PCM_16")
     print(f"[done] wrote {out} ({len(audio)/int(cfg['sr']):.1f}s)")
 
 

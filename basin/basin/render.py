@@ -104,19 +104,24 @@ def render(states: list, reader: GrainReader, cfg: dict) -> np.ndarray:
     grain_len = step + xfade
     fade_in, fade_out = _equal_power_fades(xfade)
 
+    target_rms = float(cfg.get("target_rms", 0.2))
+
     out = np.zeros(step * len(states) + grain_len, dtype=np.float32)
     prev_tail = None                                   # last grain's overlap tail
     for i, st in enumerate(states):
         w = reader.sample(st.m)
         g = reader.grain_audio(w, grain_len).copy()
 
+        # Normalize each grain to a *fixed* target RMS. Matching to the previous
+        # grain's tail instead chains multiplicatively and collapses to silence
+        # once any quiet grain appears; a fixed reference keeps loudness stable
+        # across the splice without that feedback.
+        r = _rms(g)
+        if r > 1e-5:
+            g *= np.clip(target_rms / r, 0.25, 4.0)
+
         pos = i * step
         if prev_tail is not None and xfade > 0:
-            # RMS-match the incoming grain's head to the outgoing tail
-            head_rms = _rms(g[:xfade])
-            tail_rms = _rms(prev_tail)
-            if head_rms > 1e-9:
-                g *= min(4.0, tail_rms / head_rms)
             # equal-power crossfade over the overlap region
             out[pos:pos + xfade] = prev_tail * fade_out + g[:xfade] * fade_in
             out[pos + xfade:pos + grain_len] = g[xfade:]

@@ -80,6 +80,12 @@ class Orbit:
         if self.kernel is None or self.kappa == 0.0 or not self.history_a:
             return np.zeros(self.n_charts)
         macro_knob = self.kernel.memory_knob(self.history_a)   # [n_macros]
+        # Normalize to unit magnitude so κ is a well-scaled strength knob and the
+        # windowed history sum can't snowball into a positive-feedback collapse
+        # (the unnormalized term sums ~40 same-sign steps → runaway tilt).
+        n = np.linalg.norm(macro_knob)
+        if n > 1e-9:
+            macro_knob = macro_knob / n
         return self.psi @ macro_knob
 
     def _predict(self, m: np.ndarray) -> np.ndarray:
@@ -116,13 +122,23 @@ class Orbit:
             raw = raw / s
 
         m_new = self._sharpen(raw)
-        m_new = self._keep_top(m_new)
+        m_new = self._keep_top(m_new)          # emission mixture (for grain read)
 
         a = m_new @ self.psi
         self.history_a.append(a)
         self.visitation = self.visit_decay * self.visitation + m_new
         top = np.nonzero(m_new)[0]
-        self._m = m_new
+
+        # Re-localize to a concrete chart sampled from the emission mixture.
+        # Propagating the full mixture through P instead converges to the
+        # stationary distribution and freezes the orbit (argmax stuck on one
+        # chart); sampling a position each step keeps it a *moving* walk while
+        # still stepping through P and honoring every tilt term. γ=0 remains a
+        # pure-PULL walk; κ=0 still reproduces M2 (identical rng draws).
+        c = self.rng.choice(self.n_charts, p=m_new / m_new.sum())
+        nxt = np.zeros(self.n_charts)
+        nxt[c] = 1.0
+        self._m = nxt
         return OrbitState(m=m_new, a=a, a_pred=a_pred, top_charts=top)
 
     def _sharpen(self, m: np.ndarray) -> np.ndarray:

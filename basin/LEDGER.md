@@ -48,8 +48,17 @@ well-connected.
 | Wanderlust γ; **γ=0 reproduces pure PULL** | ✅ | unit-tested (deterministic; changes only when γ>0). |
 | Temperature τ (drift) | ✅ | exponent 1/τ: low τ mode-follows, high τ diffuses. |
 | Grain read + continuity prior | ✅ | samples window from mixture, biased by predecessor proximity. |
-| Equal-power crossfade 0.375 s + RMS match | ✅ | render finite, in-range, non-silent (tested). |
-| `render_set.py --minutes 3 --seed 0` | ✅ | 3-min WAVs produced (`renders/`). |
+| Equal-power crossfade 0.375 s + fixed-target RMS | ✅ | render finite, in-range, non-silent (tested). |
+| `render_set.py --minutes 3 --seed 0` | ✅ | 3-min 16-bit-PCM WAVs produced (`renders/`). |
+
+**Two bugs found by actually listening (both fixed; see DECISIONS):**
+1. The orbit *froze* — propagating the full mixture through P converges to the
+   stationary distribution, so the walk got stuck on one chart (~16 windows over
+   240 steps). Fixed by re-localizing to a sampled chart each step → 48–90
+   charts, ~230 windows. Without this a(t) is constant and M3 is meaningless.
+2. Renders were near-silent / unplayable — grain loudness was chained to the
+   previous grain's tail (collapses to silence), and output was written as
+   64-bit-float WAV (many players drop it). Fixed: fixed-target RMS + 16-bit PCM.
 
 **M2 knob test (real):** ±2σ bias on each of the 4 macros, same seed, moves the
 orbit's mean resolved coordinate by **+4.0 / +5.0 / +6.0 / +6.0** respectively,
@@ -59,7 +68,7 @@ human call; `renders/macro0_pos.wav` vs `renders/macro0_neg.wav` (same seed) are
 the A/B pair to listen to. (An initial false "dead macro" on the synthetic
 corpus led to the ψ-standardization fix; see DECISIONS.)
 
-## M3 — the kernel and the deciding experiment  ⚠️ leans (a), noisy
+## M3 — the kernel and the deciding experiment  ⚠️ outcome (c) → (b)
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -68,36 +77,46 @@ corpus led to the ψ-standardization fix; see DECISIONS.)
 | Kernel identity documented | ✅ | `kernel.py` docstring (DECISIONS). |
 | Tempo cross-check | ✅ | measurable modes at ~8.8 s and ~20.6 s land near ¼-bar / phrase relations to the corpus tempo; the rest are overdamped. |
 | Orbit with memory; **κ=0 exactly reproduces M2** | ✅ | unit-tested (κ=0 ≡ kernel=None, bit-identical). |
-| Spectral-radius clamp (outcome-c guard) | ✅ | `ablate_k.py --clamp`; no instability seen in the real run. |
-| `ablate_k.py` objective metric | ✅ | 5 seed pairs × 3 min. |
-| Blind A/B subjective protocol | ⏳ | `ablate_*_seed*.wav` written for each pair; human notes still to fill in. |
+| Spectral-radius clamp (outcome-c guard) | ⚠️ | implemented, but does **not** rescue this instance — the collapse is history *accumulation*, not peak magnitude. Normalizing the memory term + lowering κ is what keeps the orbit alive. |
+| `ablate_k.py` objective metric | ✅ | onset-autocorr at measurable periods. |
+| Blind A/B subjective protocol | ⏳ | `ablate_*_seed*.wav` written per pair; human notes still to fill in. |
 
-**M3 gate (real, the deciding experiment):**
+**M3 gate (real, the deciding experiment) — corrected after the M2 fixes:**
 
-- **Measurable structure is thin.** Of the 8 fitted kernel modes (4 macros ×
-  order 2), only **2** have a measurable phrase-scale period (~8.8 s, ~20.6 s);
-  the other 6 are overdamped (ω≈0, monotonic decay) and carry no oscillation.
-  So the resolved coordinates of this corpus have *some* but not rich
-  phrase-periodic structure — an honest finding about the material, reported not
-  forced.
-- **Objective metric leans outcome (a).** At the two measurable periods, the
-  render's onset-envelope autocorrelation with K-on is closer to the corpus than
-  with K-off: mean |Δ| **0.065 (K-on) vs 0.113 (K-off)**. But it is **noisy**:
-  3 of 5 seed pairs show K helping, 2 show it neutral/hurting.
-- **Verdict:** a *weak, positive* lean toward (a) — the kernel moves phrase-scale
-  structure toward the corpus on average — not a clean result. This is exactly
-  the kind of finding the spec wants recorded honestly rather than oversold. The
-  **blind A/B listening** (still pending) is the tie-breaker before treating the
-  theory as load-bearing enough to justify the M4 gate.
-- Raw numbers are auto-appended at the bottom of this file by `ablate_k.py`.
+The first ablation ran on the *frozen* orbit and is void. Re-run on the fixed
+pipeline, the honest picture is:
 
-## M4 — the panel  ✅ implemented; ⚠️ empirical gate not fully cleared
+- **Outcome (c) at the spec default.** With κ=1.0 the memory term
+  `κ·Σ K(t−s)·a(s)` is self-reinforcing — recent history points where the orbit
+  already is, so the tilt snowballs and **collapses the orbit** (down to ~4
+  charts). This is exactly the spec's outcome (c). The spec's first remedy
+  (clamp the spectral radius) does **not** help here: the instability is
+  accumulation of ~40 same-sign history steps, not peak mass. Normalizing the
+  memory knob to unit magnitude and lowering κ to **0.3** keeps the orbit alive.
+- **Outcome (b) at safe κ.** At κ=0.3, the objective metric shows **no clear
+  difference**: at the two measurable periods (~8.8 s, ~20.6 s) K-on mean |Δ|
+  0.032 vs K-off 0.011 — i.e. K-on is if anything slightly *further* from the
+  corpus, and per-seed it splits 2-help / 1-hurt. **Verdict: outcome (b)** — no
+  objective evidence the kernel restores phrase structure on this corpus.
+- **Structure is thin anyway.** Only 2 of 8 fitted modes have a measurable
+  phrase-scale period; the other 6 are overdamped. There may simply not be much
+  phrase-periodicity in the resolved coordinates for K to restore.
+- **What (b) means (per spec):** not a failure — a result. Before any M4 UI
+  work, the pivot is *"what projection makes K matter"*: the leading candidates
+  are beat-synchronous windows (align windows to bars so a(t) carries real
+  phrase periodicity) and **richer per-stem features** (see the note at the end
+  of this file). Blind A/B listening can still overturn a (b) if K is audibly
+  different; that check is outstanding.
+- Raw numbers are auto-appended at the bottom by `ablate_k.py`.
 
-The spec builds M4 only after a real-corpus M3 **outcome (a)** confirmed by
-blind listening. The objective metric leans (a) but the listening test is not
-done, so M4 is provided **ahead of a fully-cleared gate**, clearly flagged.
-Implementation is complete and smoke-tested (handshake, state + audio frames,
-control messages verified end-to-end without a browser):
+## M4 — the panel  ✅ implemented; ⛔ gate NOT cleared (M3 = outcome b)
+
+The spec builds M4 only after a real-corpus M3 **outcome (a)**. The corrected
+M3 result is **outcome (b)**, so by the spec the panel is *not* gate-cleared —
+the honest next step is the projection pivot, not UI. The panel is nonetheless
+fully implemented and smoke-tested (it's useful for exploring M2 steering and
+for re-judging once the projection improves), and clearly flagged as
+ahead-of-gate:
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -129,21 +148,48 @@ Launch: `python scripts/run_panel.py` → open the printed URL → "enable audio
 ## Definition of done — where we are
 
 - **M1 + M2**: implemented and **passing on real audio** (100% connectivity;
-  all macros live).
-- **M3**: implemented and run on real audio; objective metric **leans outcome
-  (a) but weakly/noisily**, with the structure it can measure being thin
-  (2 of 8 modes). Blind A/B listening is the outstanding step.
-- **M4**: implemented, flagged as ahead of a fully-cleared gate.
+  all 4 macros live; renders audible and traversing the corpus after the
+  orbit/render fixes).
+- **M3**: implemented and run on real audio. Corrected verdict: **outcome (c)
+  at κ=1 (memory collapses the orbit), outcome (b) at safe κ=0.3 (no objective
+  difference)**. Structure is thin (2 of 8 modes measurable). Not load-bearing
+  on this corpus/projection as-is; blind A/B is the outstanding tie-breaker.
+- **M4**: implemented but **gate not cleared** (needs outcome a). Kept as an
+  M2 exploration tool.
 - Every `[open]` decision logged in `DECISIONS.md`.
+
+## Next: the projection pivot (M3 outcome-b follow-up)
+
+Outcome (b) sends the project to *"what projection makes K matter."* Two
+concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
+
+1. **Beat-synchronous windows.** Use librosa beat tracking to align windows to
+   bars instead of a fixed 0.75 s grid, so a(t) carries genuine phrase
+   periodicity for the kernel to model. (Already the spec's first alternative
+   for dead macros; here it's the first alternative for a dead kernel.)
+2. **Per-stem decomposition (the "monolith" fix).** Today each window is one
+   156-d vector over the *whole* mix, so the atlas captures overall texture, not
+   "bass doing X while drums do Y." Decompose each track into a few classical
+   NN-free streams — **HPSS** (harmonic vs percussive, `librosa.effects.hpss`)
+   and/or a **multiband** split — extract features per stream, and either
+   concatenate them into a richer window vector or build parallel per-stem
+   operators orbited jointly. This is the most promising route to coordinates
+   with real structure for K to be load-bearing over. Planned as a `stems:`
+   config option in v0.2.
 
 ---
 
-## M3 ablation (raw, auto-appended by ablate_k.py — real corpus)
-- renders: 5 seed pairs × 3.0 min, kappa=1.0
+## M3 ablation (raw, auto-appended by ablate_k.py)
+
+*(void — frozen-orbit run, κ=1.0, kept for the record)*
+- 5 pairs × 3 min: K-on |Δ|=0.065 vs K-off 0.113 → looked like (a), but the
+  orbit was collapsed so this is not a valid trajectory. Superseded below.
+
+*(current — fixed pipeline, κ=0.3)*
+- renders: 3 seed pairs × 2.0 min, kappa=0.3
 - measured periods (s): [8.76, 20.61]  (6 overdamped modes excluded)
 - corpus autocorr:  [0.0014, -0.0162]
-- K-off autocorr:   [0.1521, 0.0585]  (mean |Δ|=0.1127)
-- K-on autocorr:    [0.1034, 0.0114]  (mean |Δ|=0.0648)
-- per-seed: K helps 3/5, neutral-or-hurts 2/5
-- objective verdict: (a) K moves toward corpus — weak/noisy positive
+- K-off autocorr:   [0.011, -0.0041]  (mean |Δ|=0.0108)
+- K-on autocorr:    [0.0499, -0.0008]  (mean |Δ|=0.0319)
+- objective verdict: **(b) no clear objective difference — a result, not a failure**
 - subjective blind A/B notes: _TODO human listener_

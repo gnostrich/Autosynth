@@ -48,6 +48,39 @@ One line of reasoning per call, as required by the spec's definition of done.
   (Markovian-embedding / mode-matching identity). Full derivation and the
   exact identity are in `basin/kernel.py`'s module docstring.
 
+## M2 — fixes found by listening to real renders
+
+- **Orbit re-localization** — propagating the full chart-mixture through P each
+  step (`m ← m@P`) converges to P's stationary distribution and *freezes* the
+  orbit (argmax stuck on one chart; ~16 distinct windows over 240 steps). Since
+  M3 explicitly needs a *moving* resolved trajectory a(t), the orbit instead
+  re-localizes each step: it samples a concrete chart from the emission mixture
+  and steps from there. This keeps it a moving walk (48–90 distinct charts, ~230
+  distinct windows over 240 steps) while still stepping through P and honoring
+  every tilt term. γ=0 stays a pure-PULL walk; κ=0 still reproduces M2
+  bit-for-bit (identical seeded rng draws). Unit tests updated/passing.
+
+- **Render loudness = fixed target, not chained** — the original "match RMS
+  across the splice" scaled each grain to the *previous grain's tail*, a
+  multiplicative chain that collapses to silence the moment a quiet grain
+  appears (observed: a 3-min render at RMS 0.001, effectively silent). Each
+  grain is now normalized to a fixed target RMS (0.2, gain clipped to
+  [0.25, 4×]); the equal-power crossfade handles splice continuity.
+
+- **16-bit PCM output** — `soundfile` writes a float64 array as a 64-bit float
+  WAV, which many players/browsers silently drop (plays as silence). Renders are
+  now written `subtype="PCM_16"`.
+
+- **Memory term normalized; κ default lowered to 0.3** — the M3 memory tilt
+  `κ·Σ K(t−s)·a(s)` is a *self-reinforcing* term (recent history points where
+  you are → memory reinforces staying), so an unnormalized windowed sum
+  (~40 same-sign steps) snowballs and collapses the orbit — this corpus's
+  instance of M3 **outcome (c)**. Clamping the kernel's L1 mass does not fix it
+  (the instability is accumulation, not peak). We normalize `memory_knob` to
+  unit magnitude so κ is a well-scaled strength, and lower the default κ from
+  1.0 to 0.3: κ≈0.3–0.5 adds phrase-memory while keeping the orbit alive; κ≳0.7
+  over-sticks. κ=0 still reproduces M2 exactly.
+
 ## M4
 
 - **Websocket server** — implemented directly on the Python standard library
