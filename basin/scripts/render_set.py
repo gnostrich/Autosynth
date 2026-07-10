@@ -84,12 +84,13 @@ def main() -> None:
           f"voices={voices}, mode={args.mode}")
 
     shared: dict = {}
+    modes = (inst["eigvals"], inst["eig_right"])
     if args.mode == "flow":
         orbits, readers = [], []
         for vi, stem in enumerate(voices):
             vseed = args.seed + 101 * vi
             orbits.append(Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
-                                seed=vseed))
+                                seed=vseed, modes=modes))
             readers.append(GrainReader(corpus, atlas.memberships, cfg,
                                        seed=vseed, stem=stem,
                                        shared_cache=shared, psi=psi))

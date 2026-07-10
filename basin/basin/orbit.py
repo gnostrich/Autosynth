@@ -39,7 +39,7 @@ class Orbit:
 
     def __init__(self, P: np.ndarray, psi: np.ndarray, cfg: dict,
                  knob_vector: np.ndarray | None = None,
-                 kernel=None, seed: int = 0):
+                 kernel=None, seed: int = 0, modes=None):
         self.P = P
         self.psi = psi                       # [n_charts, n_macros]
         self.n_charts = P.shape[0]
@@ -55,26 +55,19 @@ class Orbit:
         self.kernel = kernel                 # None → pure M2
         self.rng = np.random.default_rng(seed)
 
-        # Momentum orbit (brachistochrone principle): a damped oscillator per
-        # macro, (γ, ω) taken from the corpus-fitted kernel modes — the
-        # measured signature of the genre's own build/release dynamics. The
-        # oscillator is driven by the walk's *actual* motion and acts as one
-        # more additive tilt (β_p·ψ·p); momentum=0 reproduces the memoryless
-        # walk exactly (p is updated deterministically but contributes 0).
+        # Momentum orbit v2 (eigenmode flywheel): momentum lives in the
+        # transfer operator's own oscillatory eigenmodes. For each complex
+        # pair λ_i, v_i, keep a flywheel ζ_i = Σ_s λ_i^{t−s}·z_i(s) — the
+        # walk's history convolved with the mode's own damping+rotation, i.e.
+        # the GLE memory integral evaluated in the operator's eigenbasis. The
+        # tilt pushes toward the phase-advanced field Re[λ_i ζ_i v_i(chart)].
+        # Everything (damping |λ|, frequency arg λ, mode shapes) is spectral
+        # data of P itself; β_p is the only strength scalar. momentum=0
+        # reproduces the memoryless walk bit-for-bit.
         self.beta_p = float(cfg.get("momentum", 0.0))
-        g, w = [], []
-        modes = getattr(kernel, "modes", None) if kernel is not None else None
-        for m in range(self.n_macros):
-            if modes is not None and m < len(modes) and len(modes[m]):
-                g.append(float(modes[m][0][1]))     # fitted damping
-                w.append(float(modes[m][0][2]))     # fitted frequency (rad/step)
-            else:
-                g.append(0.1)
-                w.append(0.2)
-        self.osc_gamma = np.array(g)
-        self.osc_omega = np.array(w)
-        self.p = np.zeros(self.n_macros)
-        self._a_prev = None
+        self._fly = None
+        if self.beta_p != 0.0:
+            self._init_modes(modes)
 
         self.visitation = np.zeros(self.n_charts)
         self.visit_decay = 0.9
@@ -82,6 +75,33 @@ class Orbit:
         self._m = None
 
     # -- initialisation -----------------------------------------------------
+
+    def _init_modes(self, modes, k_modes: int = 4) -> None:
+        """Select the top oscillatory eigenmodes of P for the flywheel.
+
+        ``modes`` is an optional ``(eigvals, right_vecs)`` pair from the
+        instrument file (sorted by |λ|); if absent, P is eigendecomposed here.
+        One member of each conjugate pair is kept (positive imaginary part).
+        """
+        if modes is None:
+            import scipy.linalg
+            vals, vecs = scipy.linalg.eig(self.P)
+            order = np.argsort(-np.abs(vals))
+            vals, vecs = vals[order], vecs[:, order]
+        else:
+            vals, vecs = modes
+        idx = [i for i in range(len(vals)) if np.imag(vals[i]) > 1e-9][:k_modes]
+        if not idx:
+            self._fly = np.zeros(0, dtype=complex)
+            self._mode_vals = np.zeros(0, dtype=complex)
+            self._mode_vecs = np.zeros((self.n_charts, 0), dtype=complex)
+            self._mode_left = np.zeros((0, self.n_charts), dtype=complex)
+            return
+        self._mode_vals = np.asarray(vals)[idx]
+        self._mode_vecs = np.asarray(vecs)[:, idx]           # [n_charts, K]
+        # left eigen-rows (biorthogonal projections) via pseudo-inverse
+        self._mode_left = np.linalg.pinv(np.asarray(vecs))[idx, :]
+        self._fly = np.zeros(len(idx), dtype=complex)
 
     def seed_state(self, chart: int | None = None) -> np.ndarray:
         """Start the orbit on a single chart (default: a random one)."""
@@ -109,6 +129,22 @@ class Orbit:
             macro_knob = macro_knob / n
         return self.psi @ macro_knob
 
+    def _momentum_tilt(self) -> np.ndarray:
+        """Phase-advanced eigenmode field, standardized over charts.
+
+        ``field(c) = Σ_i Re[λ_i·ζ_i·v_i(c)]`` — where each oscillatory mode's
+        flywheel says the state should rotate to next. Smooth by construction:
+        the field turns at arg λ per step and the flywheel integrates
+        ~1/(1−|λ|) steps of history, so it steers drift, not per-step reads.
+        """
+        if self.beta_p == 0.0 or self._fly is None or not len(self._fly):
+            return np.zeros(self.n_charts)
+        field = np.real(self._mode_vecs @ (self._mode_vals * self._fly))
+        s = field.std()
+        if s > 1e-12:
+            field = field / s
+        return self.beta_p * field
+
     def _predict(self, m: np.ndarray) -> np.ndarray:
         """PULL(+kernel) prediction of the next resolved coordinate.
 
@@ -132,7 +168,7 @@ class Orbit:
         log_tilt = (self.beta * self._bias_align()
                     - self.gamma * self.visitation
                     + self.kappa * self._memory_tilt()
-                    + self.beta_p * (self.psi @ self.p))
+                    + self._momentum_tilt())
         # stabilise exp
         log_tilt = log_tilt - log_tilt.max()
         raw = pulled * np.exp(log_tilt)
@@ -151,15 +187,11 @@ class Orbit:
         self.visitation = self.visit_decay * self.visitation + m_new
         top = np.nonzero(m_new)[0]
 
-        # momentum update: velocity accumulation with fitted damping, plus a
-        # harmonic restoring force −ω²a (potential energy in diffusion coords)
-        # — downhill motion grows |p| (the drop's rush), climbing bleeds it
-        # (breakdown tension), and ω sets the corpus's own build/release period.
-        if self._a_prev is not None:
-            self.p = (np.exp(-self.osc_gamma) * self.p
-                      + (a - self._a_prev)
-                      - (self.osc_omega ** 2) * a)
-        self._a_prev = a.copy()
+        # flywheel update: rotate+damp by the mode's own eigenvalue, entrain
+        # to the walk's actual state — ζ_i(t) = Σ_s λ_i^{t−s} z_i(s).
+        if self._fly is not None and len(self._fly):
+            z = self._mode_left @ m_new
+            self._fly = self._mode_vals * self._fly + z
 
         # Re-localize to a concrete chart sampled from the emission mixture.
         # Propagating the full mixture through P instead converges to the

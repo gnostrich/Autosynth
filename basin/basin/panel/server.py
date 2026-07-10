@@ -71,7 +71,8 @@ class PanelEngine:
         self.lock = threading.Lock()
 
         self.orbit = Orbit(self.P, self.psi, self.cfg, knob_vector=self.knob,
-                           kernel=self.kernel, seed=0)
+                           kernel=self.kernel, seed=0,
+                           modes=(self.eigvals, self.eig_right))
         self.orbit.seed_state()
         self.reader = GrainReader(self.corpus, self.atlas.memberships, self.cfg,
                                   seed=0, psi=self.psi)

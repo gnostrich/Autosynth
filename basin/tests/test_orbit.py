@@ -68,7 +68,9 @@ def test_momentum_on_changes_trajectory_and_stays_sane(toy_memberships):
     assert not all(np.allclose(a.m, b) for a, b in zip(traj, off))
     for st in traj:
         assert abs(st.m.sum() - 1.0) < 1e-9
-    assert np.isfinite(o.p).all()
+    assert o._fly is not None and np.isfinite(o._fly).all()
+    # flywheel is bounded: geometric accumulation with |lambda| < 1
+    assert np.abs(o._fly).max() < 1e3
 
 
 def test_momentum_composes_with_knobs_and_kernel(toy_memberships):
