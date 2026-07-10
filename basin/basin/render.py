@@ -75,6 +75,39 @@ class GrainReader:
         rand_d2 = ((X[i1] - X[i0]) ** 2).sum(1)
         self._flow_scale2 = float(np.median(rand_d2) + 1e-9) \
             / (3.0 * np.log(max(n, 2)))
+        # Presence weight: a voice belongs where its channel exists. Without
+        # this, silence is an ABSORBING STATE of the flux objective (two
+        # silent windows splice perfectly), and the whole walk carries a
+        # dull-material bias — found by listening at the 36-minute horizon:
+        # renders decayed stepwise into permanent silence. The weight is the
+        # channel's own measured per-window energy (un-standardized from the
+        # stored features), as a log term — silence self-penalizes exactly as
+        # much as the channel is absent.
+        stems_mode = str(cfg.get("stems", "none"))
+        if self.stem.startswith("ch") and stems_mode == "nmf":
+            pdim = 78 + int(self.stem[2:])
+        elif self.stem == "percussive" and stems_mode == "hpss":
+            pdim = 142
+        else:
+            pdim = 64                       # mix / harmonic: mean RMS dim
+        e = corpus.raw[:, pdim] * corpus.scale[pdim] + corpus.mean[pdim]
+        e = np.maximum(e, 0.0)
+        pos = e[e > 0]
+        floor = float(np.quantile(pos, 0.10)) if pos.size else 1.0
+        self._log_presence = np.log(e + floor)
+        self._log_presence -= self._log_presence.max()
+
+        # Revisit pressure (emission-level wanderlust): healthy flow never
+        # replays a window (successor chains advance), so this penalty fires
+        # ONLY on literal repetition — it breaks the small recurrent cycles
+        # the flux objective can trap into (measured: a 12-window cycle held
+        # for 30 minutes at the 36-min horizon). Strength = γ; memory
+        # timescale derived from the corpus (quarter median track length).
+        med_track = float(np.median([e - s for (s, e) in corpus.track_bounds]))
+        self._revisit_decay = 0.5 ** (4.0 / max(med_track, 4.0))
+        self._revisit = np.zeros(len(self.handles))
+        self._wander = float(cfg.get("gamma", 0.3))
+
         self._head = getattr(corpus, "head_frames", None)
         self._mid = getattr(corpus, "mid_frames", None)
         if self._head is not None and self._mid is not None and self._head.size:
@@ -171,11 +204,12 @@ class GrainReader:
             tilt = np.zeros(n)
 
         if self._prev_emitted is None:
-            logp = tilt.astype(float).copy()
+            logp = tilt.astype(float) + self._log_presence
         else:
             s = self._successor(self._prev_emitted)
             d2 = ((self._flow_X - self._flow_X[s]) ** 2).sum(1)
-            logp = -d2 / (2.0 * self._flow_scale2) + tilt
+            logp = (-d2 / (2.0 * self._flow_scale2) + tilt
+                    + self._log_presence - self._wander * self._revisit)
             if self._flux_scale2 is not None:
                 # spectral flux across the actual splice (the paper's loss)
                 flux = ((self._head - self._mid[self._prev_emitted]) ** 2
@@ -187,7 +221,7 @@ class GrainReader:
         if self.force_jump and self._prev_emitted is not None:
             # trigger gate: one step of pure field — drop the flow term so the
             # walk's tilt alone picks the destination, and bar the successor.
-            logp = tilt.astype(float).copy()
+            logp = tilt.astype(float) + self._log_presence
             logp[self._successor(self._prev_emitted)] = -np.inf
             self.force_jump = False
 
@@ -202,6 +236,8 @@ class GrainReader:
         self.last_jump = (succ is None) or (w != succ)
         self.n_flow_steps += 1
         self.n_flow_jumps += int(self.last_jump)
+        self._revisit *= self._revisit_decay
+        self._revisit[w] += 1.0
         self._prev_emitted = w
         return w
 
