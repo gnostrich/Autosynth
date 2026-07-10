@@ -54,10 +54,13 @@
   <button id="audiobtn">enable audio</button>
 </header>
 <main id="panel"></main>
-<p class="hint">everything is measured, nothing pre-named: modes are ordered by
-   their eigenvalue |λ| (slow → fast); labels show measured values only.
-   Double-click a name to give it yours. Fader: slide/scroll = lean,
-   double-click = zero, grip = hold. loop = keep this phrase · jump = move on.</p>
+<p class="hint">
+   the running update rule (the constants are its coefficients, nothing more):<br>
+   <code>m′ ∝ (m·P) · exp( β·lean − γ·visits + κ·memory + β_p·momentum )ᵗᵃᵘ</code>
+   &nbsp;·&nbsp; <code>χ</code> couples the voices.<br>
+   modes are numbered in measured order (|λ|, slow → fast) — the numbers are
+   handles, not names; double-click to give yours. Fader: slide/scroll = lean,
+   double-click = zero, grip = hold · loop = keep this phrase · jump = move on.</p>
 <script>
 const TAU = Math.PI * 2;
 let ws, audioCtx = null, playHead = 0, ringNode = null;

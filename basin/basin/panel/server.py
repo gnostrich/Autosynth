@@ -309,7 +309,7 @@ class PanelEngine:
             macros.append({
                 "index": int(mi),
                 "lam": float(np.abs(self.eigvals[mi])),
-                "name": self.names.get(f"macro:{mi}", f"macro {k+1}"),
+                "name": self.names.get(f"macro:{mi}", str(k + 1)),
                 "position": float(self._mean_a[k]),            # true position
                 "innovation": float(self._mean_innov[k]),      # beyond prediction
                 "lean": float(self.slider_knob[k]),            # fader position
@@ -322,11 +322,13 @@ class PanelEngine:
         if fly is not None and len(fly):
             self._fly_max = np.maximum(self._fly_max[:len(fly)] * 0.995,
                                        np.abs(fly))
+            n_macros_shown = len(self.macro_indices)
             for i in range(len(fly)):
                 lam = ref_orbit._mode_vals[i]
                 grooves.append({
                     "index": i,
-                    "name": self.names.get(f"groove:{i}", f"groove {i+1}"),
+                    "name": self.names.get(f"groove:{i}",
+                                           str(n_macros_shown + i + 1)),
                     "phase": float(np.angle(fly[i])),
                     "depth": float(np.abs(fly[i]) / self._fly_max[i]),
                     "freq": float(np.angle(lam)),
