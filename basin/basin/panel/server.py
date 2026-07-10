@@ -69,6 +69,7 @@ class PanelEngine:
         self.knob = np.zeros(self.psi.shape[1])
         self.slider_knob = np.zeros(self.psi.shape[1])   # absolute fader leans
         self.nudge_knob = np.zeros(self.psi.shape[1])    # transient, decays
+        self._lean_burst = 0.0               # fast-throw detector → jump gate
         self.grip = {}                       # macro idx -> held value
         self.lock = threading.Lock()
 
@@ -136,10 +137,19 @@ class PanelEngine:
                 self.nudge_knob[macro] += delta
 
     def set_lean(self, macro: int, value: float):
-        """Absolute fader lean in σ units: holds until the fader moves."""
+        """Absolute fader lean in σ units: holds until the fader moves.
+
+        Moving a fader also carries an *impulse* (the derivative of a position
+        command is a velocity kick), and a fast hard throw fires the jump gate
+        — so big gestures are heard immediately instead of waiting for the
+        next natural transition.
+        """
         with self.lock:
             if 0 <= macro < len(self.slider_knob):
+                delta = float(value) - self.slider_knob[macro]
                 self.slider_knob[macro] = float(value)
+                self.nudge_knob[macro] += delta          # transient kick
+                self._lean_burst += abs(delta)           # throw-speed detector
 
     def set_grip(self, macro: int, on: bool, value: float = 0.0):
         with self.lock:
@@ -224,6 +234,16 @@ class PanelEngine:
     def _apply_decay_and_grip(self):
         self.nudge_knob *= 0.9                          # transient leans decay
         self.knob = self.slider_knob + self.nudge_knob  # faders hold absolutely
+        # a fast hard fader throw (≳1σ within ~a step) fires the jump gate so
+        # the gesture is heard at the next grain instead of the next natural
+        # transition
+        if self._lean_burst > 1.0:
+            for v in self.voices:
+                if v["on"] and not v["loop"]:
+                    v["reader"].force_jump = True
+            self._lean_burst = 0.0
+        else:
+            self._lean_burst *= 0.6
         for macro, held in self.grip.items():
             # clamp: strong restoring bias toward the held coordinate value
             self.knob[macro] += 3.0 * (held - self._mean_a[macro])

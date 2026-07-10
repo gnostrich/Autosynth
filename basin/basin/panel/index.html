@@ -78,6 +78,9 @@ function playPCM(int16, sr) {
   src.buffer = buf; src.connect(audioCtx.destination);
   const now = audioCtx.currentTime;
   if (playHead < now) playHead = now + 0.1;
+  // cap the backlog: unbounded queue = listening seconds in the past, which
+  // kills control feel. If we're >1.5s behind live, skip ahead.
+  if (playHead - now > 1.5) playHead = now + 0.4;
   src.start(playHead);
   playHead += buf.duration;
 }
