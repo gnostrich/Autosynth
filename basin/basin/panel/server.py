@@ -321,7 +321,9 @@ class PanelEngine:
             free = [v for v in enabled if not v["loop"]]
             for v in free:
                 # velocity coupling: voices follow each other's motion, not
-                # position (position coupling parks the group at a pole)
+                # position (position coupling parks the group at a pole).
+                # The motion signal is smoothed at the corpus's measured
+                # chart-correlation length — per-beat velocity is jitter.
                 others = [u.get("da", u["a"] * 0.0) for u in enabled
                           if u is not v]
                 v["orbit"].knob = self.knob + (
@@ -330,7 +332,9 @@ class PanelEngine:
                 # gate = coupling: emission stays inside the walk's region,
                 # so the walk roams free and faders steer territory directly
                 w = v["reader"].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
-                v["da"] = st.a - v["a"]
+                dec = 0.5 ** (1.0 / max(v["reader"].mean_chart_run(), 1.0))
+                v["da"] = dec * v.get("da", st.a * 0.0) \
+                    + (1.0 - dec) * (st.a - v["a"])
                 v["a"], v["st"], v["w"] = st.a, st, w
             if free:
                 self._mean_a = np.mean([v["a"] for v in free], axis=0)

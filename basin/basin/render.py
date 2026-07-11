@@ -249,6 +249,27 @@ class GrainReader:
                 return int(d)
         return max(1, h.n_samples // 2)
 
+    def mean_chart_run(self) -> float:
+        """The corpus's own chart-correlation length: mean run of consecutive
+        same-chart windows along tracks (measured constant, used as the
+        co-movement smoothing timescale)."""
+        if not hasattr(self, "_mean_run"):
+            wb = np.asarray(np.argmax(self.memberships, axis=1)).ravel()
+            runs, cur, r = [], None, 0
+            for w in range(len(self.handles)):
+                same_track = (w > 0 and self.handles[w].track_id
+                              == self.handles[w - 1].track_id)
+                if same_track and wb[w] == cur:
+                    r += 1
+                else:
+                    if r:
+                        runs.append(r)
+                    cur, r = wb[w], 1
+            if r:
+                runs.append(r)
+            self._mean_run = float(np.mean(runs)) if runs else 1.0
+        return self._mean_run
+
     def median_stride(self) -> int:
         if not hasattr(self, "_med_stride"):
             ds = [self.handles[i + 1].start_sample - self.handles[i].start_sample
@@ -336,7 +357,14 @@ class GrainReader:
         p = np.exp(logp)
         p /= p.sum()
         self.last_p = p                    # the live flow field (for displays)
-        w = int(self.rng.choice(n, p=p))
+        # Ridge read: ONE die in the machine — the walk. The reader is the
+        # deterministic surface of the trace: it follows the maximum of the
+        # measured evidence (the successor, while the region holds) and
+        # switches exactly when the walk's region moves the ridge. Sampling
+        # here was a second, extrinsic source of randomness — loop-based
+        # material is full of near-duplicate windows with genuinely ~0 splice
+        # cost, and drawing among them every beat was the mid-phrase mash.
+        w = int(np.argmax(logp))
 
         succ = None if self._prev_emitted is None \
             else self._successor(self._prev_emitted)
@@ -497,6 +525,12 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
     n_macros = orbits[0].n_macros
     vs = [{"t": 0, "i": 0, "a": np.zeros(n_macros), "da": np.zeros(n_macros)}
           for _ in range(V)]
+    # co-movement is read at the landscape's own correlation length: the
+    # corpus's mean chart-run (measured). Per-step velocity in the full
+    # coordinate space is mostly jitter; coupling to it buffets the gates
+    # every beat (heard as fast mash-switching). The EMA half-life is the
+    # measured constant, not a chosen one.
+    ema_decay = 0.5 ** (1.0 / max(readers[0].mean_chart_run(), 1.0))
 
     while True:
         live = [v for v in range(V) if vs[v]["t"] < total]
@@ -516,7 +550,8 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
         st = orbits[v].step()
         # gate = coupling; see render_flow — the walk stays free to navigate
         w = readers[v].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
-        vs[v]["da"] = st.a - vs[v]["a"]
+        vs[v]["da"] = (ema_decay * vs[v]["da"]
+                       + (1.0 - ema_decay) * (st.a - vs[v]["a"]))
         vs[v]["a"] = st.a
         stride = readers[v].native_stride(w)
         glen = stride + xfade

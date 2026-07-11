@@ -268,3 +268,25 @@ significance cutoff — ears terminate, not machinery. First 4 columns are
 bit-identical to the old macros (existing leans keep meaning). Measured:
 leaning the clock pair ±2σ swings mean step 0.49s ↔ 0.76s (54%) purely by
 routing — no stretching, no rate rule.
+
+## One die, one flow (2026-07-11, after "beat-coherent but mashing / fast switching")
+The mid-phrase mash had two sources, both extrinsic freedoms, both removed:
+1. **The reader's die.** Emission sampled p(w) every beat; loop-based
+   material is full of near-duplicate windows with genuinely ~0 splice
+   cost, so sampling drew a different parallel bar every few beats. The
+   reader is now the DETERMINISTIC surface of the walk (argmax of the
+   measured evidence): it rides the successor while the region holds and
+   switches exactly when the walk moves the ridge. One die in the machine —
+   the trace itself. (Jump rate 0.52 → ~0.27; measured runs match the
+   corpus's own chart-run statistics.)
+2. **Independent voice walks.** In the corpus, channels are perfectly
+   co-located — the trace is ONE flow; channels are emission surfaces.
+   Three separately-walking coupled voices was an invented freedom heard as
+   vertical mash (7–14 tracks blended per minute). Default rendering is now
+   a single walk on the whole-mix surface; per-channel voices remain a
+   PERFORMANCE mode (panel), with the coupling signal smoothed at the
+   corpus's measured chart-correlation length (mean run 4.1 windows).
+Measured single-walk zero-lean behavior (20-min horizon): track changes
+every 1–2 min, 16–17 tracks (seeds 5/40); seed 21 parks in the Baryon
+pocket — that track is a genuinely self-contained region of this corpus
+(its basin is single-track); escape is the performer's move, not a rule.
