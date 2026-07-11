@@ -297,3 +297,12 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   loudness envelope 0.05→0.08 (first unattended render with an arc).
 - Channel splits now disk-cached (2.3 GB, one-time per corpus) — path-state
   blending made per-render recomputation slower than realtime.
+
+## Pacing-arc performance (2026-07-11)
+- `performed_arc` (10 min, 3 voices, path-state, full landscape): the set's
+  speed arc as a knob journey on the two measured clock-carrying directions
+  (eigs 11+7). Composed: slow open → build → peak → breakdown → release.
+- Measured pacing s/step per minute: 0.79 0.73 0.73 0.53 0.54 0.60 0.69
+  0.75 0.67 0.67 — the arc realized purely by routing; playback rate
+  untouched. Most dynamic loudness envelope of any render (0.05–0.10).
+- Zero new machinery: leans + velocity coupling + logged watchdog (silent).
