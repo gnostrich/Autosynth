@@ -518,3 +518,17 @@ SECTION altitude (concentration EMERGES from rare unsynchronized
 basin-crossings — no procedural hold), lagged vertical coupling, shared
 clock, no presence. Sludge gate = stack MUTATION rate (channels changing
 track per step), not track count (cross-track stacks are the goal).
+
+## Bundle-anchored blend (2026-07-11): the resolution
+Corpus configs are ALWAYS bundles (one track = all its channels) — the
+joint measure lives on the bundle diagonal. channel_set failed (flat
+7-track wash) because independent channel walks float OFF the diagonal
+where the corpus never goes: 7 unrelated regions at once. Fix (the
+listener's track-awareness made concrete): the joint mix walk defines the
+coherent REGION each step (one musical moment-type, beat-locked, dynamic
+— faithful_set quality); ALL channels share that region (never a wash);
+each channel sources its stem from a possibly-different TRACK's version of
+that same region (cross-track timbral blend, region-coherent, beat-compat
+free by region-tempo-purity). Track = the bundle-anchor; per-channel
+source-track = the mixing DOF; mix_depth = stance (0 = plain mix, higher =
+deeper stem-blend). `blend_set.py`, gate = dynamics return + coherence.
