@@ -46,3 +46,19 @@ the conductor (joint walk, section altitude, arc-driven) crossing
 basins; at an event channels re-source ONE PER STEP (staggered blend)
 under the conductor conditional; a channel's track running out is its
 own event. Diversity across time, concentration at each instant.
+
+## The brachistochrone rule (2026-07-11, the listener's standing conjecture)
+Adopted as the traversal law: the natural optimal route between regions
+is the LEAST-ACTION PATH of the measured flow — minimize Σ −log P(edge)
+(the large-deviations action), i.e. the geodesic of the log-measure
+metric. This is literally the brachistochrone property: the optimum is
+not the straight line in diffusion coordinates — it dips through
+high-flow corridors (dense, cheap-per-step regions) the way the
+brachistochrone dips to gain speed. A lean tilts the edge costs, so the
+performer shapes the gravity and the landscape solves the curve.
+v9 implements it at transitions: conductor events trigger a Dijkstra
+corridor (edge cost −log P, joint regions); the shared cursor TRAVELS
+the corridor, dwelling each region for its own measured mean run —
+transitions become journeys through connector material instead of v8's
+single-hop teleports. No constants: costs, dwells, endpoints all
+measured; the arc drives the conductor.
