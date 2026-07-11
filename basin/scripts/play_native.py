@@ -27,26 +27,63 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import numpy as np  # noqa: E402
 
 
-def _flow_rows(state, stems_order, n_tracks, bins):
+def _stem_hue(i):
+    """Golden-angle hue per channel — same identity scheme as the web panel."""
+    return (i * 137.508) % 360.0
+
+
+def _hsv_hex(h, s, v):
+    import colorsys
+    r, g, b = colorsys.hsv_to_rgb((h % 360) / 360.0, s, v)
+    return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+
+def _stem_luts(stems_order):
+    """Per-stem color lookup [content 0-9][heat 0-9]: each channel keeps its
+    own hue (identity), brightness = measured content, live field pushes
+    toward white. Red is reserved for playheads."""
+    luts = {}
+    for i, stem in enumerate(stems_order):
+        hue = 210.0 if stem == "mix" else _stem_hue(i)
+        lut = []
+        for b in range(10):
+            row = []
+            for h in range(10):
+                v = min(1.0, 0.10 + 0.055 * b + 0.09 * h)
+                sat = max(0.15, 0.75 - 0.07 * h)   # field whitens the cell
+                row.append(_hsv_hex(hue, sat, v))
+            lut.append(row)
+        luts[stem] = lut
+    return luts
+
+
+def _flow_rows(state, stems_order, n_tracks, bins, luts):
     """Rows of hex colors for the flow image: per track, one sub-row per
-    stem — base = measured decomposition, green = live sampling field,
-    red = playhead. Pure function (testable headless)."""
+    stem. hue = channel, brightness = measured content, whiter = live
+    sampling field, red = playhead. Pure function (testable headless)."""
     content = state["content"]
     heat_by_stem = {f["stem"]: f for f in state["flow"]}
-    # color lookups: base 0-9 x heat 0-9
-    lut = [[f"#{16 + 6 * b:02x}{16 + 6 * b + 18 * h:02x}{24 + 5 * b:02x}"
-            for h in range(10)] for b in range(10)]
     rows = []
     for t in range(n_tracks):
         for stem in stems_order:
             base = content.get(stem, [[0] * bins] * n_tracks)[t]
             f = heat_by_stem.get(stem)
             heat = f["heat"][t] if (f and f.get("heat")) else [0] * bins
+            lut = luts[stem]
             row = [lut[min(base[x], 9)][min(heat[x], 9)] for x in range(bins)]
             if f and f["track"] == t:
                 row[min(int(f["pos"] * bins), bins - 1)] = "#ff5050"
             rows.append("{" + " ".join(row) + "}")
     return " ".join(rows)
+
+
+def _track_mass(state, n_tracks):
+    """Per-track live field mass (sum over bins of the first active voice's
+    heat) — one waterfall slice."""
+    for f in state["flow"]:
+        if f.get("heat"):
+            return [sum(r) for r in f["heat"]]
+    return [0] * n_tracks
 
 
 def main():
@@ -171,8 +208,26 @@ def main():
     bank.update_idletasks()
     canvas.configure(scrollregion=canvas.bbox("all"))
 
-    # ---- flow view: tracks × channel sub-rows, live field ---------------------
-    NAME_W, ZX, ZY = 220, 40, 3
+    # ---- flow views ----------------------------------------------------------
+    # left:  tracks × channel sub-rows (hue = channel, brightness = measured
+    #        content, whiter = live field, red = playhead)
+    # right: 3D waterfall — the live field's per-track mass receding through
+    #        time (newest slice at the front); lean a fader and watch the
+    #        ridge bend through the depth axis
+    luts = _stem_luts(stems_order)
+    legend = ttk.Frame(root)
+    legend.pack(fill="x", padx=8)
+    tk.Label(legend, text="hue = channel:", font=("TkDefaultFont", 8)
+             ).pack(side="left")
+    for i, stem in enumerate(stems_order):
+        tk.Label(legend, text=stem, fg=luts[stem][9][2], bg="#101018",
+                 font=("TkDefaultFont", 8), padx=4).pack(side="left")
+    tk.Label(legend,
+             text="   brightness = measured content · whiter = live field · "
+                  "red = playhead (where the voice reads NOW)",
+             font=("TkDefaultFont", 8)).pack(side="left")
+
+    NAME_W, ZX, ZY = 210, 24, 3
     n_rows = n_tracks * len(stems_order)
     flow_wrap = ttk.Frame(root)
     flow_wrap.pack(fill="both", expand=True, padx=6, pady=4)
@@ -181,16 +236,28 @@ def main():
     fvbar = ttk.Scrollbar(flow_wrap, orient="vertical", command=fcv.yview)
     fcv.configure(yscrollcommand=fvbar.set,
                   scrollregion=(0, 0, NAME_W + BINS * ZX, n_rows * ZY + 8))
-    fvbar.pack(side="right", fill="y")
+    fvbar.pack(side="left", fill="y")
     fcv.pack(side="left", fill="both", expand=True)
     img_small = tk.PhotoImage(width=BINS, height=n_rows)
     img_ref = {"zoomed": None}
     for t in range(n_tracks):
         fcv.create_text(
             4, t * len(stems_order) * ZY + 4, anchor="nw",
-            text=eng.track_names[t][:34], fill="#c8c8d8",
+            text=eng.track_names[t][:32], fill="#c8c8d8",
             font=("TkDefaultFont", 7))
     img_item = fcv.create_image(NAME_W, 0, anchor="nw")
+
+    # 3D waterfall (time depth)
+    import collections as _c
+    WF_D = 64                        # depth slices kept (~30 s at step rate)
+    wf_hist = _c.deque(maxlen=WF_D)
+    WFW, WFH = 420, n_rows * ZY + 8
+    wcv = tk.Canvas(flow_wrap, bg="#0b0b12", width=WFW, height=WFH)
+    wcv.pack(side="left", fill="y", padx=(6, 0))
+    track_hue = [ (t * 137.508) % 360 for t in range(n_tracks) ]
+    wcv.create_text(6, 4, anchor="nw", fill="#c8c8d8",
+                    font=("TkDefaultFont", 8),
+                    text="flow through time  (front = now)")
 
     status = ttk.Label(root, text="", justify="left",
                        font=("TkFixedFont", 9))
@@ -201,10 +268,38 @@ def main():
             return
         st = shared["state"]
         if st is not None:
-            img_small.put(_flow_rows(st, stems_order, n_tracks, BINS),
+            img_small.put(_flow_rows(st, stems_order, n_tracks, BINS, luts),
                           to=(0, 0))
             img_ref["zoomed"] = img_small.zoom(ZX, ZY)
             fcv.itemconfig(img_item, image=img_ref["zoomed"])
+            # 3D waterfall: newest slice at the front, receding into depth
+            wf_hist.append(_track_mass(st, n_tracks))
+            wcv.delete("wf")
+            D = len(wf_hist)
+            bw = (WFW - 90) / max(n_tracks, 1)
+            for di in range(D):               # oldest first (painters order)
+                slice_ = wf_hist[di]
+                depth = D - 1 - di            # 0 = newest
+                shrink = 1.0 - 0.55 * depth / WF_D
+                y0 = WFH - 22 - depth * (WFH - 60) / WF_D
+                x_off = 12 + depth * 1.1
+                mx = max(slice_) or 1
+                for t in range(n_tracks):
+                    m = slice_[t] / mx
+                    if m < 0.04:
+                        continue
+                    h = m * 52 * shrink
+                    x = x_off + t * bw * shrink
+                    fade = 0.25 + 0.75 * (1 - depth / WF_D)
+                    col = _hsv_hex(track_hue[t], 0.6, 0.25 + 0.75 * fade * m)
+                    wcv.create_rectangle(x, y0 - h, x + bw * shrink * 0.8,
+                                         y0, fill=col, outline="",
+                                         tags="wf")
+            # front-edge track ticks
+            for t in range(0, n_tracks, 2):
+                wcv.create_text(12 + t * bw, WFH - 18, anchor="nw",
+                                text=str(t), fill="#8888a0",
+                                font=("TkDefaultFont", 7), tags="wf")
             lines = []
             for f in st["flow"]:
                 if f["track"] >= 0:
