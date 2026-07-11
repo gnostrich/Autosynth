@@ -369,3 +369,18 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   configuration choice (v4's architecture) or a conductor above the
   channel walks (hierarchy: the joint flow as the channels' grammar).
 - Both delivered; ears decide the operating point.
+
+## v6 conducted ensemble (2026-07-11)
+- Delivered (2 parts). Metrics: clock 0.43–0.79s with real per-minute
+  motion (tempo DOF exercised at last — arc-driven conductor); territory
+  travels; BUT distinct source tracks/step 5.4 (near v5's 4.8) —
+  the conductor conditional P(channel|joint) is loose (joint charts pool
+  material broadly), so vertical density is high.
+- Structural law from v2–v6: shared configuration = coherent (v4, one-
+  flow); independent peers = sludge (v2/v3/v5), regardless of pairwise
+  coupling strength. Freedom must live UNDER the configuration.
+- If v6's ears-verdict = sludge: identified tightening (no constants) —
+  make the conductor conditional the channel walks' ROUTING (pull =
+  P(r_k | joint path)) instead of additive evidence, i.e. channels as
+  conditional walks of the conductor, the same sovereignty pattern as
+  chart→window one level up.
