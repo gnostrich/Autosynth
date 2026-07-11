@@ -408,7 +408,9 @@ function build(state) {
       send({type:'grip', macro:i, on, value:k.lastPos || 0}); };
     row.appendChild(inp); row.appendChild(grip); cell.appendChild(row);
     addName(cell, m.name, 'macro:' + m.index);
-    addSub(cell, '|λ| ' + (m.lam != null ? m.lam.toFixed(3) : '—'));
+    addSub(cell, '|λ| ' + (m.lam != null ? m.lam.toFixed(3) : '—')
+      + (m.clk != null && Math.abs(m.clk) >= 0.15
+         ? ' · clk ' + (m.clk > 0 ? '+' : '') + m.clk.toFixed(2) : ''));
     panel.appendChild(cell);
   });
   // oscillatory modes: SAME control as every other mode (uniform type) —

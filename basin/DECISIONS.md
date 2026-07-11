@@ -290,3 +290,13 @@ Measured single-walk zero-lean behavior (20-min horizon): track changes
 every 1–2 min, 16–17 tracks (seeds 5/40); seed 21 parks in the Baryon
 pocket — that track is a genuinely self-contained region of this corpus
 (its basin is single-track); escape is the performer's move, not a rule.
+
+## Steering interface (2026-07-11)
+- Panel default is the ONE-FLOW texture: single mix-surface walk on boot;
+  channel voices are opt-in counterpoint. (In the corpus, channels are
+  co-located — multi-walk is a performance choice, not the ground state.)
+- Every fader carries measured tags only: persistence |λ| and, where
+  |r| ≥ 0.15, its measured clock correlation ("clk +0.42") — the pacing
+  distributaries identify themselves; nothing is named.
+- Verified on the beat-sync instrument: clock tags land on faders 10
+  (+0.42), 6 (+0.34), 20 (−0.28).

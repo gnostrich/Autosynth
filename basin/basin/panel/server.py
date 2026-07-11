@@ -87,8 +87,11 @@ class PanelEngine:
         n_ch = int(getattr(self.corpus, "n_channels", 0) or 0)
         if stems_mode == "nmf" and n_ch:
             chans = [f"ch{k}" for k in range(n_ch)]
-            available = chans + ["mix"]
-            default_on = chans
+            available = ["mix"] + chans
+            # ONE flow by default: in the corpus, channels are co-located —
+            # the mix voice is the trace's own surface. Channel walks are
+            # opt-in counterpoint (performance mode).
+            default_on = ["mix"]
         elif stems_mode == "hpss":
             available = ["harmonic", "percussive", "mix"]
             default_on = ["harmonic", "percussive"]
@@ -171,6 +174,22 @@ class PanelEngine:
                              if np.imag(self.eigvals[i]) > 1e-9][:4]
         self._fly_max = np.full(len(self._fly_eig_idx), 1e-9)
         self.sr = int(self.cfg["sr"])
+        # measured clock alignment of every fader: corr(direction, native
+        # stride). A measured tag, not a name — the pacing distributaries
+        # identify themselves.
+        stride = np.zeros(n_win)
+        for w in range(n_win):
+            if w + 1 < n_win and H[w + 1].track_id == H[w].track_id:
+                stride[w] = H[w + 1].start_sample - H[w].start_sample
+            else:
+                stride[w] = H[w].n_samples / 2
+        wp = self.atlas.memberships @ self.psi
+        sc = stride - stride.mean()
+        self.clock_corr = []
+        for k in range(self.psi.shape[1]):
+            x = wp[:, k] - wp[:, k].mean()
+            d = np.sqrt((x ** 2).sum() * (sc ** 2).sum()) + 1e-12
+            self.clock_corr.append(float((x * sc).sum() / d))
         self.running = True
 
     # -- naming -------------------------------------------------------------
@@ -347,6 +366,8 @@ class PanelEngine:
             macros.append({
                 "index": int(mi),
                 "lam": float(np.abs(self.eigvals[mi])),
+                "clk": float(self.clock_corr[k])
+                if k < len(getattr(self, "clock_corr", [])) else 0.0,
                 "name": self.names.get(f"macro:{mi}", str(k + 1)),
                 "position": float(self._mean_a[k]),            # true position
                 "innovation": float(self._mean_innov[k]),      # beyond prediction
