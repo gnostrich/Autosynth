@@ -332,3 +332,18 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   sovereign-chart read. Delivered 2 parts each.
 - phrase: jump rate 0.20, cliffs 7%; section: jump rate 0.30, cliffs 4%,
   territory switches 8/700 steps. Awaiting ears: set-like vs B2B-like.
+
+## Counterpoint v2 (2026-07-11): the full DOF, rendered
+- `counterpoint_v2` (10 min, zero lean, seed 9) delivered in 2 parts: all
+  8 channels walking their own landscapes at phrase altitude, vertically
+  governed by the measured co-occurrence trace only (no coupling gain).
+- Per-channel jump rates 0.37–0.53; envelope 0.11–0.13 with variation —
+  the fullest spectrum of any render (all channels always present, each on
+  its own trajectory).
+- One walk-level guard added: when the 7 partners' vertical constraints
+  intersect to nothing reachable, the channel follows its own flow for
+  that step (no smoothing constant invented).
+- Open for ears: does the measured vertical hold the layers together
+  where velocity coupling used to mash? If yes, the one-flow default and
+  this become the two poles of the instrument (unison ↔ counterpoint),
+  both measure-governed.
