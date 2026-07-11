@@ -499,3 +499,22 @@ motion the corpus already contains. `intrinsic_set` = current-follow
 (chi stance), density-corrected, no reference arc. Holonomy is present
 but weak here; on a more cyclic corpus the loop-riding variant would
 dominate. Current-follow is the general intrinsic traversal.
+
+## Channel-by-channel over the beat-aware product space (2026-07-11)
+The listener's reframe: no combinatorial explosion — the trace IS the
+factored flow over the product space (per-channel walk × vertical
+co-occurrence, linear in channels), navigated locally like the single
+landscape; beat-awareness is inherent (built on beat-synchronous,
+co-occurrence-measured data). VERIFIED: channel regions carry tempo
+(within-region stride std ~30ms vs corpus 133ms); vertically-licensed
+cross-channel stacks are tempo-compatible (median gap 6ms) — so a shared
+clock is valid and the trace refuses tempo-incompatible stacks. Track
+homogeneity (ratio 0.64) means single swaps are flat, BUT the product
+space is rich: channels 0.30-correlated, mix variance spread (top factor
+21%), corpus uses ~10^-15 of 256^8 combinations. Novelty lives in
+cross-track STACKS the corpus never played.
+`channel_set` = the faithful build: 8 channel walks, own landscapes,
+SECTION altitude (concentration EMERGES from rare unsynchronized
+basin-crossings — no procedural hold), lagged vertical coupling, shared
+clock, no presence. Sludge gate = stack MUTATION rate (channels changing
+track per step), not track count (cross-track stacks are the goal).
