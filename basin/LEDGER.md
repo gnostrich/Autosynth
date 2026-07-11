@@ -384,3 +384,20 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   P(r_k | joint path)) instead of additive evidence, i.e. channels as
   conditional walks of the conductor, the same sovereignty pattern as
   chart→window one level up.
+
+## v8: the concentration law realized (2026-07-11)
+- Delivered (2 parts). MEASURED: distinct source tracks/step mean 1.0,
+  median 1 (delta at every instant; brief 2-source excursions at blends);
+  21 transition events/10 min; clock 0.35–0.80s fully exercised; envelope
+  0.09–0.27 (most dynamic render of the session).
+- Architecture: held configurations (all channels riding one shared
+  moving moment — corpus-exact instantaneous law) + events (arc-driven
+  conductor crossing sections, or material running out) + staggered
+  migration of channels one-per-step to ONE shared moving destination
+  (chosen by measured splice evidence, forced to leave the current
+  track). v7's failure (permanent divergence, median 6 tracks) fixed by
+  making the destination shared and moving.
+- The ensemble series verdict trail: v2/v3 sludge → v4 coherent/single-
+  track → v5 sludge → v6 blended/continuous-transitions → v7 diverged →
+  v8 concentrated + punctuated. Each fix was a measured law the corpus
+  or the listener's ear supplied; ears now judge v8.
