@@ -356,3 +356,16 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   makes transitions rarer and more decisive; envelope 0.13–0.16.
 - The listening question: does v3 sound like it MIXES (set-taught
   cross-material moves) where v2 sounded like it wandered?
+
+## Counterpoint v4 vs v5 A/B (2026-07-11)
+- v4 (one flow, per-channel realization within the region): 6.6/8 distinct
+  source windows per step; FIRST counterpoint render with a real arc
+  (0.20 → 0.07 breakdown → 0.11 rebuild); joint jump rate 0.20.
+- v5 (8 per-channel walks, presence deleted, shared cursor): 4.8 distinct
+  source TRACKS per step (max lawful recombination) but flat envelope
+  (0.11–0.15) — independent walks average their rests away; no
+  ensemble-wide dynamics can form. A structural insight, not a bug:
+  ensemble ARC requires correlated rests, which requires a shared
+  configuration choice (v4's architecture) or a conductor above the
+  channel walks (hierarchy: the joint flow as the channels' grammar).
+- Both delivered; ears decide the operating point.
