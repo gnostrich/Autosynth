@@ -159,6 +159,37 @@ def eigendecompose(P: np.ndarray) -> Spectrum:
 # Connectivity + basins
 # ---------------------------------------------------------------------------
 
+def build_pair_operator(memberships: np.ndarray, track_bounds: list) -> dict:
+    """Second-order trace: measured routing over PATH states (c_prev, c_cur).
+
+    The corpus's dynamics is not Markov at chart resolution — projecting it
+    onto single-chart states is what forces separate compensation parts
+    (memory kernel, momentum flywheel) into the walk. Give the state one
+    step of path instead and those parts fold into the measured operator:
+    direction persistence, phrase cycles and dwell/leave statistics are all
+    properties of the corpus's own path segments. Built from consecutive
+    within-track window triples (same data as ``build_operator``, one order
+    higher); rows are normalized over successor charts. States never seen in
+    the corpus simply don't exist — callers fall back to the first-order row.
+    """
+    wb = np.asarray(np.argmax(memberships, axis=1)).ravel()
+    counts: dict = {}
+    for (s, e) in track_bounds:
+        for i in range(s + 1, e - 1):
+            key = (int(wb[i - 1]), int(wb[i]))
+            row = counts.setdefault(key, {})
+            nxt = int(wb[i + 1])
+            row[nxt] = row.get(nxt, 0) + 1
+    n_charts = memberships.shape[1]
+    P2 = {}
+    for key, row in counts.items():
+        v = np.zeros(n_charts)
+        for nxt, c in row.items():
+            v[nxt] = c
+        P2[key] = v / v.sum()
+    return P2
+
+
 def largest_component(P: np.ndarray, memberships: np.ndarray):
     """Largest strongly-connected component of ``P`` and its window coverage."""
     from scipy.sparse.csgraph import connected_components

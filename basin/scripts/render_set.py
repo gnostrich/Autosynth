@@ -89,11 +89,15 @@ def main() -> None:
     cfg["basin_halflife_steps"] = float(np.median(
         [e - s for (s, e) in corpus.track_bounds]))
     if args.mode == "flow":
+        from basin import operator as operator_mod
+        P2 = operator_mod.build_pair_operator(atlas.memberships,
+                                              corpus.track_bounds)
         orbits, readers = [], []
         for vi, stem in enumerate(voices):
             vseed = args.seed + 101 * vi
             orbits.append(Orbit(P, psi, cfg, knob_vector=knob, kernel=kernel,
-                                seed=vseed, modes=modes, basins=basins))
+                                seed=vseed, modes=modes, basins=basins,
+                                P2=P2))
             readers.append(GrainReader(corpus, atlas.memberships, cfg,
                                        seed=vseed, stem=stem,
                                        shared_cache=shared, psi=psi))

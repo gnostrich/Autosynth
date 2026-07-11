@@ -231,3 +231,25 @@ track (t12) for the full half hour. Two causes:
    memory kernel (Mori–Zwanzig). Defaults now: momentum=1.0, κ=0.3 — the
    brachistochrone point: the natural path overshoots and swings, it does
    not settle on the straight line.
+
+## Path-state trace (2026-07-11, "memory kernel etc aren't separate parts right")
+The user's objection was架构-true: kernel, flywheel, momentum — separately
+named, separately gained parts bolted onto a first-order walk — are the
+Mori–Zwanzig *symptom* of projecting dynamics with memory onto a state
+that is too small. Give the state one step of path instead:
+`operator.build_pair_operator` measures the corpus's routing over path
+segments (c_prev, c_cur) → c_next from the same window data, one order
+higher. The Orbit pulls from its measured path segment when one exists
+(measured hit rate on this corpus: 100.0% of steps; 1256 observed
+segments), falling back to first order otherwise.
+Subsumption measured (same seeds, 15 min, 3 voices, velocity coupling):
+- first-order + kernel + flywheel on: 6 tracks, dominant track 100% of
+  each minute;
+- path-state, ALL parts off (κ=0, momentum=0): all 20 tracks touched,
+  each minute a blend of 4–14 tracks with the dominant at 30–45%, slow
+  territory evolution (t12-era → t5-era).
+Memory, direction persistence and phrase cycles now live in the operator
+itself. Defaults: kappa=0, momentum=0 (parts retired; code kept for the
+ablation story). No rebuild needed — P2 derives from stored memberships
+at load. The knobs remain the spectral directions of the landscape; the
+lean is the only external input.

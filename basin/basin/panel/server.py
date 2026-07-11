@@ -93,11 +93,15 @@ class PanelEngine:
         self.cfg["basin_halflife_steps"] = float(np.median(
             [e - s for (s, e) in self.corpus.track_bounds]))
         basins = inst["chart_basin"]
+        from basin import operator as operator_mod
+        P2 = operator_mod.build_pair_operator(self.atlas.memberships,
+                                              self.corpus.track_bounds)
         self.voices = []
         for vi, stem in enumerate(available):
             orbit = Orbit(self.P, self.psi, self.cfg, knob_vector=self.knob,
                           kernel=self.kernel, seed=101 * vi,
-                          modes=(self.eigvals, self.eig_right), basins=basins)
+                          modes=(self.eigvals, self.eig_right), basins=basins,
+                          P2=P2)
             orbit.seed_state()
             reader = GrainReader(self.corpus, self.atlas.memberships, self.cfg,
                                  seed=101 * vi, stem=stem,

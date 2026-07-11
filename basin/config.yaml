@@ -27,11 +27,11 @@ prony_order: 2      # damped-oscillator modes to fit (spec allows <=3)
 beta: 1.0           # knob-bias lean strength (grip)
 gamma: 1.0          # wanderlust (validated: 0.3 camps in one track; 1.0 roams)
 tau: 1.0            # temperature (drift): low = mode-following, high = diffuse
-kappa: 0.3          # memory-term strength (kappa=0 reproduces M2; >~0.7 over-sticks)
+kappa: 0.0          # memory-term strength (kappa=0 reproduces M2; >~0.7 over-sticks)
 
 # --- render (M2) ---
 crossfade_s: 0.375  # equal-power crossfade (half a hop)
 step_s: 0.75        # orbit step / grain emission rate
 beta_read: 1.0      # flow mode: strength of the walk's field on the grain read
 couple: 0.5         # multi-voice: pull of each voice toward the others' territory
-momentum: 1.0       # momentum-orbit strength (0 = off; oscillator params from kernel fit)
+momentum: 0.0       # momentum-orbit strength (0 = off; oscillator params from kernel fit)

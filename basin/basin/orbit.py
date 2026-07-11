@@ -43,8 +43,16 @@ class Orbit:
 
     def __init__(self, P: np.ndarray, psi: np.ndarray, cfg: dict,
                  knob_vector: np.ndarray | None = None,
-                 kernel=None, seed: int = 0, modes=None, basins=None):
+                 kernel=None, seed: int = 0, modes=None, basins=None,
+                 P2: dict | None = None):
         self.P = P
+        # Path-state trace (see operator.build_pair_operator): when supplied,
+        # the walk's pull is the measured routing FROM ITS LAST PATH SEGMENT
+        # (c_prev, c_cur) instead of the memoryless row — memory, direction
+        # persistence and phrase cycles live in the operator itself, not in
+        # separate gained parts. Unobserved segments fall back to first order.
+        self.P2 = P2
+        self._prev_chart = None
         self.psi = psi                       # [n_charts, n_macros]
         self.n_charts = P.shape[0]
         self.n_macros = psi.shape[1]
@@ -194,7 +202,12 @@ class Orbit:
 
         a_pred = self._predict(m)
 
-        pulled = m @ self.P                            # PULL
+        pulled = m @ self.P                            # PULL (first order)
+        if self.P2 is not None and self._prev_chart is not None:
+            cur = int(np.argmax(m))
+            row = self.P2.get((self._prev_chart, cur))
+            if row is not None:                        # measured path segment
+                pulled = row
         log_tilt = (self.beta * self._bias_align()
                     - self.gamma * self.visitation
                     + self.kappa * self._memory_tilt()
@@ -237,7 +250,9 @@ class Orbit:
         # chart); sampling a position each step keeps it a *moving* walk while
         # still stepping through P and honoring every tilt term. γ=0 remains a
         # pure-PULL walk; κ=0 still reproduces M2 (identical rng draws).
+        cur = int(np.argmax(m))
         c = self.rng.choice(self.n_charts, p=m_new / m_new.sum())
+        self._prev_chart = cur                 # the path segment advances
         nxt = np.zeros(self.n_charts)
         nxt[c] = 1.0
         self._m = nxt
@@ -272,6 +287,7 @@ class Orbit:
         s = m.sum()
         if s > 1e-12:
             self._m = m / s
+            self._prev_chart = None            # path history broken by a snap
 
     def run(self, n_steps: int) -> list:
         """Run ``n_steps`` and return the list of :class:`OrbitState`."""
