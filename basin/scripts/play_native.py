@@ -2,17 +2,19 @@
 
 Same PanelEngine as the web panel; audio goes straight to the sound device
 (sounddevice), the UI is tkinter (ships with Python — no new UI deps).
-Redraws are event-driven + a 2 Hz status tick, so the interface costs
-almost nothing next to the browser's per-frame canvas storm.
+Redraws are event-driven + a 2 Hz tick, so the interface costs almost
+nothing next to the browser's per-frame canvas storm.
 
     python scripts/play_native.py [--project DIR] [--record out.wav]
 
 Layout:
-  top bar     JUMP | ZERO LEANS | gamma / tau / couple | voice toggles
-  fader bank  scrollable vertical sliders, ranked by measured persistence;
-              each labeled with its number, |lambda|, and clk tag where
-              measured; double-click a fader to zero it
-  status      what each voice is playing + live pacing, 2 Hz
+  top bar     JUMP | ZERO | gamma / tau / couple | voice toggles
+  fader bank  scrollable sliders ranked by measured persistence; labels
+              carry |lambda| and clk tags; double-click a fader to zero
+  flow view   tracks as rows, channel sub-rows (each track's own measured
+              decomposition as base brightness), the LIVE sampling field
+              as green heat, playheads in red — deforms as you lean
+  status      what each voice is playing, active leans, 2 Hz
 """
 import argparse
 import os
@@ -23,6 +25,28 @@ import threading
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np  # noqa: E402
+
+
+def _flow_rows(state, stems_order, n_tracks, bins):
+    """Rows of hex colors for the flow image: per track, one sub-row per
+    stem — base = measured decomposition, green = live sampling field,
+    red = playhead. Pure function (testable headless)."""
+    content = state["content"]
+    heat_by_stem = {f["stem"]: f for f in state["flow"]}
+    # color lookups: base 0-9 x heat 0-9
+    lut = [[f"#{16 + 6 * b:02x}{16 + 6 * b + 18 * h:02x}{24 + 5 * b:02x}"
+            for h in range(10)] for b in range(10)]
+    rows = []
+    for t in range(n_tracks):
+        for stem in stems_order:
+            base = content.get(stem, [[0] * bins] * n_tracks)[t]
+            f = heat_by_stem.get(stem)
+            heat = f["heat"][t] if (f and f.get("heat")) else [0] * bins
+            row = [lut[min(base[x], 9)][min(heat[x], 9)] for x in range(bins)]
+            if f and f["track"] == t:
+                row[min(int(f["pos"] * bins), bins - 1)] = "#ff5050"
+            rows.append("{" + " ".join(row) + "}")
+    return " ".join(rows)
 
 
 def main():
@@ -47,6 +71,12 @@ def main():
     eng = PanelEngine(os.path.abspath(args.project))
     sr = eng.sr
     clock_corr = list(getattr(eng, "clock_corr", []))
+    n_tracks = len(eng.track_names)
+    BINS = eng.FLOW_BINS
+    stems_order = [s for s in
+                   (["mix"] + [v["stem"] for v in eng.voices
+                               if v["stem"] != "mix"])
+                   if s in eng.content]
 
     rec = None
     if args.record:
@@ -57,11 +87,11 @@ def main():
     audio_q: queue.Queue = queue.Queue(maxsize=4)
     running = threading.Event()
     running.set()
-    pace = {"strides": []}
+    shared = {"state": None}
 
     def produce():
         while running.is_set():
-            eng.step_state()
+            shared["state"] = eng.step_state()
             pcm = np.frombuffer(eng.audio_chunk(), dtype=np.int16)
             chunk = pcm.reshape(-1, 2)
             if rec is not None:
@@ -75,7 +105,7 @@ def main():
     # ---- window ------------------------------------------------------------
     root = tk.Tk()
     root.title("Basin — native panel")
-    root.geometry("1080x560")
+    root.geometry("1240x870")
 
     top = ttk.Frame(root)
     top.pack(fill="x", padx=6, pady=4)
@@ -107,15 +137,15 @@ def main():
             command=lambda s=v["stem"], vv=var: eng.set_voice(s, vv.get())
         ).pack(side="right")
 
-    # ---- fader bank (scrollable) --------------------------------------------
+    # ---- fader bank (scrollable) ---------------------------------------------
     bank_wrap = ttk.Frame(root)
-    bank_wrap.pack(fill="both", expand=True, padx=6)
-    canvas = tk.Canvas(bank_wrap, height=340)
+    bank_wrap.pack(fill="x", padx=6)
+    canvas = tk.Canvas(bank_wrap, height=270)
     hbar = ttk.Scrollbar(bank_wrap, orient="horizontal",
                          command=canvas.xview)
     canvas.configure(xscrollcommand=hbar.set)
     hbar.pack(side="bottom", fill="x")
-    canvas.pack(fill="both", expand=True)
+    canvas.pack(fill="x")
     bank = ttk.Frame(canvas)
     canvas.create_window((0, 0), window=bank, anchor="nw")
 
@@ -130,7 +160,7 @@ def main():
         v = tk.DoubleVar(value=0.0)
         fader_vars.append(v)
         s = tk.Scale(col, from_=2.0, to=-2.0, resolution=0.05,
-                     orient="vertical", length=200, variable=v, width=12,
+                     orient="vertical", length=180, variable=v, width=12,
                      showvalue=False,
                      command=lambda val, kk=k: eng.set_lean(kk, float(val)))
         s.pack()
@@ -141,25 +171,50 @@ def main():
     bank.update_idletasks()
     canvas.configure(scrollregion=canvas.bbox("all"))
 
-    # ---- status ------------------------------------------------------------
+    # ---- flow view: tracks × channel sub-rows, live field ---------------------
+    NAME_W, ZX, ZY = 220, 40, 3
+    n_rows = n_tracks * len(stems_order)
+    flow_wrap = ttk.Frame(root)
+    flow_wrap.pack(fill="both", expand=True, padx=6, pady=4)
+    fcv = tk.Canvas(flow_wrap, bg="#101018",
+                    width=NAME_W + BINS * ZX, height=n_rows * ZY + 8)
+    fvbar = ttk.Scrollbar(flow_wrap, orient="vertical", command=fcv.yview)
+    fcv.configure(yscrollcommand=fvbar.set,
+                  scrollregion=(0, 0, NAME_W + BINS * ZX, n_rows * ZY + 8))
+    fvbar.pack(side="right", fill="y")
+    fcv.pack(side="left", fill="both", expand=True)
+    img_small = tk.PhotoImage(width=BINS, height=n_rows)
+    img_ref = {"zoomed": None}
+    for t in range(n_tracks):
+        fcv.create_text(
+            4, t * len(stems_order) * ZY + 4, anchor="nw",
+            text=eng.track_names[t][:34], fill="#c8c8d8",
+            font=("TkDefaultFont", 7))
+    img_item = fcv.create_image(NAME_W, 0, anchor="nw")
+
     status = ttk.Label(root, text="", justify="left",
                        font=("TkFixedFont", 9))
-    status.pack(fill="x", padx=8, pady=4)
+    status.pack(fill="x", padx=8, pady=2)
 
     def tick():
         if not running.is_set():
             return
-        lines = []
-        for v in eng.voices:
-            if v["on"] and v["w"] is not None:
-                w = v["w"]
-                st = eng.win_frac[w]
-                lines.append(f'{v["stem"]:4s} {eng.track_names[eng.win_track[w]][:56]}'
-                             f'  @{100*st:.0f}%')
-        leans = {k: round(fv.get(), 2) for k, fv in enumerate(fader_vars)
-                 if abs(fv.get()) > 1e-3}
-        lines.append(f'leans: {leans or "0 (corpus routing)"}')
-        status.config(text="\n".join(lines))
+        st = shared["state"]
+        if st is not None:
+            img_small.put(_flow_rows(st, stems_order, n_tracks, BINS),
+                          to=(0, 0))
+            img_ref["zoomed"] = img_small.zoom(ZX, ZY)
+            fcv.itemconfig(img_item, image=img_ref["zoomed"])
+            lines = []
+            for f in st["flow"]:
+                if f["track"] >= 0:
+                    lines.append(f'{f["stem"]:4s} '
+                                 f'{eng.track_names[f["track"]][:52]}'
+                                 f'  @{100 * f["pos"]:.0f}%')
+            leans = {k: round(fv.get(), 2) for k, fv in
+                     enumerate(fader_vars) if abs(fv.get()) > 1e-3}
+            lines.append(f'leans: {leans or "0 (corpus routing)"}')
+            status.config(text="\n".join(lines))
         root.after(500, tick)
 
     def on_close():
