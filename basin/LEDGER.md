@@ -347,3 +347,12 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   where velocity coupling used to mash? If yes, the one-flow default and
   this become the two poles of the instrument (unison ↔ counterpoint),
   both measure-governed.
+
+## Counterpoint v3 (2026-07-11): set-taught transitions
+- `counterpoint_v3` (10 min, zero hands, seed 9) delivered in 2 parts:
+  pooled per-channel routing (corpus + set soft counts), corpus path-state
+  on measured segments, lagged vertical trace across channels.
+- vs v2: jump rates calmed (0.16–0.46 from 0.37–0.53) — the set's grammar
+  makes transitions rarer and more decisive; envelope 0.13–0.16.
+- The listening question: does v3 sound like it MIXES (set-taught
+  cross-material moves) where v2 sounded like it wandered?
