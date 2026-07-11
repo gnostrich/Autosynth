@@ -481,3 +481,21 @@ measured region occupancy, no hand constant, applied at the measure
 15 tracks with 19/18/14/14/11/11 spread. Delivered as full_set2/fs2_*.
 The as-is vs catalogue choice is now a legitimate representational option
 (aesthetic, chosen by ear) — catalogue is the set-scale default.
+
+## Intrinsic traversal: the landscape's own arrow (2026-07-11)
+The listener's frame: landscape + traversal-optimization are separate;
+the right traversal is neither the geodesic (has a destination; camps)
+nor an external reference (stapled on) but an INTRINSIC optimal
+wandering the trace renders. Measured on the corpus:
+- entropy production 4.9 nats/step: strong arrow of time (transitions
+  are directional — the landscape has a pervasive 'forward').
+- net circulation only 5% of flux, diffuse (top 1% of edges = 14%),
+  dominant cycle weak (|lam|=0.31, ~26s): NO single grand holonomy loop.
+So the intrinsic principle the data supports = follow the LOCAL CURRENT
+(J_ij = pi_i P_ij - pi_j P_ji, its own net forward), not a global cycle.
+This renders an arc/progression from the landscape itself — the
+reference set is NOT required for the journey; it was one flavor of a
+motion the corpus already contains. `intrinsic_set` = current-follow
+(chi stance), density-corrected, no reference arc. Holonomy is present
+but weak here; on a more cyclic corpus the loop-riding variant would
+dominate. Current-follow is the general intrinsic traversal.
