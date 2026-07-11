@@ -276,3 +276,14 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
 - 44.1 kHz beat-synchronous instrument (`instrument_nmf44.npz`) built:
   11,056 windows / 20 tracks / K=8, chan_rms baked; performance re-recorded
   on it for the full-quality version.
+
+## Navigation edition (2026-07-11)
+- Listening verdict on `performed_nav` (region-gated emission, free walk,
+  splice-true flux; journey composed from the measured territory map):
+  **"sounds coherent"** — first recording where fader moves demonstrably
+  carried the set across five territories (log-confirmed: t5 → t14 → t12 →
+  m0− pole → home).
+- Open: within-track parallel-bar hopping (~0.5 jump rate) — audible churn
+  candidate; if it bothers the ear, fix belongs in the walk's own step
+  statistics, not read-time rules.
+- Next validation: 30-min unattended zero-lean set (`longset_nav`).
