@@ -306,13 +306,17 @@ class PanelEngine:
             # looped voices hold their phrase; only free voices walk
             free = [v for v in enabled if not v["loop"]]
             for v in free:
-                others = [u["a"] for u in enabled if u is not v]
+                # velocity coupling: voices follow each other's motion, not
+                # position (position coupling parks the group at a pole)
+                others = [u.get("da", u["a"] * 0.0) for u in enabled
+                          if u is not v]
                 v["orbit"].knob = self.knob + (
                     self.couple * np.mean(others, axis=0) if others else 0.0)
                 st = v["orbit"].step()
                 # gate = coupling: emission stays inside the walk's region,
                 # so the walk roams free and faders steer territory directly
                 w = v["reader"].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
+                v["da"] = st.a - v["a"]
                 v["a"], v["st"], v["w"] = st.a, st, w
             if free:
                 self._mean_a = np.mean([v["a"] for v in free], axis=0)

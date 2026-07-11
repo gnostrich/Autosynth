@@ -212,3 +212,22 @@ m2−→t12). Territory map is measurable per instrument. Caveat: ψ poles are
 skewed (e.g. ψ0 ∈ [−3.7, +0.5]) — the bulk sits at one end; leaning into
 the ceiling is a no-op. The panel's flow view shows position; ears + map
 name the poles.
+
+## Curvature consolidation (2026-07-11, after "same track / flat / brachistochrone?")
+Forensic on the 30-min unattended set: 100% of emissions, all 3 voices, one
+track (t12) for the full half hour. Two causes:
+1. **Position coupling = consensus trap.** Each voice leaned toward the
+   others' mean coordinate; with the group at a deep ψ pole (t12 at
+   ψ2≈−4.5), every voice felt a standing lean of ~2.25σ — stronger than any
+   performed lean. A spring to the centroid parks. → Coupling is now to the
+   others' MOTION (velocity/innovation): no reward for sitting, full reward
+   for co-moving. Measured: same seeds go from 1 track/30 min to 6–8
+   tracks with set-paced dominant-track changes.
+2. **The curved dynamics was switched off.** κ=0, momentum=0 in the render
+   scripts = pure gradient flow into the deepest well — straight-line
+   descent. The corpus's own curvature lives in the measured oscillatory
+   eigenmodes (flywheel: the field rotates arg λ per step and integrates
+   ~1/(1−|λ|) steps of history — holonomy of the trace) and the measured
+   memory kernel (Mori–Zwanzig). Defaults now: momentum=1.0, κ=0.3 — the
+   brachistochrone point: the natural path overshoots and swings, it does
+   not settle on the straight line.

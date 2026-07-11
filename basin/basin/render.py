@@ -475,7 +475,8 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
     V = len(orbits)
     base_knobs = [o.knob.copy() for o in orbits]
     n_macros = orbits[0].n_macros
-    vs = [{"t": 0, "i": 0, "a": np.zeros(n_macros)} for _ in range(V)]
+    vs = [{"t": 0, "i": 0, "a": np.zeros(n_macros), "da": np.zeros(n_macros)}
+          for _ in range(V)]
 
     while True:
         live = [v for v in range(V) if vs[v]["t"] < total]
@@ -484,11 +485,18 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
         v = min(live, key=lambda u: vs[u]["t"])
         S = vs[v]
         if V > 1 and couple != 0.0:
-            others = np.mean([vs[u]["a"] for u in range(V) if u != v], axis=0)
+            # couple to the others' MOTION, not their position. Position
+            # coupling is a spring to the group centroid: measured, it parks
+            # all voices at the deepest pole for 30 straight minutes (each
+            # voice's standing lean toward the others exceeds any performed
+            # lean). Velocity coupling makes voices travel together — no
+            # reward for sitting still, full reward for co-moving.
+            others = np.mean([vs[u]["da"] for u in range(V) if u != v], axis=0)
             orbits[v].knob = base_knobs[v] + couple * others
         st = orbits[v].step()
         # gate = coupling; see render_flow — the walk stays free to navigate
         w = readers[v].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
+        vs[v]["da"] = st.a - vs[v]["a"]
         vs[v]["a"] = st.a
         stride = readers[v].native_stride(w)
         glen = stride + xfade
