@@ -241,6 +241,8 @@ class Orbit:
         cur = int(np.argmax(m))
         if alt == "beat":
             raw = pulled * np.exp(log_tilt)
+            if not np.isfinite(raw.sum()) or raw.sum() <= 1e-300:
+                raw = pulled
         else:
             if alt == "section" and self.chart_basin is not None:
                 keep = self.chart_basin == self.chart_basin[cur]
@@ -252,7 +254,11 @@ class Orbit:
             lv = leave.sum()
             if lv > 1e-12:
                 tl = leave * np.exp(log_tilt)
-                leave = tl * (lv / tl.sum())         # leave-mass preserved
+                ts = tl.sum()
+                if ts > 1e-300 and np.isfinite(ts):
+                    leave = tl * (lv / ts)           # leave-mass preserved
+                # else: external evidence vetoes every reachable region —
+                # the walk follows its own measured flow this step
             raw = stay + leave
 
         s = raw.sum()
