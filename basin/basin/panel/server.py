@@ -75,6 +75,12 @@ class PanelEngine:
         self.names = self._load_names()
         self.knob = np.zeros(self.psi.shape[1])
         self.slider_knob = np.zeros(self.psi.shape[1])   # absolute fader leans
+        self.held = set()                     # faders a hand is currently on
+        # the landscape's own gravity: each mode's measured persistence is
+        # its relaxation rate — a released lean decays |λ_k| per step
+        self.mode_decay = np.abs(np.asarray(
+            [self.eigvals[i] for i in _full_idx])).real \
+            if len(_full_idx) else np.ones(self.psi.shape[1])
         self.nudge_knob = np.zeros(self.psi.shape[1])    # transient, decays
         self._lean_burst = 0.0               # fast-throw detector → jump gate
         self.grip = {}                       # macro idx -> held value
@@ -221,19 +227,29 @@ class PanelEngine:
                 self.nudge_knob[macro] += delta
 
     def set_lean(self, macro: int, value: float):
-        """Absolute fader lean in σ units: holds until the fader moves.
+        """Absolute fader lean in σ units — HELD while the hand is on it.
 
         Moving a fader also carries an *impulse* (the derivative of a position
         command is a velocity kick), and a fast hard throw fires the jump gate
         — so big gestures are heard immediately instead of waiting for the
-        next natural transition.
+        next natural transition. While held, the lean stays put; on
+        :meth:`release_lean` it relaxes home at the mode's own measured
+        rate (see _apply_decay_and_grip).
         """
         with self.lock:
             if 0 <= macro < len(self.slider_knob):
                 delta = float(value) - self.slider_knob[macro]
                 self.slider_knob[macro] = float(value)
+                self.held.add(int(macro))
                 self.nudge_knob[macro] += delta          # transient kick
                 self._lean_burst += abs(delta)           # throw-speed detector
+
+    def release_lean(self, macro: int):
+        """Take the hand off: the lean now gravitates back along the
+        landscape — each direction relaxes at its own measured persistence
+        |λ_k| per step (structural modes let go slowly, shallow ones snap)."""
+        with self.lock:
+            self.held.discard(int(macro))
 
     def set_grip(self, macro: int, on: bool, value: float = 0.0):
         with self.lock:
@@ -317,7 +333,13 @@ class PanelEngine:
 
     def _apply_decay_and_grip(self):
         self.nudge_knob *= 0.9                          # transient leans decay
-        self.knob = self.slider_knob + self.nudge_knob  # faders hold absolutely
+        # landscape gravity: released faders relax at their mode's own rate
+        free_mask = np.ones(len(self.slider_knob), bool)
+        for k in self.held:
+            if k < len(free_mask):
+                free_mask[k] = False
+        self.slider_knob[free_mask] *= self.mode_decay[free_mask]
+        self.knob = self.slider_knob + self.nudge_knob
         # a fast hard fader throw (≳1σ within ~a step) fires the jump gate so
         # the gesture is heard at the next grain instead of the next natural
         # transition

@@ -355,3 +355,16 @@ innovation registers steering only while the walk fights the flow).
 `--replay` renders a new set on this instrument steered by an extracted
 arc (peak-lean gain is a printed performance choice). Aggregating arcs
 across sets = a measured grammar of how sets are shaped.
+
+## Landscape gravity + motorized controls (2026-07-11)
+Faders are HELD while a hand is on them; on release the lean gravitates
+home at each direction's OWN measured persistence — deviation on mode k
+decays |λ_k| per step (structural modes let go over ~10 steps, shallow
+ones snap back in 1–2). Zero constants: the landscape's spring is the
+landscape's spectrum. Measured: released f0 (|λ|=0.879) glides 1.5→0.32
+over 12 steps while f20 (|λ|=0.380) snaps 1.5→0.08 in 3.
+Native panel faders and bridge sliders are motorized: released controls
+visibly glide home (bridge sliders show the live projection of the
+current lean onto their descriptor vectors) — grab any mid-glide to
+counter-steer. When the reference-set grammar lands, it becomes the base
+the gravity relaxes TOWARD instead of zero.

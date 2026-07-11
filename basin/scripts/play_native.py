@@ -185,19 +185,28 @@ def main():
     def bridge_drag(di, val):
         v = float(val)
         for k in np.nonzero(BR["lean"][di])[0]:
-            lv = float(v * BR["lean"][di][k])
-            eng.set_lean(int(k), lv)
-            if k < len(fader_vars):
-                fader_vars[k].set(lv)
+            eng.set_lean(int(k), float(v * BR["lean"][di][k]))
 
+    def bridge_release(di):
+        for k in np.nonzero(BR["lean"][di])[0]:
+            eng.release_lean(int(k))
+
+    bridge_vars = []
+    bridge_grabbed = set()
     for di, name in enumerate(BR["names"]):
         ttk.Label(br_frame, text=name).pack(side="left", padx=(8, 1))
         bv = tk.DoubleVar(value=0.0)
+        bridge_vars.append(bv)
         bs = ttk.Scale(br_frame, from_=-2.0, to=2.0, variable=bv, length=70,
                        command=lambda val, dd=di: bridge_drag(dd, val))
         bs.pack(side="left")
+        bs.bind("<ButtonPress-1>", lambda e, dd=di: bridge_grabbed.add(dd))
+        bs.bind("<ButtonRelease-1>",
+                lambda e, dd=di: (bridge_grabbed.discard(dd),
+                                  bridge_release(dd)))
         bs.bind("<Double-Button-1>",
-                lambda e, dd=di, vv=bv: (vv.set(0.0), bridge_drag(dd, 0.0)))
+                lambda e, dd=di, vv=bv: (vv.set(0.0), bridge_drag(dd, 0.0),
+                                         bridge_release(dd)))
 
     # ---- fader bank (scrollable) ---------------------------------------------
     bank_wrap = ttk.Frame(root)
@@ -213,6 +222,7 @@ def main():
 
     n_show = min(args.faders, eng.psi.shape[1])
     fader_vars = []
+    grabbed = set()          # faders the mouse is currently on (local UI)
     for k in range(n_show):
         col = ttk.Frame(bank)
         col.grid(row=0, column=k, padx=3)
@@ -227,8 +237,12 @@ def main():
                      showvalue=False,
                      command=lambda val, kk=k: eng.set_lean(kk, float(val)))
         s.pack()
+        s.bind("<ButtonPress-1>", lambda e, kk=k: grabbed.add(kk))
+        s.bind("<ButtonRelease-1>",
+               lambda e, kk=k: (grabbed.discard(kk), eng.release_lean(kk)))
         s.bind("<Double-Button-1>",
-               lambda e, kk=k, vv=v: (vv.set(0.0), eng.set_lean(kk, 0.0)))
+               lambda e, kk=k, vv=v: (vv.set(0.0), eng.set_lean(kk, 0.0),
+                                      eng.release_lean(kk)))
         ttk.Label(col, text=f"{k}\n|λ| {lam:.2f}{tag}",
                   justify="center", font=("TkDefaultFont", 7)).pack()
     bank.update_idletasks()
@@ -332,6 +346,18 @@ def main():
                     lines.append(f'{f["stem"]:4s} '
                                  f'{eng.track_names[f["track"]][:52]}'
                                  f'  @{100 * f["pos"]:.0f}%')
+            # motorized faders: released leans glide home along the
+            # landscape's own gravity — grab one mid-glide to counter-steer
+            for k, fv in enumerate(fader_vars):
+                if k not in grabbed:
+                    cur = float(eng.slider_knob[k])
+                    if abs(cur - fv.get()) > 0.01:
+                        fv.set(cur)
+            for di, bv in enumerate(bridge_vars):
+                if di not in bridge_grabbed:
+                    proj = float(eng.slider_knob @ BR["lean"][di])
+                    if abs(proj - bv.get()) > 0.01:
+                        bv.set(proj)
             leans = {k: round(fv.get(), 2) for k, fv in
                      enumerate(fader_vars) if abs(fv.get()) > 1e-3}
             lines.append(f'leans: {leans or "0 (corpus routing)"}')
