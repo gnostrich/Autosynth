@@ -287,3 +287,13 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   candidate; if it bothers the ear, fix belongs in the walk's own step
   statistics, not read-time rules.
 - Next validation: 30-min unattended zero-lean set (`longset_nav`).
+
+## A/B: parts vs path-state (2026-07-11)
+- `longset_holonomy` (first-order walk + kernel + flywheel, velocity
+  coupling) vs `longset_intrinsic` (path-state trace, zero parts) — same
+  seeds, both 15 min unattended, zero lean. Delivered as 3 parts each.
+- Intrinsic trace stats: 100% measured-segment hit rate, 4–14 tracks
+  blended per minute (dominant 30–45%), migrating territory center,
+  loudness envelope 0.05→0.08 (first unattended render with an arc).
+- Channel splits now disk-cached (2.3 GB, one-time per corpus) — path-state
+  blending made per-render recomputation slower than realtime.
