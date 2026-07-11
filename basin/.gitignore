@@ -9,3 +9,4 @@ renders/
 *.wav
 __pycache__/
 .pytest_cache/
+reference_sets/
