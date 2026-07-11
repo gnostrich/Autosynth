@@ -31,3 +31,18 @@ REMOVED from v3's architecture:
 Kept from v3: 8 walks on their own landscapes (recombination), lagged
 vertical evidence, set-pooled routing. New printed honesty metric: mean
 distinct source TRACKS per step (1 = collapse, 8 = max recombination).
+
+## The concentration law + v7 punctuated ensemble (2026-07-11)
+Listener's diagnosis of v6 (and the whole ensemble series), adopted as
+law: viewed as a distribution over material at each instant, the playing
+measure must be CONCENTRATED — the corpus is a delta at every moment
+(one configuration, channels locked); a set holds near-deltas for
+minutes and splits only during blends. All ensemble versions so far kept
+instantaneous entropy high (per-channel re-sampling every step) —
+"everything blended, transitions almost continuous."
+v7: punctuated dynamics. Between events the configuration is HELD (every
+channel rides its own successors — concentrated, corpus-exact); events =
+the conductor (joint walk, section altitude, arc-driven) crossing
+basins; at an event channels re-source ONE PER STEP (staggered blend)
+under the conductor conditional; a channel's track running out is its
+own event. Diversity across time, concentration at each instant.
