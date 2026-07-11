@@ -306,3 +306,23 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   0.75 0.67 0.67 — the arc realized purely by routing; playback rate
   untouched. Most dynamic loudness envelope of any render (0.05–0.10).
 - Zero new machinery: leans + velocity coupling + logged watchdog (silent).
+
+## Reference set read (2026-07-11): "Eastern Distributor ~ Jörmungandr @ Dragon Dreaming"
+- 86 min → 7,565 windows projected with the corpus's exact transforms.
+- **Landing**: median top-chart weight 0.13 vs the corpus's own 0.14 —
+  the reference sits on this landscape almost as much at home as the
+  corpus itself; 177/256 charts traversed. (Corpus contains a
+  Jörmungandr track — stylistic adjacency confirmed by measurement.)
+- **Arc**: steering concentrates in the private-language tail (f24, f69,
+  f18, f70, f20, f34 — directions with near-zero descriptor R²),
+  confirming the conjecture that the interesting hands live where the
+  named-vocabulary knobs can't reach. One loud public-language move: the
+  finale (last 10%: tonal +0.50, bass −0.38, bright +0.29, rms −0.32,
+  flat +0.28 — an airy outro executed hard, with f24 at −0.56).
+- Sustained subtle signature elsewhere: rms mildly negative, pace mildly
+  negative (rides slightly slower/quieter material than the corpus flow
+  would drift to) — a restrained hand, not a dramatic one.
+- `replayed_reference` (12 min) delivered: the corpus played by the
+  extracted hands. Arc installed as `grammar.npz` — the panel autopilot
+  now defaults to playing like this set (follow=1.0), hands are
+  deviations, gravity eases back onto the reference trajectory.
