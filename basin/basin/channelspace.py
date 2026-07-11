@@ -73,8 +73,12 @@ def build_channel_spaces(chanfeats: dict, corpus, cfg: dict) -> dict:
         for k in chans:
             if j == k:
                 continue
-            C = np.zeros((n_charts, n_charts))
-            np.add.at(C, (spaces[j]["labels"], spaces[k]["labels"]), 1.0)
+            # soft co-occurrence: counted with the memberships themselves —
+            # "never argmax-co-seen" is not "impossible" at this sample size,
+            # and the soft assignments are already the measured uncertainty
+            Mj = np.asarray(spaces[j]["memberships"])
+            Mk = np.asarray(spaces[k]["memberships"])
+            C = Mj.T @ Mk
             rows = C / np.maximum(C.sum(1, keepdims=True), 1e-12)
             cooc[(j, k)] = rows
             pj = C.sum(1) / C.sum()

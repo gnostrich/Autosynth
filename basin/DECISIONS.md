@@ -404,3 +404,23 @@ not how long things hold (lean m1+ still lands track 5; extreme poles need
 beat altitude or a stronger stance β). Loop-inflation of duration-weighted
 mass is quantified in the ledger (Baryon 2.35×) — the duration-vs-content
 measure question is left open for ears, deliberately.
+
+## The full DOF: channel product space + vertical trace (2026-07-11)
+Design goal confirmed by the listener: the trace's degrees of freedom are
+region-to-region WITHIN each channel and ACROSS channels. Built:
+- `chanfeats.npz`: each channel's own view of every beat window (its own
+  synthesized audio through the same frame pipeline) — sidecar, no rebuild.
+- `basin/channelspace.py`: per channel — own whitening, own charts, own
+  path-state operator, own directions. MEASURED: 82–112 directions per
+  channel, ~2k path segments each, all tempo-pure.
+- The vertical trace: soft co-occurrence conditionals P(region_k|region_j)
+  (counted with the memberships themselves — measured smoothing, no
+  constant). MEASURED: mean pairwise MI 3.58 nats — one channel's region
+  narrows another's to ~5 licensed regions of 256. The corpus has strong
+  vertical opinions; counterpoint freedom is real but narrow.
+- Orbit gains `extra_tilt` — a slot for measured log-evidence (the
+  vertical trace enters routing as a log-measure, scale-free; not a gain).
+- Counterpoint v2: 8 channel walks (phrase altitude), each on its own
+  landscape, jointly governed by the vertical measure. The velocity
+  coupling stance retires for counterpoint — replaced by measured
+  structure, the same pattern as every consolidation.

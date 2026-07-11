@@ -219,6 +219,12 @@ class Orbit:
                     + self.kappa * self._memory_tilt()
                     + self._momentum_tilt()
                     - self._basin_pressure())
+        # measured external evidence (e.g. the vertical trace in channel
+        # counterpoint: sum of log co-occurrence conditionals given the other
+        # channels' regions). A log-measure, not a gained term — scale-free.
+        ex = getattr(self, "extra_tilt", None)
+        if ex is not None:
+            log_tilt = log_tilt + ex
         # stabilise exp
         log_tilt = log_tilt - log_tilt.max()
 
