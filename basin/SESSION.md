@@ -98,3 +98,46 @@ elements were replaced by measured ones.
   instrument-grade test.
 * The original theory question (is the memory kernel load-bearing?) remains
   outcome (b) as formulated; the momentum reformulation is its live heir.
+
+## 6. The navigation-and-language stretch (2026-07-11)
+
+The listener's "either this track is dominant throughout" forensically
+confirmed (91% one track) led to the deepest consolidation yet, driven
+throughout by the demand that nothing be cobbled on:
+
+* **Region-gated emission + free walk** — knobs act at the region scale;
+  emission always inside the walk's one-step measure; relocalization
+  deleted (the gate IS the coupling).
+* **Splice-true flux** — stored splice frames misreported the
+  beat-synchronous splice; fixed by identity, mid[w] := head[w+1].
+* **Path-state trace** — "memory kernel etc aren't separate parts right":
+  the state became a path segment; kernel and flywheel folded into the
+  measured second-order operator and were retired.
+* **Ridge read, one flow** — "beat-coherent but mashing": the reader's
+  sampling die was removed (deterministic surface of the walk) and the
+  default became a single walk (channels are co-located in the corpus).
+* **Full landscape, no knob terminator** — the flagged default-4 cut had
+  amputated the tempo direction (measured: clock lives on eigs 11/7,
+  below the cut). All 99 directions are faders now, ranked by measured
+  persistence; the tempo question ("does region-to-region allow
+  speedup/slowdown?") became a 54% pacing swing by routing alone.
+* **The bridge** — measured descriptors ↔ landscape directions, both
+  ways; faders wear fingerprints; descriptors are meta-sliders. Measured
+  asymmetry: intuition is a subspace of the landscape (R² 0.6–0.9), the
+  landscape's deepest knobs are untranslatable (R² 0.02–0.12).
+* **Native panel** — the browser was the lag (engine: 6 ms/step); tkinter
+  window with motorized faders, 3D waterfall (flow through time),
+  per-channel hues, landscape gravity (released leans relax at their
+  mode's own |λ|), and a three-tier mmap audio cache (all stalls
+  once-ever).
+* **Set-arc extraction + autopilot** — a given set projects onto the
+  landscape; its innovation vs the corpus flow is the performer's hand.
+  Validated by recovering a composed journey from audio alone; then the
+  listener's Jörmungandr reference (86 min) was read: it lands on the
+  corpus's territory at native confidence, steers almost entirely in
+  untranslatable directions, and closes with one loud public move (airy
+  outro). Its arc is now the panel's default (follow gain; hands are
+  deviations; gravity returns to the reference trajectory).
+
+Standing instruction honored throughout: no extrinsic patchwork — every
+fix lives in representation, measured structure, or declared stance.
