@@ -12,6 +12,8 @@ acceptable for v0.1. The question is navigational coherence, not fidelity.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 
@@ -176,12 +178,30 @@ class GrainReader:
             return self._audio_cache[key]
         if self.stem.startswith("ch") and \
                 getattr(self.corpus, "nmf_templates", None) is not None:
-            # emergent channel: synthesize all K masks for this track at once
-            from . import channels
-            outs = channels.split_track(self._audio_cache[mix_key],
-                                        self.corpus.nmf_templates)
-            for k, yk in enumerate(outs):
-                self._audio_cache[(track_id, f"ch{k}")] = yk
+            # emergent channel: synthesize all K masks for this track at once.
+            # Splits are cached to disk on first computation — the walk now
+            # blends many tracks per minute, and recomputing a split on every
+            # LRU re-entry made rendering slower than realtime. Decoding the
+            # cached file is cheap; the split happens once per track ever.
+            import soundfile as _sf
+            cache_dir = os.path.join(os.path.dirname(
+                self.corpus.track_paths[track_id]) or ".", ".chansplit_cache")
+            n_ch = int(getattr(self.corpus, "n_channels", 0) or 0)
+            paths = [os.path.join(cache_dir, f"t{track_id}_ch{k}.flac")
+                     for k in range(n_ch)]
+            if paths and all(os.path.exists(p) for p in paths):
+                for k, p in enumerate(paths):
+                    yk, _ = _sf.read(p, dtype="float32")
+                    self._audio_cache[(track_id, f"ch{k}")] = yk.T
+            else:
+                from . import channels
+                outs = channels.split_track(self._audio_cache[mix_key],
+                                            self.corpus.nmf_templates)
+                os.makedirs(cache_dir, exist_ok=True)
+                for k, yk in enumerate(outs):
+                    self._audio_cache[(track_id, f"ch{k}")] = yk
+                    _sf.write(paths[k] if k < len(paths) else os.path.join(
+                        cache_dir, f"t{track_id}_ch{k}.flac"), yk.T, self.sr)
             # LRU: full-band stereo channel audio is heavy — keep ~4 tracks
             order = self._audio_cache.setdefault("__lru__", [])
             order.append(track_id)
