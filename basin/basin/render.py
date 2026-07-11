@@ -161,12 +161,26 @@ class GrainReader:
             return self._audio_cache[key]
         mix_key = (track_id, "mix")
         if mix_key not in self._audio_cache:
-            import librosa
-            y, _ = librosa.load(self.corpus.track_paths[track_id],
-                                sr=self.sr, mono=False)
-            if y.ndim == 1:                    # mono source → duplicated sides
-                y = np.stack([y, y])
-            self._audio_cache[mix_key] = y.astype(np.float32)   # (2, n)
+            # Decode once EVER, then memory-map: an mp3 decode is a ~2s
+            # stall, and the set now switches tracks every minute or two —
+            # live play stutters without this. The mmap costs near-zero RAM
+            # (grain reads touch only the pages they slice) and survives
+            # LRU eviction at file-open cost.
+            src = self.corpus.track_paths[track_id]
+            cache_dir = os.path.join(os.path.dirname(src) or ".",
+                                     ".mixcache")
+            npy = os.path.join(cache_dir,
+                               f"t{track_id}_{self.sr}.npy")
+            if not os.path.exists(npy):
+                import librosa
+                y, _ = librosa.load(src, sr=self.sr, mono=False)
+                if y.ndim == 1:                # mono source → duplicated sides
+                    y = np.stack([y, y])
+                os.makedirs(cache_dir, exist_ok=True)
+                tmp = npy + ".tmp.npy"     # ends in .npy: np.save keeps name
+                np.save(tmp, y.astype(np.float32))
+                os.replace(tmp, npy)
+            self._audio_cache[mix_key] = np.load(npy, mmap_mode="r")  # (2, n)
         if self.stem == "mix":
             return self._audio_cache[mix_key]
         if self.stem in ("harmonic", "percussive"):
@@ -178,30 +192,34 @@ class GrainReader:
             return self._audio_cache[key]
         if self.stem.startswith("ch") and \
                 getattr(self.corpus, "nmf_templates", None) is not None:
-            # emergent channel: synthesize all K masks for this track at once.
-            # Splits are cached to disk on first computation — the walk now
-            # blends many tracks per minute, and recomputing a split on every
-            # LRU re-entry made rendering slower than realtime. Decoding the
-            # cached file is cheap; the split happens once per track ever.
+            # emergent channel, three-tier cache — the walk blends many
+            # tracks per minute and recomputing/redecoding on every LRU
+            # re-entry stalls live play:
+            #   npy (mmap, ~0 ms re-open)  ←  flac (one decode, disk-light)
+            #   ←  NMF split (once per track ever, writes all channel flacs)
             import soundfile as _sf
             cache_dir = os.path.join(os.path.dirname(
                 self.corpus.track_paths[track_id]) or ".", ".chansplit_cache")
             n_ch = int(getattr(self.corpus, "n_channels", 0) or 0)
-            paths = [os.path.join(cache_dir, f"t{track_id}_ch{k}.flac")
-                     for k in range(n_ch)]
-            if paths and all(os.path.exists(p) for p in paths):
-                for k, p in enumerate(paths):
-                    yk, _ = _sf.read(p, dtype="float32")
-                    self._audio_cache[(track_id, f"ch{k}")] = yk.T
-            else:
-                from . import channels
-                outs = channels.split_track(self._audio_cache[mix_key],
-                                            self.corpus.nmf_templates)
+            kk = int(self.stem[2:])
+            npy = os.path.join(cache_dir,
+                               f"t{track_id}_ch{kk}_{self.sr}.npy")
+            flac = os.path.join(cache_dir, f"t{track_id}_ch{kk}.flac")
+            if not os.path.exists(npy):
                 os.makedirs(cache_dir, exist_ok=True)
-                for k, yk in enumerate(outs):
-                    self._audio_cache[(track_id, f"ch{k}")] = yk
-                    _sf.write(paths[k] if k < len(paths) else os.path.join(
-                        cache_dir, f"t{track_id}_ch{k}.flac"), yk.T, self.sr)
+                if not os.path.exists(flac):
+                    from . import channels
+                    outs = channels.split_track(self._audio_cache[mix_key],
+                                                self.corpus.nmf_templates)
+                    for k, yk in enumerate(outs):
+                        _sf.write(os.path.join(
+                            cache_dir, f"t{track_id}_ch{k}.flac"),
+                            yk.T, self.sr)
+                yk, _ = _sf.read(flac, dtype="float32")
+                tmp = npy + ".tmp.npy"
+                np.save(tmp, yk.T)             # (2, n)
+                os.replace(tmp, npy)
+            self._audio_cache[key] = np.load(npy, mmap_mode="r")
             # LRU: full-band stereo channel audio is heavy — keep ~4 tracks
             order = self._audio_cache.setdefault("__lru__", [])
             order.append(track_id)

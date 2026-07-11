@@ -300,3 +300,14 @@ pocket — that track is a genuinely self-contained region of this corpus
   distributaries identify themselves; nothing is named.
 - Verified on the beat-sync instrument: clock tags land on faders 10
   (+0.42), 6 (+0.34), 20 (−0.28).
+
+## Performance pass (2026-07-11)
+Profiled: machinery is negligible (walk+ridge read 3.8 ms/step = 0.6% of
+realtime; boot < 1 s including P2 + full ψ). ALL stalls were audio-cache
+misses, now one-time-ever via a three-tier cache:
+- mix: mp3 decode → mmap npy (once per track ever; re-entry 0.3 ms)
+- channels: NMF split (once per track) → flac (disk-light) → mmap npy per
+  channel on first request (re-entry 0.6 ms; was 3.5 s per LRU re-entry)
+- `scripts/warm_cache.py` pre-pays every one-time cost offline so live
+  play never stalls. Disk: flacs ~2.3 GB + npy ~130 MB per (track,channel)
+  actually played, plus ~120 MB per track for mix.

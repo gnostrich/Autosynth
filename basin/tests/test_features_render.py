@@ -101,7 +101,11 @@ def test_nmf_channels_build_and_play(tiny_corpus):
                     shared_cache=shared, psi=built.spectrum.psi)
     g = r.grain_audio(0, 4096)
     assert np.isfinite(g).all() and g.shape == (4096, 2)
-    assert (0, "ch1") in shared                  # split cached all channels
+    # the split wrote every channel to the disk cache (split once per track;
+    # each channel becomes its own mmap-able npy on first request)
+    cache_dir = os.path.join(os.path.dirname(c.track_paths[0]),
+                             ".chansplit_cache")
+    assert os.path.exists(os.path.join(cache_dir, "t0_ch1.flac"))
 
 
 def test_render_produces_finite_audio(tiny_corpus):
