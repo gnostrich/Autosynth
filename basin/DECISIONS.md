@@ -446,3 +446,24 @@ including cross-channel, irrespective of track — for BOTH data sources.
   evidence slot as everything else. Novel-move support enters by COUNT
   POOLING (corpus counts + set counts, one measure, implicitly weighted
   by evidence volume — no blend constant).
+
+## Theory audit + v6 conducted ensemble (2026-07-11)
+Checks requested by the listener ("all channels region to region wrt all
+channels including self, trace over this; extrinsic sweep"):
+- TRACE FAMILY COMPLETE: 8 self-conditionals (path-state) + 56 lagged +
+  56 simultaneous cross-channel (corpus) + 8 + 56 set-taught = 184
+  measured tables. Per-channel regions are tempo-pure, so region→region
+  motion IS clock motion.
+- MEASURED HONESTY: per-channel RELATIVE tempo divergence is licensed by
+  neither source (corpus and set channels are clock-locked) — the tempo
+  DOF exists at ensemble level only, exactly as the data says.
+- v4 REPLAY EXPOSED: 1.0 distinct source tracks/step (the "sounds like
+  one track" verdict, exact) and a flat 0.44s clock — v4's synthesis
+  exercised almost none of the trace family. Presence was also still
+  active in v4 readers (inconsistency; retired in all ensemble paths).
+- v6 = the hierarchy composed: reference arc (forces) conducts the joint
+  walk; the joint walk conducts channel walks via a NEW measured object
+  P(channel region | joint region) (membership co-occurrence); channel
+  walks recombine on their own landscapes (set-pooled routing); presence
+  dead; one cursor. Correlated rests (arc) + lawful recombination
+  (freedom) from the same measured stack.
