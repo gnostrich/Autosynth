@@ -51,7 +51,8 @@ def build_channel_spaces(chanfeats: dict, corpus, cfg: dict) -> dict:
     chans = sorted(chanfeats.keys(), key=lambda s: int(s[2:]))
     spaces = {}
     for ch in chans:
-        white, *_ = _pca_whiten(np.asarray(chanfeats[ch], float), pca_dims)
+        white, mean, scale, pmean, comps = _pca_whiten(
+            np.asarray(chanfeats[ch], float), pca_dims)
         atlas = build_atlas(white, n_charts, top_k)
         built = op.build(atlas.memberships, bounds, n_basins="auto")
         psi, idx = op.full_psi(built.spectrum.eigvals, built.spectrum.right)
@@ -65,10 +66,16 @@ def build_channel_spaces(chanfeats: dict, corpus, cfg: dict) -> dict:
             "eig_idx": idx,
             "eigvals": built.spectrum.eigvals,
             "basins": built.chart_basin,
+            "atlas": atlas,
+            "whiten": (mean, scale, pmean, comps),
         }
 
-    # vertical trace: pairwise co-occurrence conditionals + their MI
-    cooc, mi = {}, {}
+    # vertical trace: pairwise co-occurrence conditionals + their MI,
+    # plus the LAGGED conditionals P(r_k at t+1 | r_j at t) — the corpus's
+    # statement of how one channel's move leads another's (measured MI of
+    # the lagged pairs ≈ the simultaneous ~3.6 nats). For a channel choosing
+    # its NEXT region, the lagged object is the temporally-correct evidence.
+    cooc, mi, lagcooc = {}, {}, {}
     for j in chans:
         for k in chans:
             if j == k:
@@ -88,19 +95,30 @@ def build_channel_spaces(chanfeats: dict, corpus, cfg: dict) -> dict:
                 lg = np.log(pjk / (pj[:, None] * pk[None, :] + 1e-300)
                             + 1e-300)
             mi[(j, k)] = float((pjk * np.where(pjk > 0, lg, 0.0)).sum())
-    return {"spaces": spaces, "cooc": cooc, "mi": mi, "chans": chans}
+            # lagged: soft counts of (j at t) -> (k at t+1) within tracks
+            L = np.zeros_like(C)
+            for (s0, e0) in bounds:
+                L += Mj[s0:e0 - 1].T @ Mk[s0 + 1:e0]
+            lagcooc[(j, k)] = L / np.maximum(L.sum(1, keepdims=True), 1e-12)
+    return {"spaces": spaces, "cooc": cooc, "lagcooc": lagcooc,
+            "mi": mi, "chans": chans}
 
 
-def vertical_logweight(bundle: dict, ch: str, others: dict) -> np.ndarray:
-    """log-weight over channel ``ch``'s regions given the other channels'
-    current regions — the measured vertical evidence (sum of pairwise
-    conditionals, the corpus's own co-occurrence measure)."""
+def vertical_logweight(bundle: dict, ch: str, others: dict,
+                       lagged: bool = True) -> np.ndarray:
+    """log-weight over channel ``ch``'s NEXT regions given the other
+    channels' current regions. ``lagged=True`` uses the temporally-correct
+    object P(r_ch at t+1 | r_other at t); falls back to simultaneous
+    where no lagged table exists."""
     n = bundle["spaces"][ch]["P"].shape[0]
+    key = "lagcooc" if (lagged and "lagcooc" in bundle) else "cooc"
     lw = np.zeros(n)
     for oc, r in others.items():
         if oc == ch or r is None:
             continue
-        rows = bundle["cooc"].get((oc, ch))
+        rows = bundle[key].get((oc, ch))
+        if rows is None:
+            rows = bundle["cooc"].get((oc, ch))
         if rows is not None:
             with np.errstate(divide="ignore"):
                 lw += np.where(rows[r] > 0, np.log(rows[r]), -np.inf)
