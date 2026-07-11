@@ -532,3 +532,21 @@ that same region (cross-track timbral blend, region-coherent, beat-compat
 free by region-tempo-purity). Track = the bundle-anchor; per-channel
 source-track = the mixing DOF; mix_depth = stance (0 = plain mix, higher =
 deeper stem-blend). `blend_set.py`, gate = dynamics return + coherence.
+
+## Track context retained (2026-07-11): the real fix
+The listener, after a day of explaining: the trace must be channel-region
+to channel-region across all channels (self + channels of OTHER tracks)
+while RETAINING track info -- which was getting lost, so context was lost
+(= the wash). Diagnosis: building per-channel landscapes pooled every
+track's version of a channel into one anonymous blob; the coupling
+marginalized track_id away, so the walk couldn't tell an in-context
+same-track moment from a decontextualized cross-track pile => soup.
+Fix (`context_set.py`): the joint walk gives a HOME bundle (real
+single-track moment = full context) each step; every channel plays its
+stem from HOME (in-context) or from a track it CROSSED to; a crossed
+channel RIDES that track's material forward (retains the crossed track's
+context) until it returns HOME at an event; every channel keeps its track
+tag, so a crossing is a KNOWN move. Crossings land only on a
+same-channel-region, different-track window (beat/role compatible).
+mix_depth = crossing propensity. Track = retained context throughout;
+mixing = knowing cross-context moves, never a pile of anonymous grains.
