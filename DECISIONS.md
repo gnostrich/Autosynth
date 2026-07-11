@@ -62,3 +62,21 @@ the corridor, dwelling each region for its own measured mean run —
 transitions become journeys through connector material instead of v8's
 single-hop teleports. No constants: costs, dwells, endpoints all
 measured; the arc drives the conductor.
+
+## Confession + correction (2026-07-11, "manual extrinsic stuff smuggled in")
+The listener's suspicion about v8 was CORRECT, confessed in full: v7–v9
+implemented the concentration law PROCEDURALLY — literal successor
+playback between events (a playlist, mechanically), a hand-authored
+event state machine (hold-until-basin-crossing), choreographed staggered
+migration, destination funnels with must-leave bars, and (v9) a Dijkstra
+planner installed ABOVE the walk — a second decision system the measure
+never asked for. The brachistochrone is honored DYNAMICALLY by the
+tilted walk realizing likely paths; imposing the argmin path
+deterministically is extrinsic planning. All of v7–v9's procedural glue
+is hereby retired from the canonical stack (scripts remain in scratch
+history as the record of the failure).
+The faithful stack (all previously-validated components, no glue):
+one flow (concentration by construction) + section altitude (punctuation
+from the factorized measure) + ridge read with sovereign chart (one die)
++ the reference arc conducting the knob field. Rendered as
+`faithful_set`.
