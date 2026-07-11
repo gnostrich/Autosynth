@@ -326,3 +326,9 @@ concrete directions, both **NN-free** (spec-compliant — no Demucs/Spleeter):
   extracted hands. Arc installed as `grammar.npz` — the panel autopilot
   now defaults to playing like this set (follow=1.0), hands are
   deviations, gravity eases back onto the reference trajectory.
+
+## Altitude A/B (2026-07-11)
+- `altitude_phrase` vs `altitude_section`: 12 min each, zero lean, seed 5,
+  sovereign-chart read. Delivered 2 parts each.
+- phrase: jump rate 0.20, cliffs 7%; section: jump rate 0.30, cliffs 4%,
+  territory switches 8/700 steps. Awaiting ears: set-like vs B2B-like.
