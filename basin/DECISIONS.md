@@ -467,3 +467,17 @@ channels including self, trace over this; extrinsic sweep"):
   walks recombine on their own landscapes (set-pooled routing); presence
   dead; one cursor. Correlated rests (arc) + lawful recombination
   (freedom) from the same measured stack.
+
+## Density-corrected measure (2026-07-11, "dominated by 1-2 tracks")
+Full 40-min set measured: track 02 held 32%, top-4 = 68% — the
+duration-weighting attractor problem (flagged long ago as "outsized
+weightage") at set scale. Wanderlust (gamma) does NOT fix it (raising it
+made the top share worse, 32%→45%: it agitates within the attractor's
+basin, doesn't leave). The fix is the measure itself: add -log(region
+occupancy) to the emission weight — distinct material counts once, not
+per repeat (the "corpus as catalogue" measure vs "corpus as is"). Purely
+measured region occupancy, no hand constant, applied at the measure
+(representation zone, not a read-time rule). Result: top track 32%→19%,
+15 tracks with 19/18/14/14/11/11 spread. Delivered as full_set2/fs2_*.
+The as-is vs catalogue choice is now a legitimate representational option
+(aesthetic, chosen by ear) — catalogue is the set-scale default.
