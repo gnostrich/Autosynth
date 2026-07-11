@@ -36,38 +36,50 @@ def project_set(path: str, corpus, atlas, psi: np.ndarray, cfg: dict) -> dict:
     sr, hop = int(cfg["sr"]), int(cfg["hop"])
     window_s = float(cfg["window_s"])
     stems_mode = str(cfg.get("stems", "none"))
-
-    y, _ = librosa.load(path, sr=sr, mono=True)
-    if stems_mode == "nmf" and getattr(corpus, "nmf_templates", None) is not None:
-        from . import channels
-        base = F.frame_features(y, sr, hop)
-        act = channels.track_activations(y, corpus.nmf_templates, hop)
-        n = min(base.shape[1], act.shape[1])
-        act = act[:, :n] / (act.max() + 1e-9) * 10.0
-        frames = np.vstack([base[:, :n], act])
-    else:
-        frames = F.stem_frame_features(y, sr, hop, stems_mode)
+    chunk_s = float(cfg.get("project_chunk_s", 600.0))
 
     rows, starts, strides = [], [], []
-    bw = F.beat_windows(y, sr, window_s)
-    nF = frames.shape[1]
-    if bw is not None:
-        b_starts, b_spans, _tempo = bw
-        for s0, span in zip(b_starts, b_spans):
-            f0 = min(int(s0 // hop), nF - 1)
-            f1 = min(max(int((s0 + span) // hop), f0 + 2), nF)
-            block = frames[:, f0:f1]
-            rows.append(np.concatenate([block.mean(1), block.std(1)]))
-            starts.append(int(s0))
-            strides.append(int(span))
-    else:
-        vecs, sfs = F.aggregate_windows(frames, window_s,
-                                        float(cfg["overlap"]), sr, hop)
-        step = int(round(window_s * (1 - float(cfg["overlap"])) * sr))
-        for v, sf in zip(vecs, sfs):
-            rows.append(v)
-            starts.append(int(sf * hop))
-            strides.append(step)
+    # chunked: a long set at 44.1k would OOM in one piece (the NMF
+    # activation pass over a 100k+-frame spectrogram); memory stays
+    # bounded and windows are computed per chunk on the chunk's own beats.
+    dur = librosa.get_duration(path=path)
+    off = 0.0
+    while off < dur - 1.0:
+        y, _ = librosa.load(path, sr=sr, mono=True, offset=off,
+                            duration=min(chunk_s, dur - off))
+        if y.size < hop * 4:
+            break
+        if stems_mode == "nmf" and \
+                getattr(corpus, "nmf_templates", None) is not None:
+            from . import channels
+            base = F.frame_features(y, sr, hop)
+            act = channels.track_activations(y, corpus.nmf_templates, hop)
+            n = min(base.shape[1], act.shape[1])
+            act = act[:, :n] / (act.max() + 1e-9) * 10.0
+            frames = np.vstack([base[:, :n], act])
+        else:
+            frames = F.stem_frame_features(y, sr, hop, stems_mode)
+        base_sample = int(off * sr)
+        bw = F.beat_windows(y, sr, window_s)
+        nF = frames.shape[1]
+        if bw is not None:
+            b_starts, b_spans, _tempo = bw
+            for s0, span in zip(b_starts, b_spans):
+                f0 = min(int(s0 // hop), nF - 1)
+                f1 = min(max(int((s0 + span) // hop), f0 + 2), nF)
+                block = frames[:, f0:f1]
+                rows.append(np.concatenate([block.mean(1), block.std(1)]))
+                starts.append(base_sample + int(s0))
+                strides.append(int(span))
+        else:
+            vecs, sfs = F.aggregate_windows(frames, window_s,
+                                            float(cfg["overlap"]), sr, hop)
+            step = int(round(window_s * (1 - float(cfg["overlap"])) * sr))
+            for v, sf in zip(vecs, sfs):
+                rows.append(v)
+                starts.append(base_sample + int(sf * hop))
+                strides.append(step)
+        off += chunk_s
     raw = np.asarray(rows)
 
     # the corpus's exact whitening (sv already folded into components)
