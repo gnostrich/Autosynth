@@ -104,10 +104,11 @@ def main():
     from tkinter import ttk
 
     from basin.panel.server import PanelEngine
+    from basin import bridge as bridge_mod
     print("loading instrument ...")
     eng = PanelEngine(os.path.abspath(args.project))
     sr = eng.sr
-    clock_corr = list(getattr(eng, "clock_corr", []))
+    BR = bridge_mod.build_bridge(eng.corpus, eng.atlas.memberships, eng.psi)
     n_tracks = len(eng.track_names)
     BINS = eng.FLOW_BINS
     stems_order = [s for s in
@@ -174,6 +175,30 @@ def main():
             command=lambda s=v["stem"], vv=var: eng.set_voice(s, vv.get())
         ).pack(side="right")
 
+    # ---- bridge: measured-descriptor meta-controls -----------------------------
+    # each slider's lean vector is that descriptor's measured projection onto
+    # the landscape — drag it and watch which emergent faders move.
+    br_frame = ttk.Frame(root)
+    br_frame.pack(fill="x", padx=6)
+    ttk.Label(br_frame, text="bridge (measured):").pack(side="left")
+
+    def bridge_drag(di, val):
+        v = float(val)
+        for k in np.nonzero(BR["lean"][di])[0]:
+            lv = float(v * BR["lean"][di][k])
+            eng.set_lean(int(k), lv)
+            if k < len(fader_vars):
+                fader_vars[k].set(lv)
+
+    for di, name in enumerate(BR["names"]):
+        ttk.Label(br_frame, text=name).pack(side="left", padx=(8, 1))
+        bv = tk.DoubleVar(value=0.0)
+        bs = ttk.Scale(br_frame, from_=-2.0, to=2.0, variable=bv, length=70,
+                       command=lambda val, dd=di: bridge_drag(dd, val))
+        bs.pack(side="left")
+        bs.bind("<Double-Button-1>",
+                lambda e, dd=di, vv=bv: (vv.set(0.0), bridge_drag(dd, 0.0)))
+
     # ---- fader bank (scrollable) ---------------------------------------------
     bank_wrap = ttk.Frame(root)
     bank_wrap.pack(fill="x", padx=6)
@@ -192,8 +217,9 @@ def main():
         col = ttk.Frame(bank)
         col.grid(row=0, column=k, padx=3)
         lam = float(np.abs(eng.eigvals[eng.macro_indices[k]]))
-        clk = clock_corr[k] if k < len(clock_corr) else 0.0
-        tag = f"\nclk {clk:+.2f}" if abs(clk) >= 0.15 else ""
+        di = int(np.argmax(np.abs(BR["corr"][:, k])))
+        r = float(BR["corr"][di, k])
+        tag = f"\n{BR['names'][di]} {r:+.2f}" if abs(r) >= 0.25 else ""
         v = tk.DoubleVar(value=0.0)
         fader_vars.append(v)
         s = tk.Scale(col, from_=2.0, to=-2.0, resolution=0.05,

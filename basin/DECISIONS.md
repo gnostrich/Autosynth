@@ -322,3 +322,19 @@ device via sounddevice:
   gamma/tau/couple sliders, voice toggles, 2 Hz status, --record.
 - `scripts/play_live.py` — pure terminal commands, for SSH/minimal setups.
 Event-driven redraws only; the interface cost is negligible.
+
+## The bridge (2026-07-11, "natural bridge between emergent knobs and intuition knobs")
+`basin/bridge.py`: seven standard MEASURED descriptors (rms, onset,
+mel-centroid, low-band mass, flatness, chroma focus, pace) computed from
+the stored window features, correlated against every landscape direction.
+Two products, both display/control-surface (nothing enters the trace):
+- fingerprints: each fader is tagged with its strongest measured
+  descriptor alignment (e.g. "bright +0.53");
+- bridge controls: each descriptor is a meta-slider whose lean vector is
+  its measured projection onto the landscape (top-12 carriers, unit norm)
+  — dragging it visibly moves the emergent faders it rides on.
+Measured on this corpus: bright/bass ↔ fader 3 (±0.53), tonal/onset ↔
+fader 5 (±0.5), pace ↔ faders 10/6, rms spread over 3/4/5. Fader 0 (most
+persistent direction) aligns weakly with ALL simple descriptors — the
+corpus's deepest division is not reducible to standard intuition; naming
+it stays with the listener.
