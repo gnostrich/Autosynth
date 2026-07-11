@@ -159,6 +159,30 @@ def eigendecompose(P: np.ndarray) -> Spectrum:
 # Connectivity + basins
 # ---------------------------------------------------------------------------
 
+def full_psi(eigvals: np.ndarray, right_vecs: np.ndarray):
+    """ALL linear-mode diffusion coordinates — no significance cutoff.
+
+    The spectrum of this corpus decays smoothly (no gap; the default-4 cut
+    was flagged), and measured consequences followed: the material-clock
+    direction (speed up / slow down) lives in modes below the cut. So the
+    landscape keeps every real+ direction, ordered by measured persistence
+    |λ|; which ones matter is decided by ears at the faders, not by a
+    terminator in the machinery. Standardized per mode like the macro psi.
+    Returns ``(psi_full [n_charts, n_linear], eig_indices)``.
+    """
+    vals = np.asarray(eigvals)
+    idx = [i for i in range(1, len(vals))
+           if abs(np.imag(vals[i])) <= 1e-9 and np.real(vals[i]) > 0
+           and abs(vals[i]) < 1 - 1e-9]
+    if not idx:
+        return np.zeros((right_vecs.shape[0], 0)), []
+    psi = np.real(np.asarray(right_vecs)[:, idx] * vals[idx][None, :])
+    psi = psi - psi.mean(0, keepdims=True)
+    std = psi.std(0, keepdims=True)
+    std[std < 1e-12] = 1.0
+    return psi / std, idx
+
+
 def build_pair_operator(memberships: np.ndarray, track_bounds: list) -> dict:
     """Second-order trace: measured routing over PATH states (c_prev, c_cur).
 

@@ -92,6 +92,13 @@ def main() -> None:
         from basin import operator as operator_mod
         P2 = operator_mod.build_pair_operator(atlas.memberships,
                                               corpus.track_bounds)
+        psi_f, _ = operator_mod.full_psi(inst["eigvals"], inst["eig_right"])
+        if psi_f.shape[1]:
+            psi = psi_f
+            knob = build_knob(args.macro, psi.shape[1], psi)
+        kernel = None
+        cfg["kappa"] = 0.0
+        cfg["momentum"] = 0.0
         orbits, readers = [], []
         for vi, stem in enumerate(voices):
             vseed = args.seed + 101 * vi

@@ -253,3 +253,18 @@ itself. Defaults: kappa=0, momentum=0 (parts retired; code kept for the
 ablation story). No rebuild needed — P2 derives from stored memberships
 at load. The knobs remain the spectral directions of the landscape; the
 lean is the only external input.
+
+## The clock distributary (2026-07-11, "does region-to-region allow speedup/slowdown")
+Measured: the corpus's own pacing spans 0.35–0.94 s per beat step (170%
+range) — the emission level has always carried it (native clocks). But at
+the ROUTING level, the material-clock direction correlated with the 4
+exposed knobs at only |r| ≤ 0.21 — the speed degree of freedom was nearly
+orthogonal to the whole panel. The strongest clock-aligned directions are
+eigenmodes 11 (r=+0.42) and 7 (r=+0.34), BOTH below the flagged default-4
+cut. The arbitrary knob terminator had amputated the tempo distributary.
+Resolution (operator.full_psi): the landscape now carries EVERY linear
+direction (99 on this corpus), ordered by measured persistence, no
+significance cutoff — ears terminate, not machinery. First 4 columns are
+bit-identical to the old macros (existing leans keep meaning). Measured:
+leaning the clock pair ±2σ swings mean step 0.49s ↔ 0.76s (54%) purely by
+routing — no stretching, no rate rule.

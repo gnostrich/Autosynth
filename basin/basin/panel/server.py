@@ -49,15 +49,22 @@ class PanelEngine:
         self.project_dir = project_dir
         inst = store.load_instrument(os.path.join(project_dir, "instrument.npz"))
         self.cfg = dict(inst["config"])
-        self.psi = inst["psi"]
         self.P = inst["P"]
+        # the FULL landscape: every linear direction, ordered by measured
+        # persistence — no significance terminator (the measured clock/speed
+        # direction lives below the old default-4 cut)
+        from basin import operator as _op
+        self.psi, _full_idx = _op.full_psi(inst["eigvals"], inst["eig_right"])
+        if self.psi.shape[1] == 0:
+            self.psi = inst["psi"]
+            _full_idx = list(inst["macro_indices"])
         self.corpus = inst["corpus"]
         self.atlas = inst["atlas"]
         self.kernel = inst["kernel"]
         self.eigvals = inst["eigvals"]
         self.eig_right = inst["eig_right"]
         self.classification = inst["classification"]
-        self.macro_indices = list(inst["macro_indices"])
+        self.macro_indices = list(_full_idx)
 
         # oscillatory (groove) and alternation modes, strongest first
         self.groove_modes = [c["index"] for c in self.classification
@@ -92,6 +99,9 @@ class PanelEngine:
         n_macros = self.psi.shape[1]
         self.cfg["basin_halflife_steps"] = float(np.median(
             [e - s for (s, e) in self.corpus.track_bounds]))
+        # parts retired: memory/cycles live in the path-state operator
+        self.cfg["kappa"] = 0.0
+        self.cfg["momentum"] = 0.0
         basins = inst["chart_basin"]
         from basin import operator as operator_mod
         P2 = operator_mod.build_pair_operator(self.atlas.memberships,
