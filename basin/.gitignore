@@ -13,3 +13,7 @@ reference_sets/
 grammar.npz
 chanfeats.npz
 channelspace.pkl
+setgrammar.npz
+chanfeats.npz
+channelspace.pkl
+reference_sets/
