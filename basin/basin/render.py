@@ -433,7 +433,7 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
         # the walk to the played window — even only on jumps — erases its
         # accumulated drift and no lean can ever move the set.)
         w = reader.sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
-        stride = min(reader.native_stride(w), 4 * est)
+        stride = reader.native_stride(w)   # material own clock, uncapped (measured: beat strides never exceed 2x median)
         glen = stride + xfade
         if t + glen >= cap:
             break
@@ -490,7 +490,7 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
         # gate = coupling; see render_flow — the walk stays free to navigate
         w = readers[v].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
         vs[v]["a"] = st.a
-        stride = min(readers[v].native_stride(w), 4 * est)
+        stride = readers[v].native_stride(w)
         glen = stride + xfade
         if S["t"] + glen < cap:
             g = readers[v].grain_audio(w, glen).copy()
