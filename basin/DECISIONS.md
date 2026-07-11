@@ -311,3 +311,14 @@ misses, now one-time-ever via a three-tier cache:
 - `scripts/warm_cache.py` pre-pays every one-time cost offline so live
   play never stalls. Disk: flacs ~2.3 GB + npy ~130 MB per (track,channel)
   actually played, plus ~120 MB per track for mix.
+
+## Native panel (2026-07-11, "performance issue is huge, some ux outside browser")
+The engine measures 6 ms/step; the lag was the browser page itself
+(~100 canvas redraws per frame + WebSocket + AudioWorklet). Two native
+front-ends now wrap the SAME PanelEngine, audio direct to the sound
+device via sounddevice:
+- `scripts/play_native.py` — tkinter window (stdlib UI, no new deps):
+  draggable ranked fader bank with measured |λ|/clk labels, JUMP/ZERO,
+  gamma/tau/couple sliders, voice toggles, 2 Hz status, --record.
+- `scripts/play_live.py` — pure terminal commands, for SSH/minimal setups.
+Event-driven redraws only; the interface cost is negligible.
