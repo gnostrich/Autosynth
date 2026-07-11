@@ -338,3 +338,20 @@ fader 5 (±0.5), pace ↔ faders 10/6, rms spread over 3/4/5. Fader 0 (most
 persistent direction) aligns weakly with ALL simple descriptors — the
 corpus's deepest division is not reducible to standard intuition; naming
 it stays with the listener.
+
+## Set-arc extraction (2026-07-11, "extract this mapping from some given sets")
+`basin/setmap.py` + `scripts/extract_arc.py`: a given set (any audio) is
+projected onto the landscape with the corpus's exact stored transforms
+(beat windows → frame features [+ activations vs the corpus templates] →
+standardize → PCA whiten → chart soft-assignment), becoming a measured
+trajectory a(t). The same Mori–Zwanzig cut then separates its motion:
+corpus-flow prediction + INNOVATION — and the innovation, EMA-smoothed at
+the corpus's measured chart-run timescale, is the set's steering as a
+lean schedule over the emergent directions.
+VALIDATED on a known answer: extracting from `performed_arc`'s audio
+alone recovered the composed clock journey's shape on fader 10 (+open →
+−middle → +breakdown → release; amplitude compressed as expected —
+innovation registers steering only while the walk fights the flow).
+`--replay` renders a new set on this instrument steered by an extracted
+arc (peak-lean gain is a printed performance choice). Aggregating arcs
+across sets = a measured grammar of how sets are shaped.
