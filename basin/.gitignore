@@ -11,3 +11,5 @@ __pycache__/
 .pytest_cache/
 reference_sets/
 grammar.npz
+chanfeats.npz
+channelspace.pkl
