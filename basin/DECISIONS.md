@@ -424,3 +424,25 @@ region-to-region WITHIN each channel and ACROSS channels. Built:
   landscape, jointly governed by the vertical measure. The velocity
   coupling stance retires for counterpoint — replaced by measured
   structure, the same pattern as every consolidation.
+
+## Learning transitions from sets: the relative trace (2026-07-11)
+Confirmed requirement: the trace covers each channel, region→region,
+including cross-channel, irrespective of track — for BOTH data sources.
+- From tracks: per-channel path operators + simultaneous AND lagged
+  cross-channel conditionals (lagged MI ≈ simultaneous ≈ 3.5 nats).
+  Regions pool material across tracks (147/256 span >1 track), so the
+  trace is applied track-agnostically by construction.
+- From sets: the corpus (isolated files) cannot contain cross-material
+  transitions; a reference set is the unique measured source of mixing
+  moves. The Jörmungandr set, channel-split through the corpus templates
+  and projected into all 8 channel spaces (7,565 windows), traverses
+  241–251/256 regions per channel and carries 12–17% NOVEL transition
+  mass (moves the corpus flow gives zero probability).
+- Translation is a RELATIVE trace (the listener's framing, adopted):
+  projection = reading their sound as resemblance distributions over our
+  regions (foreign material self-attenuates); the grammar's teaching =
+  the set's routing measure relative to ours (log-ratio / RN derivative)
+  — corpus-covariant, composing additively in the same scale-free
+  evidence slot as everything else. Novel-move support enters by COUNT
+  POOLING (corpus counts + set counts, one measure, implicitly weighted
+  by evidence volume — no blend constant).
