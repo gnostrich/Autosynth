@@ -233,7 +233,7 @@ track (t12) for the full half hour. Two causes:
    not settle on the straight line.
 
 ## Path-state trace (2026-07-11, "memory kernel etc aren't separate parts right")
-The user's objection was架构-true: kernel, flywheel, momentum — separately
+The user's objection was architecturally true: kernel, flywheel, momentum — separately
 named, separately gained parts bolted onto a first-order walk — are the
 Mori–Zwanzig *symptom* of projecting dynamics with memory onto a state
 that is too small. Give the state one step of path instead:
