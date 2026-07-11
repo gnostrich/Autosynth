@@ -82,6 +82,22 @@ class PanelEngine:
             [self.eigvals[i] for i in _full_idx])).real \
             if len(_full_idx) else np.ones(self.psi.shape[1])
         self.nudge_knob = np.zeros(self.psi.shape[1])    # transient, decays
+        # autopilot grammar: an extracted set-arc (lean schedule over the
+        # landscape, unit peak). When present, the landscape gravity relaxes
+        # released faders TOWARD the grammar's current lean instead of zero —
+        # the instrument plays like the reference by default; hands are
+        # deviations. ``follow`` (stance gain, σ units) scales it; the
+        # schedule advances one entry per step at the reference's own window
+        # rate and wraps.
+        self.grammar = None
+        self.follow = 0.0
+        self._gram_ptr = 0
+        gpath = os.path.join(project_dir, "grammar.npz")
+        if os.path.exists(gpath):
+            g = np.load(gpath)["lean"]
+            if g.shape[1] == self.psi.shape[1]:
+                self.grammar = g / (np.abs(g).max() + 1e-12)
+                self.follow = 1.0
         self._lean_burst = 0.0               # fast-throw detector → jump gate
         self.grip = {}                       # macro idx -> held value
         self.lock = threading.Lock()
@@ -279,6 +295,8 @@ class PanelEngine:
                     v["orbit"].beta_p = float(value)
             if name == "couple":
                 self.couple = float(value)
+            elif name == "follow":
+                self.follow = float(value)
 
     def set_voice(self, stem: str, on: bool):
         with self.lock:
@@ -333,12 +351,20 @@ class PanelEngine:
 
     def _apply_decay_and_grip(self):
         self.nudge_knob *= 0.9                          # transient leans decay
-        # landscape gravity: released faders relax at their mode's own rate
+        # landscape gravity: released faders relax at their mode's own rate,
+        # toward the grammar's current lean when an autopilot is loaded
+        # (toward zero otherwise — pure corpus routing)
+        base = np.zeros(len(self.slider_knob))
+        if self.grammar is not None and self.follow != 0.0:
+            base = self.follow * self.grammar[self._gram_ptr]
+            self._gram_ptr = (self._gram_ptr + 1) % len(self.grammar)
         free_mask = np.ones(len(self.slider_knob), bool)
         for k in self.held:
             if k < len(free_mask):
                 free_mask[k] = False
-        self.slider_knob[free_mask] *= self.mode_decay[free_mask]
+        f = free_mask
+        self.slider_knob[f] = base[f] + (self.slider_knob[f] - base[f]) \
+            * self.mode_decay[f]
         self.knob = self.slider_knob + self.nudge_knob
         # a fast hard fader throw (≳1σ within ~a step) fires the jump gate so
         # the gesture is heard at the next grain instead of the next natural

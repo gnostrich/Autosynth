@@ -167,6 +167,8 @@ def main():
     meta_slider("gamma", 0.0, 2.0, 1.0)
     meta_slider("tau", 0.3, 2.0, 1.0)
     meta_slider("couple", 0.0, 1.5, eng.couple)
+    if eng.grammar is not None:
+        meta_slider("follow", 0.0, 2.0, eng.follow)
 
     for v in eng.voices:
         var = tk.BooleanVar(value=v["on"])
@@ -360,7 +362,11 @@ def main():
                         bv.set(proj)
             leans = {k: round(fv.get(), 2) for k, fv in
                      enumerate(fader_vars) if abs(fv.get()) > 1e-3}
-            lines.append(f'leans: {leans or "0 (corpus routing)"}')
+            gram = ''
+            if eng.grammar is not None and eng.follow != 0.0:
+                gram = (f'   autopilot: {100*eng._gram_ptr/len(eng.grammar):.0f}%'
+                        f' of reference arc, follow {eng.follow:.1f}')
+            lines.append(f'leans: {leans or "0 (corpus routing)"}{gram}')
             status.config(text="\n".join(lines))
         root.after(500, tick)
 

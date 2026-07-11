@@ -368,3 +368,13 @@ visibly glide home (bridge sliders show the live projection of the
 current lean onto their descriptor vectors) — grab any mid-glide to
 counter-steer. When the reference-set grammar lands, it becomes the base
 the gravity relaxes TOWARD instead of zero.
+
+## Autopilot (2026-07-11, built while offline per standing authorization)
+`grammar.npz` (an extracted set-arc, unit peak) loads at panel boot; the
+landscape gravity then relaxes released faders TOWARD the grammar's
+current lean instead of zero — the instrument plays like the reference by
+default and hands are deviations. `follow` is a stance gain (σ units,
+slider; 0 = pure corpus routing). The schedule advances at the
+reference's own window rate and wraps. Verified headless: faders ride the
+grammar, hold absolutely while grabbed, and on release ease back onto the
+reference trajectory at each mode's measured relaxation rate.
