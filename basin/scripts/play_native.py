@@ -169,6 +169,12 @@ def main():
     meta_slider("couple", 0.0, 1.5, eng.couple)
     if eng.grammar is not None:
         meta_slider("follow", 0.0, 2.0, eng.follow)
+    ttk.Label(top, text="altitude").pack(side="left", padx=(10, 2))
+    alt_var = tk.StringVar(value="phrase")
+    for alt in ("beat", "phrase", "section"):
+        ttk.Radiobutton(top, text=alt, value=alt, variable=alt_var,
+                        command=lambda: eng.set_altitude(alt_var.get())
+                        ).pack(side="left")
 
     for v in eng.voices:
         var = tk.BooleanVar(value=v["on"])

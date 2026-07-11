@@ -36,6 +36,9 @@ class OrbitState:
     #                            gate for flow reads: the walk's own full
     #                            posterior — top-k truncation is an emission
     #                            device and would jitter the gate)
+    chart: int = -1            # the chart the walk SAMPLED this step — the
+    #                            sovereign region choice; the reader
+    #                            arbitrates only within it
 
 
 class Orbit:
@@ -61,6 +64,9 @@ class Orbit:
         self.tau = float(cfg.get("tau", 1.0))
         self.kappa = float(cfg.get("kappa", 1.0))
         self.top_k = int(cfg.get("top_memberships", 8))
+        # altitude: where the hand enters the factorized measure
+        # ('beat' | 'phrase' | 'section') — see step()
+        self.altitude = str(cfg.get("altitude", "phrase"))
         self.step_s = float(cfg.get("step_s", 0.75))
         self.knob = (np.zeros(self.n_macros) if knob_vector is None
                      else np.asarray(knob_vector, float))
@@ -215,7 +221,33 @@ class Orbit:
                     - self._basin_pressure())
         # stabilise exp
         log_tilt = log_tilt - log_tilt.max()
-        raw = pulled * np.exp(log_tilt)
+
+        # Altitude: WHERE the hand (and wanderlust) enters the measure.
+        #   'beat'    — tilt reweights every move (original behavior);
+        #   'phrase'  — the stay-mass (the material's own dwell) is
+        #               untouchable; tilt only redistributes the LEAVE part,
+        #               so steering chooses transitions, never interrupts a
+        #               phrase mid-dwell;
+        #   'section' — likewise, but only the cross-basin part is steerable.
+        # An exact factorization of the same measure — at zero tilt every
+        # altitude is identical to the original walk.
+        alt = getattr(self, "altitude", "phrase")
+        cur = int(np.argmax(m))
+        if alt == "beat":
+            raw = pulled * np.exp(log_tilt)
+        else:
+            if alt == "section" and self.chart_basin is not None:
+                keep = self.chart_basin == self.chart_basin[cur]
+            else:                                    # 'phrase'
+                keep = np.zeros(self.n_charts, bool)
+                keep[cur] = True
+            stay = pulled * keep
+            leave = pulled * ~keep
+            lv = leave.sum()
+            if lv > 1e-12:
+                tl = leave * np.exp(log_tilt)
+                leave = tl * (lv / tl.sum())         # leave-mass preserved
+            raw = stay + leave
 
         s = raw.sum()
         if s < 1e-12:                                  # dangling → restart diffuse
@@ -250,14 +282,14 @@ class Orbit:
         # chart); sampling a position each step keeps it a *moving* walk while
         # still stepping through P and honoring every tilt term. γ=0 remains a
         # pure-PULL walk; κ=0 still reproduces M2 (identical rng draws).
-        cur = int(np.argmax(m))
+        cur_c = int(np.argmax(m))
         c = self.rng.choice(self.n_charts, p=m_new / m_new.sum())
-        self._prev_chart = cur                 # the path segment advances
+        self._prev_chart = cur_c               # the path segment advances
         nxt = np.zeros(self.n_charts)
         nxt[c] = 1.0
         self._m = nxt
         return OrbitState(m=m_new, a=a, a_pred=a_pred, top_charts=top,
-                          m_full=raw)
+                          m_full=raw, chart=int(c))
 
     def _sharpen(self, m: np.ndarray) -> np.ndarray:
         """Temperature sharpening: exponent 1/τ. Low τ → peaky (mode-follow)."""

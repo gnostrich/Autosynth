@@ -378,3 +378,29 @@ slider; 0 = pure corpus routing). The schedule advances at the
 reference's own window rate and wraps. Verified headless: faders ride the
 grammar, hold absolutely while grabbed, and on release ease back onto the
 reference trajectory at each mode's measured relaxation rate.
+
+## The hierarchy, bottom-up (2026-07-11, "do it the natural way")
+Measurement first (as promised), then two changes that are both exact
+factorizations of the existing measure — no new constants.
+MEASURED: charts are tempo-pure (within-chart clock variance 0.4% of
+corpus); corpus phrase transitions almost never jump tempo (1% exceed
+|Δlog stride| 0.2); yet the walk's transitions jumped tempo 12% of the
+time, and cliff landings had ~0.000 relative gate mass — the reader's
+beat-normalized (tempo-blind) splice evidence was buying windows through
+tiny membership slivers in charts the walk never chose. Level inversion,
+same disease relocalization had.
+1. **Sovereign chart**: the walk samples its chart (it always did); the
+   reader now arbitrates ONLY within it (gate = P(w|chart), measured).
+   Window evidence can no longer overturn chart routing. Fallback widens
+   to the walk's mixture, never to the ungated field.
+2. **Altitude**: where the hand (and wanderlust) enters the factorized
+   measure — 'beat' (tilt on every move), 'phrase' (dwell untouchable,
+   tilt redistributes only the leave part), 'section' (only cross-basin).
+   At zero tilt all altitudes are the same walk. Default: phrase.
+MEASURED AFTER: cliffs 10% (beat) → 7% (phrase) → 4% (section); switching
+calms accordingly (51/25/8 track switches per 700 steps). Navigation at
+phrase altitude is honestly GENTLER: it biases where the set goes next,
+not how long things hold (lean m1+ still lands track 5; extreme poles need
+beat altitude or a stronger stance β). Loop-inflation of duration-weighted
+mass is quantified in the ledger (Baryon 2.35×) — the duration-vs-content
+measure question is left open for ears, deliberately.

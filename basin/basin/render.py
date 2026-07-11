@@ -304,7 +304,8 @@ class GrainReader:
             return v + 1
         return v
 
-    def sample_flow(self, a_t: np.ndarray, m: np.ndarray = None) -> int:
+    def sample_flow(self, a_t: np.ndarray, m: np.ndarray = None,
+                    chart: int = -1) -> int:
         """Flow-mode read: the corpus's own motion, gated by the walk's region.
 
         ``p(w) ∝ [W@m]_w · exp(−|feat(w) − feat(succ(prev))|²/2σ²)
@@ -331,9 +332,19 @@ class GrainReader:
         else:
             tilt = np.zeros(n)
 
-        # region gate: log of the orbit's mixture pushed to windows.
-        # Zero-mass windows are simply outside the region (barred).
-        if m is not None:
+        # Region gate. The walk's sampled chart is SOVEREIGN when given:
+        # the reader arbitrates only among that chart's own windows
+        # (P(w|chart) — measured), so window-level evidence can never
+        # overturn the walk's routing. (The blended-mixture gate let
+        # tempo-blind splice evidence buy windows through tiny membership
+        # slivers in charts the walk gave ~zero mass — the measured source
+        # of the fast/slow cliffs: walk transitions broke tempo 12% of the
+        # time vs the corpus's 1%.) Mixture gate remains the fallback.
+        if chart is not None and chart >= 0:
+            g = self.W[:, chart]
+            with np.errstate(divide="ignore"):
+                gate = np.where(g > 0, np.log(np.maximum(g, 1e-300)), -np.inf)
+        elif m is not None:
             g = self.W @ m
             with np.errstate(divide="ignore"):
                 gate = np.where(g > 0, np.log(np.maximum(g, 1e-300)), -np.inf)
@@ -369,7 +380,22 @@ class GrainReader:
             self.force_jump = False
 
         if not np.any(np.isfinite(logp)):      # region excludes everything
-            logp = tilt.astype(float) + self._log_presence
+            # widen to the walk's full mixture (still its measure) before
+            # ever falling back to the ungated field
+            if m is not None and chart is not None and chart >= 0:
+                g2 = self.W @ m
+                with np.errstate(divide="ignore"):
+                    gate2 = np.where(g2 > 0,
+                                     np.log(np.maximum(g2, 1e-300)), -np.inf)
+                logp = tilt.astype(float) + self._log_presence + gate2
+                if self._prev_emitted is not None:
+                    prev_track = self.handles[self._prev_emitted].track_id
+                    same = np.array([h.track_id == prev_track
+                                     for h in self.handles])
+                    if not np.all(same | ~np.isfinite(logp)):
+                        logp[same] = -np.inf
+            if not np.any(np.isfinite(logp)):
+                logp = tilt.astype(float) + self._log_presence
 
         logp -= logp.max()
         p = np.exp(logp)
@@ -498,7 +524,7 @@ def render_flow(orbit, reader: GrainReader, n_steps: int, cfg: dict,
         # walk and no relocalization back onto playback is needed. (Snapping
         # the walk to the played window — even only on jumps — erases its
         # accumulated drift and no lean can ever move the set.)
-        w = reader.sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
+        w = reader.sample_flow(st.a, st.m_full if st.m_full is not None else st.m, chart=st.chart)
         stride = reader.native_stride(w)   # material own clock, uncapped (measured: beat strides never exceed 2x median)
         glen = stride + xfade
         if t + glen >= cap:
@@ -567,7 +593,7 @@ def render_flow_voices(orbits: list, readers: list, n_steps: int,
             orbits[v].knob = base_knobs[v] + couple * others
         st = orbits[v].step()
         # gate = coupling; see render_flow — the walk stays free to navigate
-        w = readers[v].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
+        w = readers[v].sample_flow(st.a, st.m_full if st.m_full is not None else st.m, chart=st.chart)
         vs[v]["da"] = (ema_decay * vs[v]["da"]
                        + (1.0 - ema_decay) * (st.a - vs[v]["a"]))
         vs[v]["a"] = st.a

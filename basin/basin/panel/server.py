@@ -298,6 +298,15 @@ class PanelEngine:
             elif name == "follow":
                 self.follow = float(value)
 
+    def set_altitude(self, altitude: str):
+        """Where the hand enters the factorized measure: 'beat' (every
+        move), 'phrase' (transitions only; dwell untouchable), 'section'
+        (cross-basin only). Zero-lean flow is identical at every altitude."""
+        with self.lock:
+            if altitude in ("beat", "phrase", "section"):
+                for v in self.voices:
+                    v["orbit"].altitude = altitude
+
     def set_voice(self, stem: str, on: bool):
         with self.lock:
             for v in self.voices:
@@ -398,7 +407,7 @@ class PanelEngine:
                 st = v["orbit"].step()
                 # gate = coupling: emission stays inside the walk's region,
                 # so the walk roams free and faders steer territory directly
-                w = v["reader"].sample_flow(st.a, st.m_full if st.m_full is not None else st.m)
+                w = v["reader"].sample_flow(st.a, st.m_full if st.m_full is not None else st.m, chart=st.chart)
                 dec = 0.5 ** (1.0 / max(v["reader"].mean_chart_run(), 1.0))
                 v["da"] = dec * v.get("da", st.a * 0.0) \
                     + (1.0 - dec) * (st.a - v["a"])
