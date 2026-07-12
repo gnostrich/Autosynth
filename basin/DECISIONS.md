@@ -574,3 +574,18 @@ coherence EMERGES from the spectrum with zero tilt, zero basin memory.
 dwelling ~100 grains); grain detail rides inside; channels cross tracks
 within the current section on their own grain clock, tag retained. Entire
 tilt stack + basin memory deleted.
+
+## Continuous slow-coordinate render (2026-07-12)
+Hard-clustering the smooth tICA slow coordinate into 24 sections
+reintroduced boundary churn (section dwell 3 grains) -- the discretization
+disease one level up. Fix (`basin_continuous_render.py`): drop kmeans, ride
+the CONTINUOUS slow coordinate. Every transition lands on the nearest
+window in slow-space (cKDTree), so Y never jumps and the 499-step glide is
+preserved across track crossings. Channels re-source at the trace's own
+slow displacement scale (median |Y(t+tau)-Y(t)|, measured not chosen),
+staggered, to nearest-Y windows of other tracks -> emergent 2/8 cross-track,
+zero knobs. Result: churn fixed, rendered conductor autocorr .44 @ lag64
+(coherence reaches the audio). Caveat: conductor rides whole tracks (only
+~5 home-track jumps/12min) => over-coherent, low traversal. Next: give the
+conductor the SAME trace slow-scale re-sourcing the channels use (symmetric,
+still knob-free) so it decorrelates at the data rate and traverses more.
