@@ -14,7 +14,7 @@ import numpy as np, soundfile as sf
 from scipy.spatial import cKDTree
 from basin import store, operator
 from basin.render import GrainReader
-TAG=sys.argv[1] if len(sys.argv)>1 else 'c1'
+TAG=sys.argv[1] if len(sys.argv)>1 else 's1'
 inst=store.load_instrument('instrument_nmf44.npz'); c=inst['corpus']; H=c.handles
 mem=inst['atlas'].memberships; psi,_=operator.full_psi(inst['eigvals'],inst['eig_right'])
 K=int(c.n_channels); bounds=c.track_bounds
@@ -41,15 +41,19 @@ rng=np.random.default_rng(SEED)
 xfade=int(round(float(cfg['crossfade_s'])*sr)); lin=np.linspace(0,1,xfade,endpoint=False)[:,None]
 total=int(MINUTES*60*sr); cap=int(total*1.1)+8*xfade; out=np.zeros((cap,2),dtype=np.float32)
 t=0;i=0
-home=int(rng.integers(N))
+home=int(rng.integers(N)); hanchor=Yn[home].copy()
 src=[home]*K; anchor=[Yn[home].copy() for _ in range(K)]
 crossed=[]; Ytrace=[]; homejumps=0
 while t<total:
-    # conductor rides corpus; at track end, seamless nearest-Y jump to another track
-    if home+1<N and H[home+1].track_id==H[home].track_id:
-        home=home+1
+    # conductor: ride corpus, but re-source at the SAME trace slow-scale the
+    # channels use (not only at track end) -- seamless nearest-Y hand-off, so
+    # it decorrelates at the data rate and traverses many tracks.
+    hdrift=np.linalg.norm(Yn[home]-hanchor)
+    hended=not(home+1<N and H[home+1].track_id==H[home].track_id)
+    if hdrift>scale or hended:
+        home=nearest_other_track(Yn[home], H[home].track_id); homejumps+=1; hanchor=Yn[home].copy()
     else:
-        home=nearest_other_track(Yn[home], H[home].track_id); homejumps+=1
+        home=home+1
     yt=Yn[home]; ht=H[home].track_id; Ytrace.append(Y[home].copy())
     stride=rj.native_stride(home); glen=stride+xfade
     if t+glen>=cap: break
@@ -71,7 +75,7 @@ while t<total:
     crossed.append(nc/K); t+=stride; i+=1
 out=out[:total+xfade]; pk=float(np.max(np.abs(out))+1e-9)
 if pk>0.95: out*=0.95/pk
-sf.write(f'renders/con_{TAG}.flac',out,sr)
+sf.write(f'renders/cos_{TAG}.flac',out,sr)
 # report + acid test: does the RENDERED conductor carry the slow tail?
 Yt=np.array(Ytrace)
 def acf(x,L):
