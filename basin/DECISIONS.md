@@ -589,3 +589,24 @@ zero knobs. Result: churn fixed, rendered conductor autocorr .44 @ lag64
 ~5 home-track jumps/12min) => over-coherent, low traversal. Next: give the
 conductor the SAME trace slow-scale re-sourcing the channels use (symmetric,
 still knob-free) so it decorrelates at the data rate and traverses more.
+
+## Reference co-trace (2026-07-12): the sanctioned external input
+Rule from listener: the ONLY allowed external thing is a co-trace of the
+Jormungandr reference set (reference_sets/reference_set.mp3, 86min) -- a
+MEASUREMENT of a real target, so it guides correct behaviour without
+violating naturalness (enters as trace, not a knob).
+`basin_reference_cotrace.py` extracts the reference into the corpus's own
+40-d feature space (same pipeline: 78 base + 8 NMF acts -> mean+std 172 ->
+standardize -> PCA40) and measures:
+  - blend density: reference has MEDIAN 7.0 / mean 5.9 of 8 channels active
+    at once => heavy cross-track blend is CORRECT (the target does it).
+  - coherence: reference autocorr .49@16 .36@32 .27@64 .16@128 -- MORE
+    coherent + longer-range than corpus tracks (.30/.15/.11/.01). It's a
+    curated 86-min arc with architecture the raw material lacks.
+  - conclusion: the target wants heavy blend AND long coherence together --
+    exactly what the corpus can't self-generate (72% of its slow coordinate
+    is track identity). The reference resolves the tension by example.
+Use (`refcon.py`): the reference trajectory Xr conducts the corpus walk
+(coherent journey) and its per-window channel pattern chA sets the blend
+density -- both measured, no knobs. Corpus provides material via nearest
+neighbour in the shared space.
