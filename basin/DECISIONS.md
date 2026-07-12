@@ -550,3 +550,27 @@ tag, so a crossing is a KNOWN move. Crossings land only on a
 same-channel-region, different-track window (beat/role compatible).
 mix_depth = crossing propensity. Track = retained context throughout;
 mixing = knowing cross-context moves, never a pile of anonymous grains.
+
+## Intrinsic multiscale (2026-07-12): the audit + the fix
+Listener asked: is anything extrinsic tacked on (suspected basin memory)?
+Audit of orbit.step(): the ONLY intrinsic pieces are the PULL (m@P, the
+measured operator) and the altitude factorization (exact, identity at zero
+tilt). Everything else is an extrinsic steering term with a knob:
+beta*bias_align, gamma*visitation, kappa*memory_tilt, momentum flywheel,
+and basin_pressure (the escape/anti-trap force -- confirmed a tack-on).
+Even the "intrinsic current" tilt carried a hand-set gain of 2.0, which is
+what collapsed it to one track.
+Measured consequence: bare m@P has lam2=0.818 (~5-step mixing, no slow
+modes); a proper walk on P decorrelates by lag 8. So stripped of tack-ons
+the dynamics have NO sections. BUT the data itself is multiscale: tICA
+(time-lagged cov, within-track) slow modes persist 45-107 steps -- a real
+intrinsic hierarchy the chart operator whitened away.
+Fix (intrinsic, subtractive): build the operator on the data's OWN slow
+modes. A slow operator over tICA-section labels has spectrum
+1.000/0.998/0.988/... (lam2 timescale ~499 steps); a bare walk on it
+reproduces the corpus autocorrelation tail (.20 @ lag64) -- multiscale
+coherence EMERGES from the spectrum with zero tilt, zero basin memory.
+`intrinsic.py`: conductor = bare slow-operator walk (intrinsic sections
+dwelling ~100 grains); grain detail rides inside; channels cross tracks
+within the current section on their own grain clock, tag retained. Entire
+tilt stack + basin memory deleted.
