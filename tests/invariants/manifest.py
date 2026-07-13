@@ -227,15 +227,32 @@ def _check_i4() -> None:
 
 def _check_i5() -> None:
     """I-5 meters/holonomy never in any objective/gradient/settlement decision.
-    The functional module f.py contains NO holonomy/drift/meter/novelty/hankel/eoc
-    identifier — those quantities are instruments (spec §9, I-14), never in F."""
-    from ets.functional import f as ff
-    hits = _forbidden_hits(_module_src(ff), _FORBID_I5)
-    assert not hits, f"I-5: meter/holonomy identifier appears in F (f.py): {hits}"
+    The whole F/settlement PATH — the functional f.py AND the solver.py that
+    settles it — contains NO holonomy/drift/meter/novelty/saturation/hankel/eoc
+    identifier and IMPORTS no meter module. Those quantities are instruments
+    (spec §9, I-14), never in F or in any settlement step."""
+    from ets.functional import f as ff, solver as sv
 
-    # NON-VACUITY: the scanner bites on a holonomy/meter term in an F-like source.
+    # (a) no meter/holonomy identifier is USED IN CODE anywhere on the F path.
+    for mod in (ff, sv):
+        hits = _forbidden_hits(_module_src(mod), _FORBID_I5)
+        assert not hits, \
+            f"I-5: meter/holonomy identifier appears on the F path ({mod.__name__}): {hits}"
+
+    # (b) neither module IMPORTS the meters package (a meter could be referenced
+    #     via an import alias that is not itself a forbidden token).
+    for mod in (ff, sv):
+        imps = _imported_modules(_module_src(mod))
+        leaked = sorted(m for m in imps if "meter" in m.lower())
+        assert not leaked, f"I-5: {mod.__name__} imports a meter module: {leaked}"
+
+    # NON-VACUITY: the identifier scanner bites on a holonomy/meter term in an
+    # F-like source, and the import scanner bites on a meters import.
     bad = "def F(state):\n    return transport(state) + holonomy_drift(state)\n"
-    assert _forbidden_hits(bad, _FORBID_I5), "I-5 scanner is vacuous"
+    assert _forbidden_hits(bad, _FORBID_I5), "I-5 identifier scanner is vacuous"
+    bad_imp = "from ets.meters import drift_cv\ndef step(x):\n    return x\n"
+    assert any("meter" in m.lower() for m in _imported_modules(bad_imp)), \
+        "I-5 import scanner is vacuous"
 
 
 _DECISION_NAMES = frozenset({
@@ -733,6 +750,95 @@ def _check_i13() -> None:
         "I-13 scanner false-positives on native Qt widgets + OSC"
 
 
+def _imported_modules(src: str) -> set:
+    """Every module string a source IMPORTS (absolute or relative), including the
+    `from X import Y` targets as `X.Y`. Used to prove one package has ZERO
+    dependency on another regardless of whether the imported names are then used
+    as bare identifiers (which `_code_identifiers` would catch)."""
+    import ast
+    mods = set()
+    for n in ast.walk(ast.parse(src)):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                mods.add(a.name)
+        elif isinstance(n, ast.ImportFrom):
+            base = ("." * n.level) + (n.module or "")
+            mods.add(base)
+            for a in n.names:
+                mods.add(base + "." + a.name)
+    return mods
+
+
+def _check_i14() -> None:
+    """I-14 Hankel/holonomy are INSTRUMENTS; event triggers must not fork
+    decision authority from F.
+
+    Two structural teeth, each proven non-vacuous:
+
+      (A) VALUES ONLY / NO BACK-EDGE INTO A SOLVE. Every module of the meters
+          package imports nothing from the F/settlement side (ets.functional:
+          f / solver / ot / anchors) nor from ets.training. A meter therefore
+          cannot call into a settlement, so it produces values only and feeds
+          nothing back — the holonomy/EOC/novelty jacks are instruments.
+
+      (B) THE SETTLEMENT DECISION READS ONLY F. The solver's accept/reject guard
+          in batch_solve compares F values and nothing else: no meter / EOC /
+          gate / comparator identifier appears in that branch. An event trigger
+          (e.g. an EOC gate) cannot fork the settlement decision away from F."""
+    import ast
+    import importlib
+    from ets.functional import solver as sv
+
+    # (A) meters package has ZERO dependency on the F/settlement side. Match
+    #     whole dotted-path COMPONENTS (so "annotations" does not accidentally
+    #     match "ot"); the entire F path lives under ets.functional, training
+    #     under ets.training.
+    meter_mods = ["ets.meters", "ets.meters.holonomy", "ets.meters.drift_cv",
+                  "ets.meters.phrase", "ets.meters.novelty"]
+    forbidden_pkg = {"functional", "training"}
+
+    def _leaks(imports):
+        return sorted(m for m in imports
+                      if forbidden_pkg & set(m.lower().split(".")))
+
+    for name in meter_mods:
+        mod = importlib.import_module(name)
+        leaked = _leaks(_imported_modules(_module_src(mod)))
+        assert not leaked, \
+            f"I-14: meter module {name} imports the F/settlement side: {leaked}"
+
+    # ...and the dependency scan BITES: a meter that imported the solver is caught.
+    mutant_meter = ("from ets.functional import solver as sv\n"
+                    "def drift(x):\n    return sv.batch_solve(x)\n")
+    assert _leaks(_imported_modules(mutant_meter)), \
+        "I-14 (A) dependency scan is vacuous"
+
+    # (B) the settlement accept guard reads ONLY F (no meter/EOC/comparator fork).
+    #     Scan the FULL test expression of every `if` in batch_solve (not just
+    #     Compare nodes), so an event trigger that forks via `if eoc_gate and
+    #     F_cand <= F_cur:` (a BoolOp, not a bare Compare) is still caught.
+    ssrc = _module_src(sv)
+    tree = ast.parse(ssrc)
+    bs = next((n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name == "batch_solve"), None)
+    assert bs is not None, "batch_solve not found"
+    guard_names = {x.id for node in ast.walk(bs) if isinstance(node, ast.If)
+                   for x in ast.walk(node.test) if isinstance(x, ast.Name)}
+    assert "F_cand" in guard_names and "F_cur" in guard_names, \
+        "I-14: the settlement guard does not compare F values"
+    forked = _forbidden_hits("\n".join(f"{n} = 0" for n in guard_names), _FORBID_I5)
+    assert not forked, \
+        f"I-14: a meter/EOC identifier appears in the settlement guard: {forked}"
+
+    # ...and it BITES: a guard that forks on an EOC gate is caught. (Mirror the
+    # real scan: parse an if-guard, collect its test Names, run the token scan.)
+    mguard = ast.parse("if eoc_gate and F_cand <= F_cur:\n    pass\n")
+    mnames = {x.id for node in ast.walk(mguard) if isinstance(node, ast.If)
+              for x in ast.walk(node.test) if isinstance(x, ast.Name)}
+    assert _forbidden_hits("\n".join(f"{n} = 0" for n in mnames), _FORBID_I5), \
+        "I-14 (B) settlement-guard scan is vacuous"
+
+
 @dataclass(frozen=True)
 class Invariant:
     id: str                 # "I-1"
@@ -801,7 +907,7 @@ INVARIANTS = [
     Invariant("I-14", "Hankel/holonomy are instruments",
               "Hankel/holonomy quantities are instruments; event triggers must "
               "not fork decision authority from F.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i14),
 ]
 
 EXPECTED_IDS = [f"I-{n}" for n in range(1, 15)]
