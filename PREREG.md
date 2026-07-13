@@ -116,7 +116,13 @@ The two halves are complementary and neither is redundant.
 
 ---
 
-## G1 — anchor double dissociation: count tracks role diversity, flat in N  (status: REGISTERED)
+## G1 — anchor double dissociation: count tracks role diversity, flat in N  (status: RUN)
+- RESULT (g1_results.json, code a8bd1ae): G1 PASS. eff_rank SAME_6=2.38 <
+  NULL=3.30 < DIVERSE_6=4.43 (H1 margin 2.04 >= 1.0); gauge-copy eff_rank flat
+  1.02->1.036 over N=2..8 (< 1.2; role_dist_max 0.011 -> gauge-invariant);
+  slope SAME 0.28 < DIVERSE 0.61 (H2-real). Barycenter settle F-monotone (SAME
+  M*=2, DIVERSE M*=4). Arms (algorithmic output): SAME=[2,6,1,4,15,8],
+  DIVERSE=[0,2,7,18,12,14]; sigma_frozen=0.553.
 - prereg_commit: this commit (registers the entry); code_under_test: a8bd1ae
 - registry_ids: [g1-anchors-2026-07-13]
 - corpus: cache/ingest/track_00..19 (the 20 G0-passing tracks). Instruments are
