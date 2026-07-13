@@ -87,7 +87,7 @@ def build_world_from_tracks(tracks, sigma: Optional[float] = None,
 
 
 def generate_batch(world: World, seconds: float, u: Optional[np.ndarray] = None,
-                   clamps: Optional[ClampSet] = None, band_frac: float = 0.15,
+                   clamps: Optional[ClampSet] = None,
                    max_iter: int = 600) -> dict:
     """Settle a ``seconds``-long output tape in batch (u=0) and realize a Schedule.
 
@@ -98,6 +98,6 @@ def generate_batch(world: World, seconds: float, u: Optional[np.ndarray] = None,
     grid = OutputGrid.for_seconds(world.sr, world.out_tatum_len, seconds)
     tape = TapeNode(grid=grid, M=world.M, clamps=clamps or ClampSet())
     res = settle_tape(world.fstate, tape, u=u, max_iter=max_iter)
-    sched, meta = realize(res.O, tape, world.fstate, world.index, band_frac=band_frac)
+    sched, meta = realize(res.O, tape, world.fstate, world.index)
     return {"schedule": sched, "settle": res, "tape": tape, "realize": meta,
             "grid": grid}

@@ -5,8 +5,13 @@
 The render is a PURE, DETERMINISTIC function of (schedule, sources). It walks the
 schedule's placements in the order the schedule gives them and, for each, applies
 the governing section's gauge to the real source-unit audio (time-stretch to the
-output slot, transpose, loudness, beat-phase shift) and overlap-ADDS it onto the
-output tape at the slot the schedule names. That is the whole of it.
+output slot, transpose, loudness, beat-phase shift), scales by the placement's
+settled MASS (settlement output carried on the placement, multiplicative with the
+section-global gauge loudness — see schedule.py "MASS IS NOT GAUGE"), and
+overlap-ADDS it onto the output tape at the slot the schedule names. That is the
+whole of it. Applying mass is not a render choice: the schedule already decided
+it; a threshold decision the writer used to make no longer exists anywhere (I-11
+strengthened).
 
 I-11 (render applies, never chooses). This module contains NO scoring, ranking,
 argmax/argmin, sorting, or sampling. It never decides WHAT to place or WHERE —
@@ -45,6 +50,18 @@ from .provenance import ProvenanceStream, PROV_SEG_DTYPE
 RENDER_STRETCH_BACKEND = "librosa.phase_vocoder (stand-in for rubberband-class)"
 
 
+def _fit_n_fft(n: int) -> int:
+    """STFT size that FITS the unit: the largest power of two <= max(256, n//2),
+    capped at 2048 (librosa's default). librosa's phase vocoder at a fixed
+    n_fft=2048 mangles units shorter than the window (zero-padded analysis of a
+    frame mostly not signal) — an instrument-correctness fix for the stand-in
+    stretch backend, not a tuning knob: the window is derived from the unit
+    length, never chosen per taste."""
+    target = n // 2 if n // 2 > 256 else 256
+    p = 1 << (target.bit_length() - 1)
+    return 2048 if p > 2048 else p
+
+
 def _apply_gauge(x: np.ndarray, sr: int, out_len: int,
                  semitones: float, loudness: float) -> Tuple[np.ndarray, float]:
     """Apply the section gauge to one unit's audio, fit to ``out_len`` samples.
@@ -58,17 +75,19 @@ def _apply_gauge(x: np.ndarray, sr: int, out_len: int,
     Returns (fitted_audio, stretch_ratio_applied).
     """
     y = np.asarray(x, dtype=np.float64)
+    n_fft = _fit_n_fft(len(y))
 
     # transposition (section-global; spec §5 T5)
     if semitones != 0.0 and len(y) > 0:
-        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=float(semitones))
+        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=float(semitones),
+                                        n_fft=n_fft)
 
     # time-stretch to the output slot length
     in_len = len(y)
     ratio = (in_len / out_len) if out_len > 0 else 1.0
     if in_len != out_len:
         if in_len > 1 and out_len > 0:
-            y = librosa.effects.time_stretch(y, rate=ratio)
+            y = librosa.effects.time_stretch(y, rate=ratio, n_fft=n_fft)
         y = librosa.util.fix_length(y, size=out_len)
 
     # loudness (section-global)
@@ -100,8 +119,12 @@ def render(schedule: Schedule, sources: SourceUnitBank
         gauge = schedule.sections[int(p["section"])].gauge
         su = sources.get(int(p["src_track"]), int(p["src_unit"]))
 
+        # settled mass (settlement output on the placement) multiplies the
+        # section-global gauge loudness — pure application of the schedule.
+        mass = float(p["mass"])
         y, ratio = _apply_gauge(su.audio, schedule.sr, out_len,
-                                gauge.transpose_semitones, gauge.loudness_scale)
+                                gauge.transpose_semitones,
+                                gauge.loudness_scale * mass)
 
         # beat-phase shift: gauge fraction of this slot, resolved to samples.
         shift = int(np.round(gauge.phase_shift * out_len))
@@ -123,6 +146,7 @@ def render(schedule: Schedule, sources: SourceUnitBank
         segs[m]["stretch_ratio"] = ratio
         segs[m]["pitch_semitones"] = float(gauge.transpose_semitones)
         segs[m]["loudness_scale"] = float(gauge.loudness_scale)
+        segs[m]["mass"] = mass
         segs[m]["phase_shift_samples"] = shift
         m += 1
 
