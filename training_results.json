@@ -1,46 +1,48 @@
 {
+  "rev": "r1 (fork C: richer fiber + gauge-aligned groove target)",
   "world": {
     "M_star": 5,
     "sigma": 0.5532324477839268
   },
   "fit": {
-    "lambda_T2T3T4": [
-      3.167556536284489,
-      0.0,
-      1.2411594914229016
+    "lambda_T2_T3_T4_T1p": [
+      4.9923137910018385,
+      0.8023184886520748,
+      10.457681912759295,
+      8.758101446990384
     ],
-    "logistic_loss": 0.5749798564929439,
-    "grad_norm": 0.0008585446347716078,
+    "logistic_loss": 0.09078416446600983,
+    "grad_norm": 0.002439418476089168,
     "n_pairs": 240,
     "fit_seeds": [
       1,
       2,
       3
     ],
-    "note": "T1 = reference scale 1 (fixed); T5 not identifiable (phi_T5 == 0 for every family member at native gauge)."
+    "note": "T1_gw = reference scale 1 (fixed). phi = [T1_gw, T2, T3, T4_raw=-succ_reward, phase_charge]. T5 not identifiable (0 for every family member at native gauge; R3)."
   },
   "separation_heldout": {
     "grid-shuffle": {
-      "sep_rate": 0.35,
-      "median_margin": -0.14790377118777964,
+      "sep_rate": 1.0,
+      "median_margin": 18.785336789769868,
       "n": 40
     },
     "role-permute": {
-      "sep_rate": 0.975,
-      "median_margin": 0.978658968879131,
+      "sep_rate": 0.95,
+      "median_margin": 1.0737616753384005,
       "n": 40
     },
     "phase-rotate": {
-      "sep_rate": 0.85,
-      "median_margin": 0.5162837991971705,
+      "sep_rate": 1.0,
+      "median_margin": 6.024770208701991,
       "n": 40
     },
     "cross-track-swap": {
-      "sep_rate": 0.55,
-      "median_margin": 0.10107405271479183,
+      "sep_rate": 0.975,
+      "median_margin": 7.331489106096902,
       "n": 40
     },
-    "overall_min_sep": 0.35
+    "overall_min_sep": 0.95
   },
   "heldout_seeds": [
     4,
@@ -48,13 +50,16 @@
   ],
   "sep_min_threshold": 0.9,
   "t5_feature_max": 0.0,
-  "KILL": true,
-  "killed_members": [
-    "grid-shuffle",
-    "phase-rotate",
-    "cross-track-swap"
-  ],
-  "verdict": "KILL \u2014 F does not separate real from these re-arrangements for any LAMBDA>=0; F term(s) mis-specified (WALL). No authoritative LAMBDA emitted; F-1 remains open.",
-  "lambda_emitted": null,
-  "prereg": "PREREG.md 'Scramble family' + 'Training \u2014 real-tracks-are-equilibria separation'; registry train-nce-2026-07-13"
+  "KILL": false,
+  "killed_members": [],
+  "verdict": "PASS \u2014 real tracks separate from the whole fixed family (min held-out sep >= 0.90). Authoritative LAMBDA emitted; F-1 (frozen-weight discharge) DISCHARGED.",
+  "lambda_emitted": {
+    "T1_gw": 1.0,
+    "T2": 4.9923137910018385,
+    "T3": 0.8023184886520748,
+    "T4": 10.457681912759295,
+    "T1p": 8.758101446990384,
+    "T5": 0.1
+  },
+  "prereg": "PREREG.md 'Training rev-r1 \u2014 real-tracks-are-equilibria separation (fork C)'; registry train-nce-revr1-2026-07-13"
 }

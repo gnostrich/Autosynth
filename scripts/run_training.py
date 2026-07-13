@@ -32,8 +32,16 @@ HELDOUT_SEEDS = (4, 5)         # pre-registered (disjoint from FIT_SEEDS)
 SEP_MIN = 0.90                 # pre-registered kill threshold (per-member sep rate)
 
 
+# The 20 frozen ingested tracks live in the MAIN checkout (absolute path); the
+# isolated worktree has no cache. NEVER re-run ingestion (it re-materializes huge
+# audio) — read the frozen npz by absolute path, like scripts/generate_batch.py.
+CACHE = os.environ.get("ETS_CACHE", "/home/user/Geodesic-Mixing/cache/ingest")
+
+
 def main():
-    paths = sorted(glob.glob("cache/ingest/track_*.npz"))
+    paths = sorted(glob.glob(os.path.join(CACHE, "track_*.npz")))
+    if not paths:
+        paths = sorted(glob.glob("cache/ingest/track_*.npz"))
     tracks = [load(p) for p in paths]
     protos = [roles.extract_prototypes(t, seed=0) for t in tracks]
     world = build_reference_world(protos)
