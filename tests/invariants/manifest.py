@@ -238,6 +238,257 @@ def _check_i5() -> None:
     assert _forbidden_hits(bad, _FORBID_I5), "I-5 scanner is vacuous"
 
 
+_DECISION_NAMES = frozenset({
+    "argmax", "argmin", "argsort", "argpartition", "partition",
+    "sort", "sorted", "lexsort",
+    "choice", "shuffle", "permutation", "sample", "multinomial",
+    "rand", "randn", "randint", "random", "default_rng",
+    "rank", "argwhere_best", "score",
+})
+
+
+def _decision_names_in_source(src: str) -> set:
+    """AST-scan a module's source; return which decision identifiers it uses.
+
+    Robust to comments/strings (those are ast.Constant, not Name/Attribute), so a
+    module may *describe* argmax in prose without tripping. A genuine call like
+    ``np.argmax(...)`` or ``random.choice(...)`` is caught."""
+    import ast
+    found = set()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in _DECISION_NAMES:
+            found.add(node.id)
+        elif isinstance(node, ast.Attribute) and node.attr in _DECISION_NAMES:
+            found.add(node.attr)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            mod = getattr(node, "module", None)
+            names = [mod] if mod else []
+            names += [a.name for a in getattr(node, "names", [])]
+            for nm in names:
+                if nm and nm.split(".")[-1] == "random":
+                    found.add("random")
+    return found
+
+
+def _mutant_render_source_that_chooses() -> str:
+    """A render that MAKES A CHOICE — keeps only the loudest unit per slot. Used
+    solely to prove the I-11 checks bite (structural + behavioral)."""
+    return (
+        "import numpy as np\n"
+        "def render(schedule, sources):\n"
+        "    n = int(schedule.slot_boundaries[-1])\n"
+        "    audio = np.zeros(n)\n"
+        "    P = schedule.placements\n"
+        "    best = np.argmax([abs(sources.get(int(p['src_track']), int(p['src_unit'])).audio).sum() for p in P])\n"
+        "    p = P[int(best)]\n"
+        "    return audio, p\n"
+    )
+
+
+def _check_i11() -> None:
+    """I-11: rendering applies, never chooses.
+
+    Three teeth, each proven non-vacuous by construction:
+      (A) STRUCTURAL — the render module carries no scoring/selection/sampling
+          identifier (AST scan). Proven to bite against a choosing mutant.
+      (B) DETERMINISM — same (schedule, sources) -> identical output, twice.
+          Proven to bite against a nondeterministic reference.
+      (C) ORDER-INDEPENDENCE — permuting the placement order leaves the output
+          unchanged (overlap-add is commutative). A render that SELECTED (e.g.
+          "keep the loudest, drop the rest") would depend on order; pure
+          application does not. Proven to bite against the choosing mutant."""
+    import inspect
+    import numpy as np
+    import ets.render.render as R
+    import ets.render.schedule as SCH
+    import ets.render.sources as SRC
+    import ets.render.provenance as PRV
+    from ets.render.schedule import Schedule, Section, Gauge, PLACEMENT_DTYPE
+    from ets.render.sources import SourceUnit, SourceUnitBank
+    from ets.render.render import render
+
+    # (A) structural: the whole render package's active code is decision-free.
+    for mod in (R, SCH, SRC, PRV):
+        used = _decision_names_in_source(inspect.getsource(mod))
+        assert not used, (
+            f"{mod.__name__} uses decision primitive(s) {sorted(used)} — the "
+            f"render path must apply, never choose (I-11)")
+    # ...and the scanner BITES: the choosing mutant is flagged.
+    mutant_used = _decision_names_in_source(_mutant_render_source_that_chooses())
+    assert "argmax" in mutant_used, (
+        "I-11 structural scan is vacuous: it did not flag an argmax-selecting render")
+
+    # Build a tiny, audio-free schedule+sources (equal-length units -> no phase
+    # vocoder; keeps this check fast and dependency-light). Overlapping slots +
+    # a loudness gauge make order genuinely observable.
+    rng = np.random.default_rng(1111)
+    L = 64
+    bounds = np.array([0, L, 2 * L, 3 * L], dtype=np.int64)  # 3 output slots
+    bank = SourceUnitBank(sr=44100)
+    # 6 units; several share slots so contributions overlap-add.
+    placement_rows = []
+    uid = 0
+    for slot in range(3):
+        for _ in range(2):
+            aud = rng.standard_normal(L)
+            bank.add(SourceUnit(track_id=0, unit_id=uid, band=0,
+                                src_start=0, src_end=L, audio=aud, sr=44100))
+            placement_rows.append((slot, 0, uid, 0))
+            uid += 1
+    placements = np.array(placement_rows, dtype=PLACEMENT_DTYPE)
+    sections = (Section(0, 0, 3, Gauge(loudness_scale=0.7)),)  # non-identity gauge
+    sched = Schedule(sr=44100, slot_boundaries=bounds,
+                     placements=placements, sections=sections)
+
+    a1, prov1 = render(sched, bank)
+    a2, prov2 = render(sched, bank)
+
+    # (B) determinism: bit-identical on repeat.
+    assert np.array_equal(a1, a2), "render is not deterministic (I-11)"
+    assert np.array_equal(prov1.segments, prov2.segments), \
+        "render provenance is not deterministic (I-11)"
+    # bite: a nondeterministic reference would fail array_equal.
+    assert not np.array_equal(a1, a1 + rng.standard_normal(len(a1)) * 1e-6), \
+        "determinism check is vacuous"
+
+    # (C) order-independence: permuted placements -> same audio (allclose; FP
+    # summation reorders at ~1e-15). Selection logic would break this.
+    perm = rng.permutation(len(placements))
+    sched_perm = Schedule(sr=44100, slot_boundaries=bounds,
+                          placements=placements[perm], sections=sections)
+    a_perm, _ = render(sched_perm, bank)
+    assert np.allclose(a1, a_perm, atol=1e-9), \
+        "render output depends on placement order — it is selecting, not applying (I-11)"
+
+    # bite: a SELECTING reference (keep only the first placement seen per slot,
+    # drop the rest) genuinely depends on order, so it FAILS allclose under the
+    # same permutation. This proves the order-independence tooth is non-vacuous.
+    def _first_wins(sched_):
+        n = int(sched_.slot_boundaries[-1])
+        out = np.zeros(n)
+        seen = set()
+        for row in sched_.placements:
+            s = int(row["out_slot"])
+            if s in seen:
+                continue          # a CHOICE: drop later placements on this slot
+            seen.add(s)
+            a = int(sched_.slot_boundaries[s]); b = int(sched_.slot_boundaries[s + 1])
+            out[a:b] += bank.get(int(row["src_track"]), int(row["src_unit"])).audio
+        return out
+    assert not np.allclose(_first_wins(sched), _first_wins(sched_perm), atol=1e-9), \
+        "order-independence check is vacuous: a selecting render was not distinguished"
+
+
+def _check_i6() -> None:
+    """I-6 no external negatives: the comparison class is derived from GOOD
+    tracks only (re-arrangements of real units, never external "bad music"), and
+    the scramble family is EXACTLY the fixed pre-registered set. Non-vacuous:
+    every branch below is shown to bite.
+    """
+    import numpy as np
+    from ets.ingestion.pipeline import synthetic_track
+    from ets.ingestion.track import assert_provenance_complete
+    from ets.training import scramble as S
+
+    t = synthetic_track(track_id=3, seed=3)
+    inp_keys = S.content_keys(t)
+
+    # (b) the family is EXACTLY the fixed pre-registered set (enumerated, closed)
+    assert set(S.registry_names()) == set(S.PREREGISTERED_FAMILY), \
+        "scramble registry != fixed PREREG family"
+    assert set(S.PREREGISTERED_FAMILY) == {
+        "grid-shuffle", "role-permute", "phase-rotate", "cross-track-swap"}, \
+        "PREREG family names drifted from spec §6"
+    S.assert_family_fixed()  # holds on the clean registry
+
+    # ...and it BITES: an unregistered scrambler must fail the closed-set check.
+    S._REGISTRY["__bogus_scrambler__"] = S.ScrambleOp(
+        "__bogus_scrambler__", "track", "(none)", "implemented",
+        lambda tr, seed=0: tr)
+    try:
+        bit = False
+        try:
+            S.assert_family_fixed()
+        except AssertionError:
+            bit = True
+        assert bit, "family-fixed check did NOT bite on an unregistered scrambler"
+    finally:
+        del S._REGISTRY["__bogus_scrambler__"]
+
+    # blocked family members are HONESTLY blocked (no fabricated role / no I-2
+    # breach): they refuse to run rather than fake a proxy.
+    for name in ("role-permute", "cross-track-swap"):
+        op = S._REGISTRY[name]
+        assert op.status == "blocked_on_c", f"{name} should be blocked-on-c"
+        refused = False
+        try:
+            op.fn(t) if op.arity == "track" else op.fn([t])
+        except NotImplementedError:
+            refused = True
+        assert refused, f"blocked op {name} did not refuse to run"
+
+    # (a) real units only, no external data  +  (c) inventory preserved
+    implemented = [op for op in S.family() if op.status == "implemented"]
+    assert {op.name for op in implemented} == {"grid-shuffle", "phase-rotate"}, \
+        "unexpected set of implemented scramble ops"
+    for op in implemented:
+        out = op.fn(t, seed=11)
+        # output is a well-formed single-SOURCE track (honest provenance, I-12):
+        # this is what certifies 'good tracks only' — every unit traces to a real
+        # source span in THIS track, none injected from outside.
+        assert_provenance_complete(out)
+        S.assert_inventory_preserved([t], out)          # (a) ⊆ real + (c) equal
+        # seedable determinism
+        out2 = op.fn(t, seed=11)
+        assert np.array_equal(out.provenance_index["src_start"],
+                              out2.provenance_index["src_start"])
+        assert np.array_equal(out.units["phase"], out2.units["phase"])
+        # purity: the op did not mutate its input
+        assert S.content_keys(t) == inp_keys, f"{op.name} mutated its input"
+        # it genuinely DISARRANGES (not a silent no-op)
+        disarranged = (
+            not np.array_equal(out.provenance_index["src_start"],
+                               t.provenance_index["src_start"])
+            or not np.array_equal(out.units["phase"], t.units["phase"]))
+        assert disarranged, f"{op.name} was a no-op (did not disarrange)"
+
+    # Prove the inventory guard is NON-VACUOUS.
+    good = S.grid_shuffle(t, seed=1)
+
+    # (i) FABRICATION / external data: point one unit at a source span that
+    #     exists in NO real track — the ⊆ branch must bite.
+    import dataclasses
+    tampered = dataclasses.replace(good,
+                                   provenance_index=good.provenance_index.copy())
+    tampered.provenance_index["src_start"][0] = t.n_samples + 10_000
+    tampered.provenance_index["src_end"][0] = t.n_samples + 20_000
+    bit = False
+    try:
+        S.assert_inventory_preserved([t], tampered)
+    except AssertionError:
+        bit = True
+    assert bit, "inventory guard did NOT catch a fabricated (external) unit"
+
+    # (ii) INVENTORY LOSS: drop one real unit consistently — the equality branch
+    #      must bite even though every remaining unit is still real (⊆ holds).
+    n = len(good.units)
+    sl = slice(0, n - 1)
+    dropped = dataclasses.replace(
+        good,
+        units=good.units[sl].copy(), masses=good.masses[sl].copy(),
+        provenance_index=good.provenance_index[sl].copy(),
+        C_timbre=dataclasses.replace(good.C_timbre, desc=good.C_timbre.desc[sl].copy()),
+        C_pitchclass=dataclasses.replace(good.C_pitchclass,
+                                         desc=good.C_pitchclass.desc[sl].copy()))
+    bit = False
+    try:
+        S.assert_inventory_preserved([t], dropped)
+    except AssertionError:
+        bit = True
+    assert bit, "inventory guard did NOT catch a dropped unit (lost inventory)"
+
+
 @dataclass(frozen=True)
 class Invariant:
     id: str                 # "I-1"
@@ -277,7 +528,7 @@ INVARIANTS = [
     Invariant("I-6", "no external negatives",
               "no external negative data; comparison class derived from good "
               "tracks only; scramble family fixed in PREREG.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i6),
     Invariant("I-7", "clamped-cell interventions",
               "all interventions (past, human demands) are clamped cells; no "
               "exception paths, no recovery modes.",
@@ -296,7 +547,7 @@ INVARIANTS = [
               Status.PENDING),
     Invariant("I-11", "render applies, never chooses",
               "rendering applies, never chooses.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i11),
     Invariant("I-12", "provenance",
               "every output sample traceable to (track, unit, transform).",
               Status.ENFORCED, _check_i12),

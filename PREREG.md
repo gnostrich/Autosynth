@@ -198,3 +198,80 @@ The two halves are complementary and neither is redundant.
     smell): STOP and report.
   - No post-hoc adjustment of sigma, the clustering, or the arm definitions to
     rescue a null result. A null G1 is reported as-is.
+
+
+## Scramble family (training comparison class)  (status: DRAFT)
+
+Scope: spec §6 requires the internal scramble family — the comparison class for
+the contrastive/NCE fit of F-weights — to be FIXED IN PREREG before any training
+run, with a stated rationale per member (which equilibrium property each member
+breaks). This entry PRE-STAGES that fixed family. It is DRAFT: the training run
+itself is build-order step d and depends on F (step c), which does not exist yet.
+No training is run here; no REGISTRY.jsonl line is appended here. At step d, when
+training actually runs, this entry moves to REGISTERED with a prereg_commit and a
+`REGISTRY.jsonl` line is appended commit-before-run.
+
+Invariant: I-6 (no external negative data; comparison class from GOOD tracks
+only; family fixed here). The family is enforced as a CLOSED, enumerated set by
+`ets.training.scramble.PREREGISTERED_FAMILY` /`assert_family_fixed`, and the I-6
+manifest check (tests/invariants/manifest.py) verifies (a) every op consumes only
+real Track units (no external data / no fabrication), (b) the registered family
+is EXACTLY the four names below (adding an unregistered scrambler fails), and
+(c) outputs preserve the unit inventory (re-arrangement, not fabrication).
+
+Determinism: every op is a pure, seedable function of (track(s), seed).
+
+Fixed family — the ONLY four members (spec §6, verbatim names):
+
+1. grid-shuffle  —  arity: Track → Track  —  status: IMPLEMENTED
+   Operation: within each filterbank band, re-deal the real units to different
+   metrical slots (permute the CONTENT bundle — source span, mass, timbre &
+   pitch-class descriptors — while holding the metrical grid and the band/role
+   labels fixed).
+   Breaks: METRICAL PLACEMENT. The pairing of a unit to its beat/bar position
+   (groove) is destroyed; the band inventory and the grid itself survive, so the
+   negative differs from the real track ONLY in metrical arrangement.
+
+2. role-permute  —  arity: Track → Track  —  status: BLOCKED-ON-C
+   Operation (intended): permute which learned ROLE each unit plays.
+   Breaks: ROLE ASSIGNMENT (unit→role coupling, spec §5 π).
+   WALL: "role" is assigned by anchors/F (spec §4/§5) and does not exist until
+   build-order step c/d. The fixed filterbank `band` is explicitly NOT a role
+   (spec §2 step 3 forbids the band decomposition pre-deciding roles), so this
+   MUST NOT be faked on bands — doing so would fabricate a role F never assigned.
+   Deferred to step c/d; the family SLOT is fixed now, the implementation lands
+   with the role map. Registered as a stub that refuses to run.
+
+3. phase-rotate  —  arity: Track → Track  —  status: IMPLEMENTED
+   Operation: rotate the metrical phase by a DIFFERENT offset per band
+   (incoherent across bands); content (audio, mass, descriptors) untouched.
+   Breaks: GAUGE PHASE. A single GLOBAL beat-phase shift is pure gauge (spec §3)
+   and leaves F invariant — useless as a negative. Making the rotation per-band
+   destroys the single consistent gauge-phase frame the track settles into (T5
+   gauge-fixing) and the cross-band phase lock, without touching any audio.
+   (Requires ≥2 bands; a single band admits only the F-invariant global shift.)
+
+4. cross-track-swap  —  arity: [Track] → Track  —  status: BLOCKED-ON-C
+   Operation (intended): swap real units between tracks so a negative contains
+   units from multiple source tracks.
+   Breaks: ANCHOR-MEDIATED CROSS-TRACK COHERENCE. All legitimate cross-track
+   traffic factors through anchors in gauge-invariant role space (spec §4); a
+   swapped-together track breaks the within-track coherence that anchors certify.
+   WALL: the only I-2-legal way to move a unit across a track boundary is the
+   gauge-invariant anchor/role channel (spec §3/§4), which does not exist until
+   step c. A direct cross-track descriptor cost violates I-2, and honest foreign
+   provenance inside a single-`track_id` Track violates the single-source schema
+   (I-12 / `assert_provenance_complete`). Registered as a stub that refuses to
+   run. Deferred to step c; family SLOT fixed now.
+
+Proposed spec follow-ups (for the human; not applied here):
+  - role-permute and cross-track-swap are named in §6 as if constructible at
+    corpus-time, but both DEPEND on the anchor/role machinery (§4/§5). Recommend
+    §6 note that these two members activate at step c/d (after the role map /
+    anchor channel exist); the other two are corpus-time constructible. The fixed
+    FAMILY (all four names) is registered now regardless, satisfying "fixed in
+    PREREG before any training run."
+
+Kill / discipline: this family is frozen once training runs (step d). If a run
+shows the comparison class is mis-specified, the fix is a NEW pre-registered
+family entry (new version), never an edit to this one (append-only discipline).
