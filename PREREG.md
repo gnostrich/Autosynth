@@ -113,3 +113,82 @@ Where interior-placement discrimination actually lives: G0(i) grid->onset
 ALIGNMENT (median align <= 50 ms). That half is what certifies the slots sit on
 the audio's real events; (ii) certifies filterbank PR + tiling integrity + span.
 The two halves are complementary and neither is redundant.
+
+---
+
+## G1 — anchor double dissociation: count tracks role diversity, flat in N  (status: REGISTERED)
+- prereg_commit: this commit (registers the entry); code_under_test: a8bd1ae
+- registry_ids: [g1-anchors-2026-07-13]
+- corpus: cache/ingest/track_00..19 (the 20 G0-passing tracks). Instruments are
+  instrumentation only; none appears in F (I-5) — verified: F uses no
+  role-distance / effective-rank / anchor-count symbol.
+
+- claim under test (spec §4, §13-G1): the SELF-SIZED anchor count tracks the
+  corpus's role diversity (McMillan degree of the cross-track traffic), FLAT IN N.
+
+- instrument (self-sizing, spec §4 "residual Hankel mass / balanced-truncation"):
+  anchor count := effective_rank(A), A[s,t] = exp(-GW_role_dist(s,t)/sigma), the
+  participation ratio (sum w)^2/sum w^2 of the traffic operator's spectrum — a
+  balanced-truncation effective mode count (below-floor modes contribute ~0).
+  GW_role_dist is entropic Gromov-Wasserstein between two tracks' role-prototype
+  spaces (internal costs only; no coordinate crosses a boundary, I-2). sigma is a
+  FROZEN corpus-level scale = median off-diagonal role-distance over ALL 20 tracks,
+  calibrated ONCE and applied to every arm (never recomputed per arm). The
+  F/solver then settles the free-support barycenter supports at M*=round(eff_rank)
+  and its Lyapunov F-descent is recorded (settlement, not the readout).
+  NOTE: a transport-RESIDUAL self-sizing (GW-barycenter T1 reduction vs a noise
+  floor) was built first and REJECTED — it does not dissociate diverse vs
+  same-role corpora and grows with N (verified; see build report). The Hankel /
+  balanced-truncation reading above is the spec's actual language and is used.
+
+- arm construction (ALGORITHMIC, pre-committed; members are the deterministic
+  output of these rules, computed at run time):
+  1. Compute the 20x20 GW role-distance matrix D and sigma = median(offdiag(D)).
+  2. SAME-role arm (low diversity): greedy tightest cluster — seed = the closest
+     pair argmin D; iteratively add the track minimising mean role-distance to the
+     current cluster. Ordered; prefixes give N = 2,3,4,6.
+  3. DIVERSE arm (high diversity): greedy farthest-point sampling — seed = the
+     pair argmax D; iteratively add the track maximising its MIN role-distance to
+     the current set. Ordered; prefixes give N = 2,3,4,6.
+  4. GAUGE-COPY arm (strict flat-in-N + gauge-invariance control): N gauge actions
+     (transposition, metrical-phase roll, loudness scale) applied to a fixed
+     reference track (track_00). By spec §3 these carry identical intrinsic
+     content, so role diversity is EXACTLY fixed. N = 2,4,6,8.
+
+- hypothesis (double dissociation):
+  H1 (diversity):  eff_rank(DIVERSE_6) > eff_rank(SAME_6)  by a clear margin.
+  H2 (flat in N):
+     - strict:  eff_rank(GAUGE-COPY, N) is flat in N (≈ 1), because gauge copies
+       add no role diversity. Any growth flags a gauge / I-2 break.
+     - real:    across N = 2,3,4,6, eff_rank(SAME) grows SLOWER than eff_rank(DIVERSE)
+       (the same-role stack plateaus toward its small role vocabulary; the diverse
+       stack keeps adding roles).
+
+- null construction (and solver-floor calibration):
+  - Role-scrambled null: independently permute each track's prototype geometry
+    (destroys shared cross-track traffic while preserving within-track scale).
+    Its effective rank is the NOISE reference. Pre-stated expectation:
+    eff_rank(SAME) < eff_rank(NULL) < eff_rank(DIVERSE) — shared structure pulls
+    rank BELOW noise; genuine diversity pushes it ABOVE noise.
+  - Solver floor: the sizing is SPECTRAL, not a solver residual, so the relevant
+    floor is the null effective rank (the rank noise alone produces). The
+    barycenter F-solve is separately Lyapunov-certified; F monotonicity at each
+    settled arm is recorded as a solver-health check (not the G1 readout).
+
+- pass criterion (pre-stated): G1 PASSES iff
+    (H1) eff_rank(DIVERSE_6) - eff_rank(SAME_6) >= 1.0  AND
+    (H2-strict) max_N eff_rank(GAUGE-COPY,N) < 1.2  AND
+    (H2-real)  eff_rank(DIVERSE) grows faster than eff_rank(SAME) over N=2..6
+               (slope_DIVERSE > slope_SAME)  AND
+    (ordering) eff_rank(SAME_6) < eff_rank(NULL_6) < eff_rank(DIVERSE_6).
+
+- kill condition (WALL PROTOCOL, spec §4):
+  - If eff_rank(SAME) >= eff_rank(DIVERSE) (no dissociation) → the self-sized
+    anchor count does NOT track role diversity: STOP, report as a wall +
+    candidate spec revision; do NOT tune sigma / clustering / arm rules to force
+    a split.
+  - If the GAUGE-COPY count grows with N → the sizing counts elapsed material,
+    not role diversity, and the machine is not gauge-invariant (also an I-2
+    smell): STOP and report.
+  - No post-hoc adjustment of sigma, the clustering, or the arm definitions to
+    rescue a null result. A null G1 is reported as-is.
