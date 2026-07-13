@@ -75,12 +75,26 @@ reintroduce; invariant I-3).
 ## 5. F — the single functional
 
 One free energy F over: couplings pi (unit -> role -> metrical slot), channel
-gains B, anchor supports/masses, gauge sections. Terms:
+gains B, anchor supports/masses, gauge sections. F is posed on the FULL
+unit-resolved pi (per §2). The role-occupancy marginal O[k,s] = Σ_units pi is a
+MARGINAL and may appear in a term ONLY where that term provably factors through
+it; a term that needs the fiber (unit identity/metrical coordinate) must read pi
+directly. (Revision r1, dated below: the prior implementation posed F on the
+E_B/O aggregate; the scramble family correctly caught the discarded fiber
+residue — logged [proven-negative: aggregate-level F].)
 
-- T1 transport cost (intrinsic geometry to anchors; GW-typed).
+- T1 transport cost (intrinsic geometry to anchors; GW-typed) PLUS, per rev-r1,
+  a circular phase-displacement charge: the cost of scheduling a unit at a slot
+  includes the circular distance between the unit's INTRINSIC metrical coordinate
+  (§3: microtiming is intrinsic content, not gauge) and the slot's phase,
+  QUOTIENTED by the section gauge phase shift (a global per-section shift is free;
+  a per-unit metrical displacement is charged). This is what makes grid-shuffle /
+  phase-rotate cost something.
 - T2 mass conservation per role per slot (unbalanced-OT marginal penalty).
 - T3 spectral masking cost on co-scheduled units.
-- T4 continuity: tilted-Markov / Doob h-transform run-continuation term.
+- T4 continuity: tilted-Markov / Doob h-transform run-continuation term —
+  UNIT-successor continuation over pi as originally spec'd (it is inexpressible
+  over the O-aggregate; that was half the wall).
 - T5 gauge-fixing cost: per-section global transposition/phase choice; never
   per-unit chromatic correction.
 
