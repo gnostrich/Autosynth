@@ -12,3 +12,4 @@ reference_sets/
 __pycache__/
 .pytest_cache/
 debug/
+corpus/
