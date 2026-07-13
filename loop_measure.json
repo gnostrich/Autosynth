@@ -1,0 +1,26 @@
+{
+  "seconds": 30.0,
+  "n_bars": 20,
+  "bar_to_bar_audio_correlation_mean": -0.20840610197490675,
+  "bar0_bar1_placement_jaccard": 0.0,
+  "loop_vanished": true,
+  "anchors_M": 5,
+  "out_tatum_len": 8192,
+  "bar_len_samples": 65536,
+  "n_placements": 1288,
+  "tracks_used": [
+    6,
+    7,
+    12,
+    13,
+    15
+  ],
+  "out": "/home/user/Geodesic-Mixing/samples/revr1B_u0.flac",
+  "LAMBDA": {
+    "T1pd": 1.0,
+    "T2": 1.0,
+    "T3": 0.5,
+    "T4": 0.25,
+    "T5": 0.1
+  }
+}
