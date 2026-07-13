@@ -6,12 +6,24 @@ G0 has two halves, both pre-registered in PREREG.md before any run:
        slots (identity transform, rectangular overlap-add) reproduces the track
        within tolerance.
 
-NOTE on (ii): the v0 filterbank is perfect-reconstruction (partition of unity),
-so reconstruction is near machine precision AS LONG AS the tatum slots tile the
-grid span with no gap/overlap and provenance spans are correct. The gate
-therefore certifies COVERAGE and SCHEDULING completeness, and would fail loudly
-on an off-by-one, an uncovered lead-in/out, or a mis-placed slot. This framing is
-reported to the auditor, not hidden.
+NOTE on (ii) — CORRECTED characterization (see PREREG.md "G0 CORRECTION NOTE",
+registry g0-correction-2026-07-13). What (ii) ACTUALLY certifies:
+  1. filterbank perfect-reconstruction (partition of unity): sum_k band_k == y;
+  2. the shipped grid is a VALID MONOTONE TILING of [first tatum, last tatum]
+     (no overlap / no double-count). A broken tiling (non-monotone boundaries)
+     bites: it double-counts and leaves the reconstruction != source (verified:
+     rel_l2 ~ 0.6, recon_ok=False on a non-monotone grid);
+  3. covered_fraction = fraction of wall-clock spanned by the metrical grid.
+It does NOT discriminate interior slot PLACEMENT: any monotone re-placement of
+the interior boundaries (even fully random within [gs,ge]) yields BIT-IDENTICAL
+reconstruction error — the forward overlap-add depends only on the endpoints and
+the filterbank PR, never on where interior slots sit or on units/provenance.
+Interior slot placement (are slots on the audio's real events?) is discriminated
+by G0(i) grid->onset ALIGNMENT, not by this reconstruction identity. Structural
+note: an interior HOLE is impossible under forward-fill of consecutive boundary
+pairs, so (ii) guards tiling integrity (overlap/monotonicity), while SPAN
+coverage is the separately-reported covered_fraction. Reported to the auditor,
+not hidden.
 
 These thresholds are the pre-registered tolerances; they are NOT consumed by any
 objective (I-5) — this module is instrumentation only.

@@ -38,6 +38,10 @@ Entry template (copy per gate, fill, commit before running):
        perfect-reconstruction, this half certifies COVERAGE + SCHEDULING
        completeness — an off-by-one, uncovered lead-in/out, or mis-placed slot
        would break it. Stated openly, not as a hidden strength.)
+       [CORRECTION 2026-07-13 — the parenthetical above is RETRACTED; the phrase
+       "an off-by-one ... or mis-placed slot would break it" is FALSE. See
+       "G0 CORRECTION NOTE" at the end of this entry for the true, verified
+       characterization. registry: g0-correction-2026-07-13.]
 
 - procedure:
   Per track: load→44.1k mono; beat_this→beats,downbeats; build tatum grid
@@ -76,3 +80,36 @@ Entry template (copy per gate, fill, commit before running):
     cannot meet the identity: STOP, re-derive; do not loosen the tolerance.
   Either outcome is reported to the human as a candidate spec revision, never
   silently worked around.
+
+### G0 CORRECTION NOTE  (appended 2026-07-13; registry g0-correction-2026-07-13)
+
+Append-only correction. The G0 RUN and its RESULT stand unchanged (20/20 PASS,
+worst recon_rel_l2 = 1.3e-8, worst align 41.6 ms; g0_results.json). What is
+corrected here is a FALSE CHARACTERIZATION in the (ii) parenthetical above — not
+any measured value. Retracted claim: "an off-by-one or mis-placed slot would
+break it." That is false, verified empirically.
+
+What G0(ii) `g0.reconstruction_identity` ACTUALLY certifies:
+  1. Filterbank perfect-reconstruction (partition of unity): sum_k band_k(y)==y.
+  2. The shipped grid is a VALID MONOTONE TILING of [first tatum, last tatum]
+     — no overlap, no double-count. A broken (non-monotone) tiling DOES bite:
+     verified recon_rel_l2 ~ 0.6, recon_ok=False on a scrambled non-monotone
+     grid. (A pure interior HOLE is structurally impossible under forward-fill of
+     consecutive boundary pairs, so this half guards tiling INTEGRITY, i.e.
+     monotonicity / non-overlap.)
+  3. covered_fraction = fraction of wall-clock spanned by the metrical grid
+     (reported per track; this is where lead-in/lead-out shortfall shows up).
+
+What G0(ii) does NOT do: it does NOT discriminate interior slot PLACEMENT. Any
+monotone re-placement of the interior boundaries — even fully random positions
+within [first tatum, last tatum] — yields BIT-IDENTICAL reconstruction error
+(verified: true grid and random-monotone grid both give rel_l2 = 1.1645557e-8 to
+the last digit). The overlap-add sum depends ONLY on the two endpoints and the
+filterbank PR; it never reads `units`, provenance, or interior boundary
+positions. Therefore an off-by-one that keeps a monotone tiling does NOT break
+(ii).
+
+Where interior-placement discrimination actually lives: G0(i) grid->onset
+ALIGNMENT (median align <= 50 ms). That half is what certifies the slots sit on
+the audio's real events; (ii) certifies filterbank PR + tiling integrity + span.
+The two halves are complementary and neither is redundant.

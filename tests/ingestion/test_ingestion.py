@@ -93,27 +93,48 @@ def test_reconstruction_identity_within_tolerance():
     assert rec["recon_rel_l2"] < g0.RECON_TOL_RELL2
 
 
-def test_reconstruction_test_bites_on_coverage_gap():
-    # remove a run of interior boundaries -> a large uncovered hole -> big error.
+def test_reconstruction_identity_bites_on_broken_tiling():
+    # Non-vacuity guard for the SHIPPED instrument g0.reconstruction_identity.
+    # It calls the REAL function (no hand-rolled loop). A valid grid tiles
+    # [first tatum, last tatum] monotonically; the identity is then bit-exact.
+    # If the grid's interior boundaries are NON-MONOTONE (a broken tiling: the
+    # forward overlap-add double-counts and drops mass), the real instrument must
+    # detect it. That is the failure class (ii) actually guards; see the G0
+    # CORRECTION NOTE in PREREG.md.
     y = _synth_audio()
     grid = _synth_grid()
-    b = grid.tatum_boundaries
+    b = grid.tatum_boundaries.copy()
+
+    # sanity: on the true (monotone) grid the real instrument passes bit-exact.
+    ok = g0.reconstruction_identity(y, grid, SR)
+    assert ok["recon_ok"] and ok["recon_rel_l2"] < g0.RECON_TOL_RELL2, ok
+
+    # break the tiling: send one interior boundary backwards past its neighbours.
+    # Endpoints (hence covered_fraction) are untouched, isolating tiling integrity.
     mid = len(b) // 2
-    grid.tatum_boundaries = np.concatenate([b[:mid - 2], b[mid + 2:]])
-    # reconstruct but only over slots that now skip the hole
-    S = fb.stft(y)
-    masks = fb.partition_masks(SR)
-    out = np.zeros(len(y))
-    for k in range(fb.N_BANDS):
-        bk = fb.band_signal(S, masks, k, len(y))
-        for s in range(len(grid.tatum_boundaries) - 1):
-            a, c = int(grid.tatum_boundaries[s]), int(grid.tatum_boundaries[s + 1])
-            if c - a > SR // 2:      # skip the artificial jumbo slot (the hole)
-                continue
-            out[a:c] += bk[a:c]
-    gs, ge = int(grid.tatum_boundaries[0]), int(grid.tatum_boundaries[-1])
-    rel = np.sqrt(np.mean((out[gs:ge] - y[gs:ge]) ** 2)) / np.sqrt(np.mean(y[gs:ge] ** 2))
-    assert rel > g0.RECON_TOL_RELL2, "coverage gap not detected — test is vacuous"
+    b[mid] = int(b[0]) + (int(b[2]) - int(b[0])) // 3
+    grid.tatum_boundaries = b
+    bad = g0.reconstruction_identity(y, grid, SR)
+    assert not bad["recon_ok"], "broken tiling passed — instrument is vacuous"
+    assert bad["recon_rel_l2"] > g0.RECON_TOL_RELL2, bad
+    # covered_fraction is unchanged (endpoints fixed): the bite is tiling, not span.
+    assert abs(bad["covered_fraction"] - ok["covered_fraction"]) < 1e-9
+
+
+def test_reconstruction_invariant_to_monotone_interior_placement():
+    # The corrected characterization, made executable: any MONOTONE re-placement
+    # of interior boundaries (even random) yields BIT-IDENTICAL recon error.
+    # This is why (ii) does not discriminate slot placement (G0(i) does).
+    y = _synth_audio()
+    grid = _synth_grid()
+    b = grid.tatum_boundaries.copy()
+    gs, ge = int(b[0]), int(b[-1])
+    true = g0.reconstruction_identity(y, grid, SR)["recon_rel_l2"]
+    rng = np.random.default_rng(0)
+    interior = np.sort(rng.integers(gs + 1, ge, size=len(b) - 2))
+    grid.tatum_boundaries = np.concatenate([[gs], interior, [ge]]).astype(np.int64)
+    scrambled = g0.reconstruction_identity(y, grid, SR)["recon_rel_l2"]
+    assert np.isclose(scrambled, true, rtol=1e-9, atol=0.0), (true, scrambled)
 
 
 # --- Track schema + provenance + cost structure ----------------------------
