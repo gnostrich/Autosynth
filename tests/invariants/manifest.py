@@ -839,6 +839,152 @@ def _check_i14() -> None:
         "I-14 (B) settlement-guard scan is vacuous"
 
 
+# --- I-15 no premature aggregation / structure-deleting projection -----------
+# rev-r1 §5 fixes the authoritative per-term input partition. A term is legal iff
+# it (a) consumes the full unit-resolved coupling pi, or (b) is a marginal of pi
+# that PROVABLY factors through the occupancy O and carries a written proof, or
+# (c) is a per-section gauge charge. T1 (transport + circular metrical phase-
+# displacement charge) and T4 (unit-successor continuity) are spec-mandated on
+# FULL pi and have NO proof route. Posing an F objective on the marginal alone —
+# the fidelity breach this invariant remediates — is forbidden.
+_SPEC_TERM_CONTRACT = {
+    "T1": "full-pi", "T2": "marginal", "T3": "marginal",
+    "T4": "full-pi", "T5": "gauge",
+}
+
+
+def _o_preserving_twin(protos):
+    """Two FStates over the same protos with IDENTICAL occupancy O but DIFFERENT
+    unit-resolved coupling pi. Constructed by moving coupling mass between two
+    prototypes of track 0 whose (gauge-rolled, normalized) slot histograms are
+    identical: O = sum_t pis[t].T @ q_t is invariant to that transfer (it cancels
+    in the two equal q-rows), while pis itself changes. A term that factors
+    through O is equal on both; a term that reads pi is free to differ."""
+    import numpy as np
+    from ets.functional import f as ff, anchors as an
+
+    st_a = an.init_state(protos, M=4, seed=0)
+    # force protos[0]'s first two prototypes to share a slot histogram so a mass
+    # transfer between their coupling rows leaves O untouched.
+    P0 = protos[0]
+    P0.slot_hist[1] = P0.slot_hist[0].copy()
+    st_a = an.init_state(protos, M=4, seed=0)  # rebuild against the edited protos
+    st_b = ff.FState(
+        D=st_a.D.copy(), a=st_a.a.copy(), B=st_a.B.copy(), theta=st_a.theta.copy(),
+        pis=[p.copy() for p in st_a.pis],
+        phase_off=st_a.phase_off.copy(), transpose=st_a.transpose.copy())
+    pi0 = st_b.pis[0]
+    m = 0
+    delta = 0.4 * float(min(pi0[0, m], pi0[1, m]) + 1e-9)
+    pi0[0, m] += delta
+    pi0[1, m] -= delta
+    # verify the twin really is O-preserving and pi-distinct.
+    Oa = ff.occupancy(st_a, protos)
+    Ob = ff.occupancy(st_b, protos)
+    assert np.allclose(Oa, Ob, atol=1e-9), "twin construction did not preserve O"
+    assert not np.allclose(st_a.pis[0], st_b.pis[0]), "twin did not perturb pi"
+    return st_a, st_b
+
+
+def _check_i15() -> None:
+    """I-15: no premature aggregation / structure-deleting projection.
+
+    Every F term either (a) consumes the full unit-resolved pi, or (b) carries a
+    WRITTEN factorization proof (a justification string + this behavioral test).
+    No proof, no merge.
+
+    Tooth A (term contract, f.py): the declared TERM_INPUT_CONTRACT equals the
+    spec partition; every 'marginal' term ships a non-trivial written proof AND
+    is behaviorally invariant under an O-preserving pi rearrangement (its
+    factorization claim is TRUE). Non-vacuous: the same rearrangement changes pi,
+    so a mislabeled term that secretly read pi would be caught.
+
+    Tooth B (referee non-degeneracy, nce): the corpus-time feature the estimator
+    scores must NOT be posed on the marginal (O, t1) alone — a unit-resolved
+    fiber (the T1 metrical phase charge / T4 unit-successor of rev-r1) must
+    participate. A feature computed solely from (O, t1) is the exact structure-
+    deleting projection that produced the KILL; it is a violation until a
+    unit-resolved fiber enters the scored objective."""
+    import inspect
+    import numpy as np
+    from ets.functional import f as ff
+
+    # ---- Tooth A: term-input contract + marginal factorization proofs --------
+    contract = getattr(ff, "TERM_INPUT_CONTRACT", None)
+    assert isinstance(contract, dict), \
+        "f.py declares no TERM_INPUT_CONTRACT (I-15: every term must declare its pi/marginal class)"
+    assert contract == _SPEC_TERM_CONTRACT, (
+        f"I-15: TERM_INPUT_CONTRACT {contract} != spec rev-r1 partition "
+        f"{_SPEC_TERM_CONTRACT} (relabeling a full-pi term as marginal is forbidden)")
+    proofs = getattr(ff, "FACTORIZATION_PROOFS", {})
+    for term, cls in contract.items():
+        if cls == "marginal":
+            p = proofs.get(term, "")
+            assert isinstance(p, str) and len(p.strip()) >= 80, \
+                f"I-15: marginal term {term} lacks a written factorization proof (docstring)"
+
+    # behavioral proof: build O-preserving pi-distinct twins; marginal terms MUST
+    # be equal on both (they factor through O); and the twin must genuinely differ
+    # in pi (non-vacuity — otherwise the invariance claim is empty).
+    protos = [_synth_proto_i15(t, seed=t + 21) for t in range(3)]
+    st_a, st_b = _o_preserving_twin(protos)
+    _, da = ff.F(st_a, protos)
+    _, db = ff.F(st_b, protos)
+    for term, cls in contract.items():
+        if cls == "marginal":
+            assert abs(da[term] - db[term]) < 1e-9, (
+                f"I-15: term {term} declared 'marginal' but is NOT invariant under an "
+                f"O-preserving pi rearrangement — it secretly reads unit structure "
+                f"(da={da[term]}, db={db[term]})")
+    # non-vacuity: pi genuinely differs on the twin (the transfer preserves the
+    # role column-sum but moves mass between two prototype rows), proving the
+    # O-preserving move is a real pi perturbation, so the invariance above has bite.
+    assert float(np.abs(st_a.pis[0] - st_b.pis[0]).max()) > 1e-6, \
+        "I-15 twin is vacuous: pi did not actually change"
+
+    # ---- Tooth B: the referee objective is not posed on the marginal alone ----
+    # rev-r1 §5: T1 gains a circular metrical phase-displacement charge and T4 a
+    # unit-successor continuation; both are UNIT-RESOLVED fiber terms. The scored
+    # corpus-time feature must consume that fiber. A feature built only from
+    # (O, t1) is the structure-deleting projection that KILLED step d.
+    from ets.training import nce
+    nce_src = inspect.getsource(nce)
+    imports = _imported_modules(nce_src)
+    fiber_participates = (
+        any("fiber" in m.lower() for m in imports)
+        or "fiber" in _code_identifiers(nce_src))
+    assert fiber_participates, (
+        "I-15 VIOLATION (structure-deleting projection): the corpus-time feature "
+        "scored by ets.training.nce is posed on the marginal (O, t1) alone — no "
+        "unit-resolved fiber (rev-r1 T1 metrical phase charge / T4 unit-successor) "
+        "participates. This is the fidelity breach; the winning racer's F must wire "
+        "the unit-resolved fiber into the scored objective before it can merge.")
+    # non-vacuity: the fiber-participation scan bites on a marginal-only stub.
+    assert not (
+        any("fiber" in m.lower() for m in _imported_modules(
+            "from ets.functional import f as ff\ndef feature(O, t1, world):\n    return ff.raw_terms_O(O, world.D, world.a, world.B, world.theta)\n"))), \
+        "I-15 Tooth-B scan is vacuous (flagged a marginal-only feature as fiber-aware)"
+
+
+def _synth_proto_i15(track_id, K=6, S=8, n_bands=8, seed=0):
+    """Local prototype builder for the I-15 behavioral test (mirrors the feature
+    test's synthetic prototypes; kept here so the manifest is self-contained)."""
+    import numpy as np
+    from ets.geometry.roles import Prototypes
+    rng = np.random.default_rng(seed)
+    pts = rng.standard_normal((K, 3))
+    cost = np.sqrt(((pts[:, None] - pts[None]) ** 2).sum(-1))
+    off = cost[~np.eye(K, dtype=bool)]
+    cost = cost / (np.sqrt(np.mean(off ** 2)) + 1e-12)
+    mass = rng.random(K) + 0.1; mass /= mass.sum()
+    slot = rng.random((K, S)); slot /= slot.sum()
+    band = rng.random((K, n_bands)); band = band / band.sum(1, keepdims=True) * mass[:, None]
+    chroma = rng.random((K, 12)); chroma /= chroma.sum(1, keepdims=True)
+    timbre = rng.standard_normal((K, 4))
+    return Prototypes(track_id=track_id, cost=cost, mass=mass, slot_hist=slot,
+                      band_profile=band, timbre=timbre, chroma=chroma)
+
+
 @dataclass(frozen=True)
 class Invariant:
     id: str                 # "I-1"
@@ -908,9 +1054,13 @@ INVARIANTS = [
               "Hankel/holonomy quantities are instruments; event triggers must "
               "not fork decision authority from F.",
               Status.ENFORCED, _check_i14),
+    Invariant("I-15", "no premature aggregation",
+              "every F term consumes the full unit-resolved pi or carries a "
+              "written factorization proof; no objective posed on a marginal.",
+              Status.ENFORCED, _check_i15),
 ]
 
-EXPECTED_IDS = [f"I-{n}" for n in range(1, 15)]
+EXPECTED_IDS = [f"I-{n}" for n in range(1, 16)]
 
 
 def by_id(iid: str) -> Invariant:

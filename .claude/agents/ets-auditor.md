@@ -52,11 +52,19 @@ gambiarra is the worst possible one, and is treated as sabotage.
    - aesthetic choice smuggled into rendering [I-11]
    - a seventh control, or run-time modification of F weights [I-9]
    - web/browser tech in the runtime [I-13]
+   - premature aggregation / structure-deleting projection: an F term or scored
+     objective posed on a MARGINAL (e.g. role×slot occupancy O, or an (O,t1)
+     feature) where the spec mandates the full unit-resolved pi — silently
+     dropping which unit sits at which metrical slot. This is the fidelity-breach
+     pattern (registry 2026-07-13). Grep for any objective/feature computed from
+     a marginal without a written factorization proof; a full-pi term (T1, T4)
+     may NEVER take the proof route [I-15]
 
 3. Patch-signature scan independent of invariants: grep for new boolean flags,
    mode switches, try/except-and-continue, special-cased inputs, duplicated
    code paths, threshold constants changed alongside failing tests, tests
-   deleted/skipped/loosened. Each finding must be justified by the builder in
+   deleted/skipped/loosened, and any objective posed on a marginal (premature
+   aggregation, above). Each finding must be justified by the builder in
    spec terms or it is a REJECT.
 
 4. Prereg audit (before any gate run): entry exists, committed before run,
