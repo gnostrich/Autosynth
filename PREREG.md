@@ -342,3 +342,66 @@ revision below. See the step-d builder report (session hand-off) + f.py LAMBDA n
 
 Kill / discipline: this is a RUN entry; its result stands. A future attempt with a
 revised F (R1/R2) is a NEW pre-registered entry, never an edit to this one.
+
+
+## Training rev-r1 — real-tracks-are-equilibria separation (fork C)  (status: REGISTERED)
+- prereg_commit: this commit (registers the check); code_under_test: F rev-r1
+- registry_ids: [train-nce-revr1-2026-07-13]
+- corpus: cache/ingest/track_00..19 (20 tracks); frozen LAMBDA-free reference world
+  (ets.training.world.build_reference_world). SAME corpus/world/seeds/threshold as
+  the killed train-nce-2026-07-13; only F is revised (spec §5 rev-r1). This is a NEW
+  entry (the prior KILL stands, unedited; R1/R2 are now APPLIED as rev-r1 F).
+
+- what changed (spec §5 rev-r1; fork C = "go finer than the marginal"): F is posed
+  on the unit-resolved fiber, not the anchor×slot marginal O. Two terms now read the
+  fiber directly (inexpressible over O — that discarded residue was the wall):
+  * T1 phase-displacement charge (applies R2): per placed unit, the GAUGE-ALIGNED
+    circular distance between the unit's INTRINSIC metrical coordinate (bar-phase of
+    its SOURCE content, read from provenance src_start via the beat grid; §3 micro-
+    timing is intrinsic) and the phase of the slot it occupies; a single per-section
+    global phase δ is quotiented out in closed form (charge = 1 - |Σ m e^{i2πx}|).
+    Real groove = 0; incoherent metrical displacement (grid-shuffle) or per-band
+    rotation (phase-rotate) cannot be removed by any global δ → strictly positive.
+  * T4 unit-successor run-continuation (applies R1): mass-weighted fraction of
+    output-adjacent same-band pairs whose content is a genuine SOURCE successor.
+    Real = 1.0; grid-shuffle re-deals content → ~0; a cross-track graft inserts
+    units that are no track's successor → the run breaks.
+  T2/T3 remain on O (they provably factor through it). The O-aggregate role-
+  continuation (old T4) is RETIRED. R3 stands: T5/λ5 is not corpus-time identifiable
+  (0 for every family member at native gauge) and is not fit here.
+
+- feature map: φ = [T1_gw, T2, T3, T4_raw=-succ_reward, phase_charge] (LAMBDA-free,
+  computed at the frozen world). T1_gw is the reference scale (weight fixed 1); the
+  convex logistic NCE fits λ = [T2, T3, T4, T1p] ≥ 0 on fit seeds {1,2,3}.
+
+- fit vs validity metric (I-5, disjoint): FIT = logistic NCE loss on seeds {1,2,3}.
+  VALIDITY = per-member SEPARATION RATE (fraction of (real,scramble) pairs with
+  F(real) < F(scramble)) on HELD-OUT seeds {4,5}. Distinct quantity + data.
+
+- PRE-REGISTERED EXPECTED MARGINS (declared before the registered 20-track/held-out
+  run; derived from the term construction + de-risk probes on the frozen tracks):
+  * real track: phase_charge ≡ 0 (each unit at its own slot), succ_reward ≡ 1
+    (output order == source order) — both EXACT by construction.
+  * grid-shuffle : phase_charge ~0.96-0.98 AND succ_reward ~0 → sep 1.00, large +margin.
+  * phase-rotate : phase_charge ~0.20-0.57 (per-band incoherent, δ-irremovable) → sep 1.00.
+  * role-permute : fiber ~unchanged (charge 0, reward 1); separates via T1_gw
+    (permuted coupling ≫ real GW distortion) → sep ~0.95-1.00.
+  * cross-track-swap : succ_reward ~0.3-0.5 (grafted foreign units break runs) → sep ~0.95-1.00.
+  Predicted overall_min_sep ≥ 0.95; each per-member median margin > 0.
+
+- pass / KILL (pre-registered; SAME threshold as the prior entry): PASS iff min over
+  members of held-out separation rate ≥ SEP_MIN = 0.90. On PASS the NCE emits an
+  authoritative LAMBDA = [1, λ] and F-1 (frozen-weight discharge) is discharged.
+  KILL iff any member < 0.90 → an F term is STILL mis-specified → WALL PROTOCOL:
+  STOP, emit NO LAMBDA, do NOT hand-tune/loosen/drop a member; report the residual
+  wall + first-principles analysis. No threshold is weakened relative to the KILL.
+
+- scramble family: UNCHANGED — the same four fixed members (grid-shuffle,
+  role-permute, phase-rotate, cross-track-swap). "channel-desync" is NOT added: a
+  per-band incoherent phase rotation IS channel/phase desynchronization, and that is
+  exactly what phase-rotate already does (spec §6) — a separate member would
+  duplicate phase-rotate and break the closed spec-§6 family (I-6). Decision logged:
+  channel-desync ≡ phase-rotate; family stays at the four spec-mandated names.
+
+- null: a NO-OP scramble gives separation ~0.5 (chance); a member whose F is
+  invariant to its disarrangement sits at chance and fails the 0.90 threshold.

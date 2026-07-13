@@ -47,14 +47,27 @@ def _track_arrangement(track, world: WorldFreeze) -> Tuple[np.ndarray, float]:
     return _occ(pi, P), float(ot.gw_distortion(P.cost, world.D, pi))
 
 
-def feature(O: np.ndarray, t1: float, world: WorldFreeze) -> np.ndarray:
-    """phi = [T1, T2, T3, T4] via the SINGLE F-term implementation (raw_terms_O)."""
+def feature(O: np.ndarray, t1: float, world: WorldFreeze,
+            fib: Dict[str, float]) -> np.ndarray:
+    """phi = [T1_gw, T2, T3, T4_raw, phase_charge] via the SINGLE F-term
+    implementation (spec §5 rev-r1). T2/T3 factor through the marginal O
+    (raw_terms_O); T4_raw = -succ_reward and phase_charge are the FIBER terms
+    (f.continuation_reward / f.phase_displacement_charge), read from the
+    unit-resolved arrangement. T1_gw is the reference scale (fit weight fixed 1)."""
     c = ff.raw_terms_O(O, world.D, world.a, world.B, world.theta)
-    return np.array([float(t1), c["T2"], c["T3"], c["T4"]], float)
+    t4_raw = -float(fib["succ_reward"])           # raw T4 (<=0); F rises as reward drops
+    return np.array([float(t1), c["T2"], c["T3"], t4_raw,
+                     float(fib["phase_charge"])], float)
+
+
+def _track_fiber(track) -> Dict[str, float]:
+    from . import fiber as fb
+    return fb.track_fiber(track)
 
 
 def positive_features(tracks, world: WorldFreeze) -> np.ndarray:
-    return np.array([feature(*_track_arrangement(t, world), world) for t in tracks])
+    return np.array([feature(*_track_arrangement(t, world), world, _track_fiber(t))
+                     for t in tracks])
 
 
 # ---- negatives drawn ONLY through the registered fixed family -------------
@@ -75,18 +88,21 @@ def draw_pairs(tracks, world: WorldFreeze, seeds=(1, 2, 3)
                 if op.arity == "track":
                     scr = op.fn(t, seed=sd)
                     O, t1 = _track_arrangement(scr, world)
+                    fib = _track_fiber(scr)                    # fiber from scrambled Track
                 elif op.arity == "role":
                     arr = op.fn(t, world, seed=sd)
                     S.assert_arrangement_real(arr, real_ids)
                     O, t1 = arr.O, arr.t1
+                    fib = {"phase_charge": arr.phase_charge, "succ_reward": arr.succ_reward}
                 elif op.arity == "role_pair":
                     partner = tracks[(i + 1 + sd) % len(tracks)]
                     arr = op.fn([t, partner], world, seed=sd)
                     S.assert_arrangement_real(arr, real_ids)
                     O, t1 = arr.O, arr.t1
+                    fib = {"phase_charge": arr.phase_charge, "succ_reward": arr.succ_reward}
                 else:
                     raise ValueError(f"unknown scramble arity {op.arity!r}")
-                out[op.name].append(feature(O, t1, world))
+                out[op.name].append(feature(O, t1, world, fib))
     return {k: np.array(v) for k, v in out.items()}
 
 
@@ -94,7 +110,7 @@ def draw_pairs(tracks, world: WorldFreeze, seeds=(1, 2, 3)
 
 @dataclass
 class FitResult:
-    lam: np.ndarray            # (3,) fitted [T2, T3, T4] relative to T1=1
+    lam: np.ndarray            # (4,) fitted [T2, T3, T4, T1p] relative to T1_gw=1
     loss: float                # final logistic loss
     grad_norm: float
     n_pairs: int
@@ -114,20 +130,22 @@ def _pair_deltas(pos: np.ndarray, negs: Dict[str, np.ndarray]):
 def fit_lambda(pos: np.ndarray, negs: Dict[str, np.ndarray],
                lr: float = 0.5, iters: int = 4000) -> FitResult:
     """Convex logistic NCE fit: min_{lam>=0} mean -log sigmoid(margin), margin =
-    dT1 + lam . dphi_{234}. T1 coefficient is FIXED at 1 (reference scale). This
-    routine is the instrument that measures separability — it is NEVER a lever to
+    dT1_gw + lam . dphi_{2,3,4,phase}. The GW-transport coefficient is FIXED at 1
+    (reference scale); the four fitted weights are [T2, T3, T4, T1p]. This routine
+    is the instrument that measures separability — it is NEVER a lever to
     hand-force a split (WALL PROTOCOL)."""
     Dp, _ = _pair_deltas(pos, negs)
-    d1, d234 = Dp[:, 0], Dp[:, 1:]
-    lam = np.ones(3)                              # neutral init (not the old hand-set)
+    d1, drest = Dp[:, 0], Dp[:, 1:]
+    k = drest.shape[1]
+    lam = np.ones(k)                             # neutral init (not a hand-set)
     sig = lambda x: 1.0 / (1.0 + np.exp(-x))
-    grad = np.zeros(3)
+    grad = np.zeros(k)
     for _ in range(iters):
-        margin = d1 + d234 @ lam
+        margin = d1 + drest @ lam
         g = -(1.0 - sig(margin))
-        grad = (g[:, None] * d234).mean(0)
+        grad = (g[:, None] * drest).mean(0)
         lam = np.maximum(lam - lr * grad, 0.0)
-    margin = d1 + d234 @ lam
+    margin = d1 + drest @ lam
     loss = float(np.mean(np.log1p(np.exp(-margin))))
     return FitResult(lam=lam, loss=loss, grad_norm=float(np.linalg.norm(grad)),
                      n_pairs=len(margin))

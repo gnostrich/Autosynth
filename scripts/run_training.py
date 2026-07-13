@@ -32,8 +32,16 @@ HELDOUT_SEEDS = (4, 5)         # pre-registered (disjoint from FIT_SEEDS)
 SEP_MIN = 0.90                 # pre-registered kill threshold (per-member sep rate)
 
 
+# The 20 frozen ingested tracks live in the MAIN checkout (absolute path); the
+# isolated worktree has no cache. NEVER re-run ingestion (it re-materializes huge
+# audio) — read the frozen npz by absolute path, like scripts/generate_batch.py.
+CACHE = os.environ.get("ETS_CACHE", "/home/user/Geodesic-Mixing/cache/ingest")
+
+
 def main():
-    paths = sorted(glob.glob("cache/ingest/track_*.npz"))
+    paths = sorted(glob.glob(os.path.join(CACHE, "track_*.npz")))
+    if not paths:
+        paths = sorted(glob.glob("cache/ingest/track_*.npz"))
     tracks = [load(p) for p in paths]
     protos = [roles.extract_prototypes(t, seed=0) for t in tracks]
     world = build_reference_world(protos)
@@ -45,21 +53,27 @@ def main():
     fit = nce.fit_lambda(pos, negs_fit)
     sep = nce.separation(pos, negs_val, fit.lam)
 
-    # T5 identifiability probe: max |T5 feature| over the whole family (native
-    # gauge -> identically 0 -> lambda_5 carries no contrastive signal).
-    t5_max = 0.0   # phi has no T5 column by construction; recorded as structural 0.
+    # T5 identifiability (R3): T5 is 0 for every family member at native gauge, so
+    # lambda_5 carries no contrastive signal and is not fit here (structural 0).
+    t5_max = 0.0
 
     killed_members = [k for k, d in sep.items()
                       if isinstance(d, dict) and d["sep_rate"] < SEP_MIN]
     kill = len(killed_members) > 0
 
+    # rev-r1 feature order: phi = [T1_gw, T2, T3, T4_raw, phase_charge]; T1_gw is the
+    # reference scale (weight fixed 1); fit lambda = [T2, T3, T4, T1p].
+    lam = {k: float(v) for k, v in zip(("T2", "T3", "T4", "T1p"), fit.lam)}
+    emitted = None if kill else {"T1_gw": 1.0, **lam, "T5": 0.1}
     out = {
+        "rev": "r1 (fork C: richer fiber + gauge-aligned groove target)",
         "world": {"M_star": world.M, "sigma": world.sigma},
-        "fit": {"lambda_T2T3T4": [float(x) for x in fit.lam],
+        "fit": {"lambda_T2_T3_T4_T1p": [float(x) for x in fit.lam],
                 "logistic_loss": fit.loss, "grad_norm": fit.grad_norm,
                 "n_pairs": fit.n_pairs, "fit_seeds": list(FIT_SEEDS),
-                "note": "T1 = reference scale 1 (fixed); T5 not identifiable "
-                        "(phi_T5 == 0 for every family member at native gauge)."},
+                "note": "T1_gw = reference scale 1 (fixed). phi = [T1_gw, T2, T3, "
+                        "T4_raw=-succ_reward, phase_charge]. T5 not identifiable "
+                        "(0 for every family member at native gauge; R3)."},
         "separation_heldout": sep,
         "heldout_seeds": list(HELDOUT_SEEDS),
         "sep_min_threshold": SEP_MIN,
@@ -67,13 +81,15 @@ def main():
         "KILL": bool(kill),
         "killed_members": killed_members,
         "verdict": ("KILL — F does not separate real from these re-arrangements "
-                    "for any LAMBDA>=0; F term(s) mis-specified (WALL). No "
-                    "authoritative LAMBDA emitted; F-1 remains open."
+                    "for the fitted LAMBDA; F term(s) still mis-specified (WALL). "
+                    "No authoritative LAMBDA emitted; F-1 remains open."
                     if kill else
-                    "PASS — real tracks separate from the whole fixed family."),
-        "lambda_emitted": None if kill else [1.0] + [float(x) for x in fit.lam],
-        "prereg": "PREREG.md 'Scramble family' + 'Training — real-tracks-are-"
-                  "equilibria separation'; registry train-nce-2026-07-13",
+                    "PASS — real tracks separate from the whole fixed family "
+                    "(min held-out sep >= 0.90). Authoritative LAMBDA emitted; "
+                    "F-1 (frozen-weight discharge) DISCHARGED."),
+        "lambda_emitted": emitted,
+        "prereg": "PREREG.md 'Training rev-r1 — real-tracks-are-equilibria "
+                  "separation (fork C)'; registry train-nce-revr1-2026-07-13",
     }
     with open("training_results.json", "w") as f:
         json.dump(out, f, indent=2)

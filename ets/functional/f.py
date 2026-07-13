@@ -8,12 +8,28 @@ instrumentation only — the decomposition is not a second objective).
 Decision variables (spec §5): couplings pi (unit/prototype -> role -> metrical
 slot), channel gains B, anchor supports/masses (D, a), gauge sections g.
 
-Terms (spec §5):
-  T1 transport   — GW-typed intrinsic-geometry-to-anchors: sum_t GW(C_t, D; pi_t).
-  T2 mass cons.  — unbalanced-OT marginal penalty on role x slot occupancy.
-  T3 masking     — spectral-masking collision cost on co-scheduled units.
-  T4 continuity  — tilted-Markov / Doob h-transform run-continuation reward.
+Terms (spec §5, rev-r1):
+  T1 transport   — GW-typed intrinsic-geometry-to-anchors: sum_t GW(C_t, D; pi_t)
+                   PLUS a gauge-aligned circular phase-displacement charge on the
+                   FIBER (unit intrinsic metrical coord vs slot phase; §3: micro-
+                   timing is intrinsic content). GW factors through prototypes;
+                   the phase charge reads pi's unit fiber (T1p weight).
+  T2 mass cons.  — unbalanced-OT marginal penalty on role x slot occupancy (O).
+  T3 masking     — spectral-masking collision cost on co-scheduled units (O).
+  T4 continuity  — Doob h-transform UNIT-successor run-continuation over pi's
+                   fiber (inexpressible over the O-aggregate; that was half the
+                   step-d wall). Reward for output-adjacent slots holding genuine
+                   source-successor units.
   T5 gauge-fix   — per-SECTION global transposition/phase cost; never per-unit.
+
+O-marginal vs fiber (spec §5 rev-r1): T2/T3 provably factor through O and are
+written on O; T1's phase charge and T4's successor read the fiber directly. f.F
+below ranges over (state, protos) — the CORPUS-TIME barycenter block, in which the
+arrangement (which real unit sits at which slot) is fixed data, so the fiber terms
+are constant and reported as 0 there; they are ACTIVE (a) in the corpus-time
+contrastive feature map, where arrangements differ, and (b) in the writer, where
+the tape's unit fiber is the free block. The term MATH lives here (single source);
+the fiber EXTRACTION from a Track/arrangement lives in ets.training.fiber.
 
 Holonomy / meters / drift / novelty appear NOWHERE in F (invariants I-5, I-14).
 This is enforced by an AST scan of this module in tests/invariants (I-5 check).
@@ -27,23 +43,38 @@ import numpy as np
 
 from . import ot
 
-# Term weights. T1 is the reference scale (weight 1). These are NOT run-time
-# controls (I-9). *** F-1 UNDISCHARGED (WALL). *** These are the step-c PLACEHOLDER
-# values, still HAND-SET. Step d's contrastive/NCE fit (ets.training.nce) is WALLED:
-# F does not separate real tracks from the full fixed scramble family for any
-# LAMBDA>=0 — grid-shuffle vs phase-rotate demand opposite-sign T2 gradients, and
-# cross-track-swap does not raise F (see PREREG "Training — real-tracks-are-
-# equilibria", registry train-nce-2026-07-13, and the step-d report). Per WALL
-# PROTOCOL these are NOT hand-tuned to force separation; they await the proposed
-# spec revision (R1/R2/R3) that re-types the occupancy terms. No settled-schedule
-# gate (G4+) may stand on these values until F-1 is discharged.
-LAMBDA = {"T2": 1.0, "T3": 0.5, "T4": 0.25, "T5": 0.1}
+# Term weights. T1's GW transport is the reference scale (weight 1). These are NOT
+# run-time controls (I-9). *** rev-r1 (fork C: richer fiber + gauge-aligned groove
+# target). *** F is posed on the FULL unit-resolved pi (spec §5 rev-r1). The
+# occupancy marginal O = Σ_units pi carries ONLY the terms that PROVABLY factor
+# through it (T2 mass conservation, T3 masking); the terms that need the fiber —
+# T1's phase-displacement charge (unit intrinsic metrical coord vs slot phase) and
+# T4's unit-successor continuation — read pi's fiber directly and are inexpressible
+# over O (that discarded fiber residue was the step-d wall: grid-shuffle sep 0.35).
+#   T1p : weight of the gauge-aligned circular phase-displacement charge (the
+#         "PLUS" in spec §5 "T1 = transport PLUS a phase-displacement charge"; the
+#         GW transport itself is the reference scale 1).
+#   T4  : weight of the unit-successor run-continuation term (Doob h-transform).
+# These weights are calibrated by the corpus-time contrastive/NCE fit (spec §6,
+# ets.training.nce); the values here are the LIVE frozen weights the writer reads.
+#
+# *** F-1 DISCHARGED. *** These are the AUTHORITATIVE weights emitted by the
+# registered rev-r1 training gate (training_results.json; REGISTRY
+# train-nce-revr1-2026-07-13; PREREG "Training rev-r1"): the convex logistic NCE
+# fit on the 20 frozen tracks, held-out per-member separation grid-shuffle 1.00 /
+# role-permute 0.95 / phase-rotate 1.00 / cross-track-swap 0.975 (overall_min_sep
+# 0.95 >= 0.90 = PASS). T1_gw is the reference scale (implicit weight 1 on
+# term_T1's GW distortion); T5=0.1 is the run-time gauge-stiffness baseline (R3:
+# not corpus-time identifiable). NOT hand-set — regenerated by re-running
+# scripts/run_training.py. Do not edit by hand (I-9).
+LAMBDA = {"T2": 4.9923137910018385, "T3": 0.8023184886520748,
+          "T4": 10.457681912759295, "T5": 0.1, "T1p": 8.758101446990384}
 
 
 # --- I-15 term-input contract (rev-r1 §5, CI-enforced) -----------------------
 # Every F term declares the decision-variable class it is POSED on. The
 # authoritative partition is fixed by spec §5 (rev-r1) and checked by
-# tests/invariants (_check_i15). A term is legal iff it either
+# tests/invariants (_check_i15, on main). A term is legal iff it either
 #   (a) CONSUMES the full unit-resolved coupling pi  ("full-pi"), or
 #   (b) is a MARGINAL of pi that provably factors through the occupancy O and
 #       carries a WRITTEN factorization proof below ("marginal"), or
@@ -51,6 +82,9 @@ LAMBDA = {"T2": 1.0, "T3": 0.5, "T4": 0.25, "T5": 0.1}
 # "Premature aggregation / structure-deleting projection" — posing a term that
 # the spec mandates on full pi (T1, T4) onto the marginal O instead — is the
 # fidelity breach I-15 exists to forbid. There is no proof route for T1/T4.
+# This partition is EXACTLY fork C's implementation: T1's phase-displacement
+# charge and T4's unit-successor continuation read the fiber (ets.training.fiber /
+# writer realize); T2/T3 read the occupancy marginal O.
 TERM_INPUT_CONTRACT = {
     "T1": "full-pi",   # transport (GW) + circular metrical phase-displacement charge
     "T2": "marginal",  # mass conservation — a property of role x slot occupancy
@@ -138,17 +172,68 @@ def term_T3(O: np.ndarray, state: FState) -> float:
     return float(LAMBDA["T3"] * collision)
 
 
-def term_T4(O: np.ndarray, state: FState) -> float:
-    """Continuity / run-continuation (tilted-Markov, Doob h-transform). Base
-    continuation kernel W = exp(-D) tilts toward anchor-to-anchor transitions
-    that are close in role space; the term REWARDS (negative cost) runs that
-    continue smoothly across adjacent metrical slots."""
-    W = np.exp(-state.D)
-    S = O.shape[1]
-    reward = 0.0
-    for s in range(S):
-        reward += float(O[:, s] @ W @ O[:, (s + 1) % S])
-    return float(-LAMBDA["T4"] * reward)
+# --------------------------------------------------------------------------
+# FIBER terms (spec §5 rev-r1): read pi's unit fiber, inexpressible over O.
+# Pure term math (single source of truth); the fiber EXTRACTION from a Track /
+# arrangement lives in ets.training.fiber. Both are gauge-quotiented / gauge-
+# invariant by construction (I-2), see per-function notes.
+# --------------------------------------------------------------------------
+
+def phase_displacement_charge(intrinsic_phase, slot_phase, mass) -> float:
+    """T1's circular phase-displacement charge, GAUGE-ALIGNED (spec §5 rev-r1).
+
+    For each placed unit u: the circular distance between the unit's INTRINSIC
+    metrical coordinate ``intrinsic_phase[u]`` (§3: microtiming is intrinsic
+    content, not gauge) and the phase ``slot_phase[u]`` of the slot it occupies,
+    QUOTIENTED by a single per-section global phase shift δ (a global beat-phase
+    shift is free gauge; a per-unit displacement is charged). The δ-quotient is
+    solved in closed form: minimising Σ m_u (1 - cos 2π(x_u - δ)) over δ, with
+    x_u = intrinsic - slot, gives 1 - |Σ m_u e^{i2π x_u}| (masses normalised).
+
+    = 0 exactly when every unit sits at its own intrinsic slot up to one global
+    shift (a real track's groove) → real groove is the low-cost configuration.
+    Incoherent metrical displacement (grid-shuffle) or a per-band phase rotation
+    (phase-rotate) cannot be removed by any global δ → strictly positive. Both
+    inputs are within-track metrical phases in [0,1); the quantity is invariant
+    to a global phase shift, so no absolute coordinate leaks (I-2)."""
+    m = np.asarray(mass, float)
+    s = float(m.sum())
+    if s <= 0.0:
+        return 0.0
+    m = m / s
+    x = np.asarray(intrinsic_phase, float) - np.asarray(slot_phase, float)
+    z = np.sum(m * np.exp(1j * 2.0 * np.pi * x))
+    return float(max(0.0, 1.0 - np.abs(z)))
+
+
+def continuation_reward(pair_is_successor, pair_weight) -> float:
+    """T4's unit-successor run-continuation REWARD in [0,1] (spec §5 rev-r1).
+
+    ``pair_is_successor[i]`` is 1 iff the content at an output-adjacent (same-band)
+    slot pair is a genuine SOURCE successor of its predecessor (the run continues
+    the real audio), ``pair_weight[i]`` the mass weight of that pair. The reward is
+    the mass-weighted fraction of adjacencies that continue a real run — a Doob
+    h-transform tilt toward real continuations. Uses only within-track content
+    adjacency (source-successor identity), so it is gauge-invariant (I-2): a
+    grid-shuffle re-deals content → almost no adjacency survives; a cross-track
+    graft inserts units that are no track's successor → the run breaks."""
+    w = np.asarray(pair_weight, float)
+    s = float(w.sum())
+    if s <= 0.0:
+        return 0.0
+    return float(np.sum(w * np.asarray(pair_is_successor, float)) / s)
+
+
+def term_T1_phase(charge: float) -> float:
+    """Weighted phase-displacement contribution to T1 (weight LAMBDA['T1p'])."""
+    return float(LAMBDA["T1p"] * float(charge))
+
+
+def term_T4(reward: float) -> float:
+    """Weighted T4 cost from a unit-successor reward: F rises as continuation
+    drops. Sign convention: raw T4 = -reward (<= 0), F contribution
+    +LAMBDA['T4']*rawT4 = -LAMBDA['T4']*reward."""
+    return float(-LAMBDA["T4"] * float(reward))
 
 
 def term_T5(state: FState) -> float:
@@ -164,53 +249,58 @@ def term_T5(state: FState) -> float:
 
 
 def raw_terms(state: FState, protos) -> dict:
-    """The five UNWEIGHTED term quantities (phi_i), before LAMBDA is applied.
+    """The UNWEIGHTED O-block term quantities (phi_i) from an FState, LAMBDA-free.
 
-    F = T1 + sum_i LAMBDA[Ti] * raw[Ti]  for i in {T2,T3,T4,T5}, with T1 the
-    reference scale (implicit weight 1). This is the feature map the corpus-time
-    NCE estimator (step d, spec §6) scores: it depends ONLY on the arrangement +
-    frozen world, NOT on LAMBDA, so the weights can be fit contrastively without
-    circularity. The sign convention matches F exactly: raw T4 = -(continuation
-    reward) (<=0), so F's contribution is +LAMBDA[T4]*rawT4 = -LAMBDA[T4]*reward.
-    Nothing here reads LAMBDA (verified: this function is LAMBDA-free)."""
+    Reports the terms that are functions of (state, protos): T1's GW transport,
+    T2, T3, T5. The fiber terms (T1's phase charge, T4's unit-successor) are 0 in
+    this block (the arrangement is fixed data); the corpus-time feature map that
+    varies arrangements adds them from ets.training.fiber. Nothing here reads
+    LAMBDA (verified: LAMBDA-free)."""
     O = occupancy(state, protos)
     t1 = float(sum(ot.gw_distortion(P.cost, state.D, state.pis[t])
                    for t, P in enumerate(protos)))
     core = raw_terms_O(O, state.D, state.a, state.B, state.theta)
     t5 = float(np.sum((np.asarray(state.phase_off, float) / 8.0) ** 2)
                + np.sum((np.asarray(state.transpose, float) / 12.0) ** 2))
-    return {"T1": t1, "T2": core["T2"], "T3": core["T3"], "T4": core["T4"], "T5": t5}
+    return {"T1": t1, "T2": core["T2"], "T3": core["T3"], "T4": 0.0, "T5": t5}
 
 
 def raw_terms_O(O: np.ndarray, D: np.ndarray, a: np.ndarray, B: np.ndarray,
                 theta: np.ndarray) -> dict:
-    """The occupancy-dependent unweighted terms {T2,T3,T4} from a bare occupancy O
-    (anchor×slot) and the frozen world. This is the SINGLE implementation of the
-    T2/T3/T4 formulas; both f.raw_terms (from an FState) and the corpus-time
-    estimator (from a role-space Arrangement's occupancy) delegate here, so a
-    role-space negative is scored by exactly the same F terms as a real track."""
+    """The occupancy-dependent unweighted terms {T2,T3} that PROVABLY factor
+    through the marginal O (anchor×slot) and the frozen world. This is the SINGLE
+    implementation of the T2/T3 formulas; both f.raw_terms (from an FState) and the
+    corpus-time estimator (from an Arrangement's occupancy) delegate here, so an
+    arrangement is scored by exactly the same O-terms as a real track.
+
+    (rev-r1) T4 was REMOVED from here: the O-aggregate role-continuation was blind
+    to WHICH unit sits at WHICH slot (grid-shuffle sep 0.35). T4 is now the
+    unit-successor term on the fiber (``continuation_reward``); D is retained in the
+    signature for interface stability but no longer feeds an O-level continuation."""
     tgt = a[:, None] * theta + 1e-12
     o = O + 1e-12
     t2 = float(np.sum(o * np.log(o / tgt) - o + tgt))
     E = O.T @ B
     self_e = (O.T ** 2) @ (B ** 2)
     t3 = float(np.sum(E ** 2) - np.sum(self_e))
-    W = np.exp(-D)
-    S = O.shape[1]
-    rew = 0.0
-    for s in range(S):
-        rew += float(O[:, s] @ W @ O[:, (s + 1) % S])
-    return {"T2": t2, "T3": t3, "T4": float(-rew)}
+    return {"T2": t2, "T3": t3}
 
 
 def F(state: FState, protos):
     """The single scalar F and its per-term decomposition (decomposition is
-    instrumentation, not a second objective)."""
+    instrumentation, not a second objective).
+
+    f.F ranges over the CORPUS-TIME barycenter block (state, protos): the
+    arrangement (which real unit sits where) is fixed data here, so the fiber terms
+    (T1's phase charge, T4's unit-successor) are constant and reported as 0. They
+    are active in the corpus-time feature map (arrangements differ) and in the
+    writer (the tape's fiber is the free block); the term math is the shared
+    ``phase_displacement_charge`` / ``continuation_reward`` above."""
     O = occupancy(state, protos)
     t1 = term_T1(state, protos)
     t2 = term_T2(O, state)
     t3 = term_T3(O, state)
-    t4 = term_T4(O, state)
+    t4 = 0.0                       # unit-successor is a fiber term; 0 in this block
     t5 = term_T5(state)
     total = t1 + t2 + t3 + t4 + t5
     return total, {"T1": t1, "T2": t2, "T3": t3, "T4": t4, "T5": t5, "F": total}
