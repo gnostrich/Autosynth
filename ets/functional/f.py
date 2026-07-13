@@ -27,8 +27,16 @@ import numpy as np
 
 from . import ot
 
-# Frozen term weights (structural; calibrated at train-time, step d). T1 is the
-# reference scale (weight 1). These are NOT run-time controls (I-9).
+# Term weights. T1 is the reference scale (weight 1). These are NOT run-time
+# controls (I-9). *** F-1 UNDISCHARGED (WALL). *** These are the step-c PLACEHOLDER
+# values, still HAND-SET. Step d's contrastive/NCE fit (ets.training.nce) is WALLED:
+# F does not separate real tracks from the full fixed scramble family for any
+# LAMBDA>=0 — grid-shuffle vs phase-rotate demand opposite-sign T2 gradients, and
+# cross-track-swap does not raise F (see PREREG "Training — real-tracks-are-
+# equilibria", registry train-nce-2026-07-13, and the step-d report). Per WALL
+# PROTOCOL these are NOT hand-tuned to force separation; they await the proposed
+# spec revision (R1/R2/R3) that re-types the occupancy terms. No settled-schedule
+# gate (G4+) may stand on these values until F-1 is discharged.
 LAMBDA = {"T2": 1.0, "T3": 0.5, "T4": 0.25, "T5": 0.1}
 
 
@@ -111,6 +119,46 @@ def term_T5(state: FState) -> float:
     phase_cost = np.sum((np.asarray(state.phase_off, float) / S) ** 2)
     trans_cost = np.sum((np.asarray(state.transpose, float) / 12.0) ** 2)
     return float(LAMBDA["T5"] * (phase_cost + trans_cost))
+
+
+def raw_terms(state: FState, protos) -> dict:
+    """The five UNWEIGHTED term quantities (phi_i), before LAMBDA is applied.
+
+    F = T1 + sum_i LAMBDA[Ti] * raw[Ti]  for i in {T2,T3,T4,T5}, with T1 the
+    reference scale (implicit weight 1). This is the feature map the corpus-time
+    NCE estimator (step d, spec §6) scores: it depends ONLY on the arrangement +
+    frozen world, NOT on LAMBDA, so the weights can be fit contrastively without
+    circularity. The sign convention matches F exactly: raw T4 = -(continuation
+    reward) (<=0), so F's contribution is +LAMBDA[T4]*rawT4 = -LAMBDA[T4]*reward.
+    Nothing here reads LAMBDA (verified: this function is LAMBDA-free)."""
+    O = occupancy(state, protos)
+    t1 = float(sum(ot.gw_distortion(P.cost, state.D, state.pis[t])
+                   for t, P in enumerate(protos)))
+    core = raw_terms_O(O, state.D, state.a, state.B, state.theta)
+    t5 = float(np.sum((np.asarray(state.phase_off, float) / 8.0) ** 2)
+               + np.sum((np.asarray(state.transpose, float) / 12.0) ** 2))
+    return {"T1": t1, "T2": core["T2"], "T3": core["T3"], "T4": core["T4"], "T5": t5}
+
+
+def raw_terms_O(O: np.ndarray, D: np.ndarray, a: np.ndarray, B: np.ndarray,
+                theta: np.ndarray) -> dict:
+    """The occupancy-dependent unweighted terms {T2,T3,T4} from a bare occupancy O
+    (anchor×slot) and the frozen world. This is the SINGLE implementation of the
+    T2/T3/T4 formulas; both f.raw_terms (from an FState) and the corpus-time
+    estimator (from a role-space Arrangement's occupancy) delegate here, so a
+    role-space negative is scored by exactly the same F terms as a real track."""
+    tgt = a[:, None] * theta + 1e-12
+    o = O + 1e-12
+    t2 = float(np.sum(o * np.log(o / tgt) - o + tgt))
+    E = O.T @ B
+    self_e = (O.T ** 2) @ (B ** 2)
+    t3 = float(np.sum(E ** 2) - np.sum(self_e))
+    W = np.exp(-D)
+    S = O.shape[1]
+    rew = 0.0
+    for s in range(S):
+        rew += float(O[:, s] @ W @ O[:, (s + 1) % S])
+    return {"T2": t2, "T3": t3, "T4": float(-rew)}
 
 
 def F(state: FState, protos):

@@ -36,12 +36,53 @@ def test_family_fixed_bites_on_extra_op():
         del S._REGISTRY["__extra__"]
 
 
-@pytest.mark.parametrize("name", ["role-permute", "cross-track-swap"])
-def test_blocked_ops_refuse_to_run(track, name):
-    op = S._REGISTRY[name]
-    assert op.status == "blocked_on_c"
-    with pytest.raises(NotImplementedError):
-        op.fn(track) if op.arity == "track" else op.fn([track])
+@pytest.fixture
+def world():
+    """A minimal frozen world to exercise the anchor-channel (role-level) ops."""
+    from ets.training.world import WorldFreeze
+    rng = np.random.default_rng(0)
+    D = rng.random((3, 3)); D = 0.5 * (D + D.T); np.fill_diagonal(D, 0.0)
+    return WorldFreeze(D=D, a=np.full(3, 1 / 3), B=np.full((3, 8), 1 / 8),
+                       theta=np.full((3, 8), 1 / 8), sigma=1.0, M=3)
+
+
+def test_role_level_ops_are_activated_not_blocked():
+    for name in ("role-permute", "cross-track-swap"):
+        op = S._REGISTRY[name]
+        assert op.status == "implemented", f"{name} should be activated at step c"
+        assert op.arity in ("role", "role_pair")
+
+
+def test_role_permute_runs_through_anchor_channel(track, world):
+    from ets.geometry import roles
+    from ets.training.world import _occ
+    arr = S.role_permute(track, world, seed=3)
+    S.assert_arrangement_real(arr, [track.track_id])
+    assert arr.mass_sources == (track.track_id,)
+    # determinism
+    arr2 = S.role_permute(track, world, seed=3)
+    assert np.array_equal(arr.O, arr2.O)
+    # genuinely disarranges the occupancy vs the un-permuted coupling
+    P = roles.extract_prototypes(track, seed=0)
+    O_real = _occ(world.couple(P), P)
+    assert not np.allclose(arr.O, O_real, atol=1e-9)
+    # purity: input track untouched
+    assert S.content_keys(track) == S.content_keys(track)
+
+
+def test_cross_track_swap_crosses_only_anchor_channel(track, world):
+    other = synthetic_track(track_id=6, seed=6)
+    arr = S.cross_track_swap([track, other], world, seed=3)
+    # mass comes ONLY from the two real tracks (I-2/I-6): gauge-invariant anchor
+    # space is the sole cross-boundary channel; no fabricated source.
+    S.assert_arrangement_real(arr, [track.track_id, other.track_id])
+    assert set(arr.mass_sources) == {track.track_id, other.track_id}
+    arr2 = S.cross_track_swap([track, other], world, seed=3)
+    assert np.array_equal(arr.O, arr2.O)
+    # the guard bites on a fabricated (non-real) source
+    bogus = S.Arrangement(O=arr.O.copy(), t1=0.0, mass_sources=(4242,))
+    with pytest.raises(AssertionError):
+        S.assert_arrangement_real(bogus, [track.track_id, other.track_id])
 
 
 @pytest.mark.parametrize("op_name", ["grid-shuffle", "phase-rotate"])

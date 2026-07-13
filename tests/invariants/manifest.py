@@ -416,42 +416,68 @@ def _check_i6() -> None:
     finally:
         del S._REGISTRY["__bogus_scrambler__"]
 
-    # blocked family members are HONESTLY blocked (no fabricated role / no I-2
-    # breach): they refuse to run rather than fake a proxy.
-    for name in ("role-permute", "cross-track-swap"):
-        op = S._REGISTRY[name]
-        assert op.status == "blocked_on_c", f"{name} should be blocked-on-c"
-        refused = False
-        try:
-            op.fn(t) if op.arity == "track" else op.fn([t])
-        except NotImplementedError:
-            refused = True
-        assert refused, f"blocked op {name} did not refuse to run"
+    # All four members are now IMPLEMENTED (step c activated the two role-level
+    # ops through the anchor channel). Track-level ops return Tracks; role-level
+    # ops return role-space Arrangements. The family is split by arity.
+    from ets.training.world import WorldFreeze, _occ
+    from ets.geometry import roles as _roles
+    track_ops = {op.name for op in S.family() if op.arity == "track"}
+    role_ops = {op.name for op in S.family() if op.arity in ("role", "role_pair")}
+    assert track_ops == {"grid-shuffle", "phase-rotate"}, track_ops
+    assert role_ops == {"role-permute", "cross-track-swap"}, role_ops
+    assert all(op.status == "implemented" for op in S.family()), \
+        "every family member must be implemented after step c"
 
-    # (a) real units only, no external data  +  (c) inventory preserved
-    implemented = [op for op in S.family() if op.status == "implemented"]
-    assert {op.name for op in implemented} == {"grid-shuffle", "phase-rotate"}, \
-        "unexpected set of implemented scramble ops"
-    for op in implemented:
+    # (a) TRACK-level ops: real units only + inventory preserved + honest single-
+    # source provenance (I-12) — this certifies 'good tracks only'.
+    for name in track_ops:
+        op = S._REGISTRY[name]
         out = op.fn(t, seed=11)
-        # output is a well-formed single-SOURCE track (honest provenance, I-12):
-        # this is what certifies 'good tracks only' — every unit traces to a real
-        # source span in THIS track, none injected from outside.
         assert_provenance_complete(out)
         S.assert_inventory_preserved([t], out)          # (a) ⊆ real + (c) equal
-        # seedable determinism
         out2 = op.fn(t, seed=11)
         assert np.array_equal(out.provenance_index["src_start"],
                               out2.provenance_index["src_start"])
         assert np.array_equal(out.units["phase"], out2.units["phase"])
-        # purity: the op did not mutate its input
-        assert S.content_keys(t) == inp_keys, f"{op.name} mutated its input"
-        # it genuinely DISARRANGES (not a silent no-op)
+        assert S.content_keys(t) == inp_keys, f"{name} mutated its input"
         disarranged = (
             not np.array_equal(out.provenance_index["src_start"],
                                t.provenance_index["src_start"])
             or not np.array_equal(out.units["phase"], t.units["phase"]))
-        assert disarranged, f"{op.name} was a no-op (did not disarrange)"
+        assert disarranged, f"{name} was a no-op (did not disarrange)"
+
+    # (b) ROLE-level ops: draw ONLY through the gauge-invariant anchor channel; the
+    # arrangement is assembled from REAL couplings (no fabrication, I-6). A minimal
+    # frozen world suffices to exercise the anchor coupling.
+    t2b = synthetic_track(track_id=4, seed=4)
+    rng = np.random.default_rng(0)
+    Dw = rng.random((3, 3)); Dw = 0.5 * (Dw + Dw.T); np.fill_diagonal(Dw, 0.0)
+    world = WorldFreeze(D=Dw, a=np.full(3, 1 / 3),
+                        B=np.full((3, 8), 1 / 8), theta=np.full((3, 8), 1 / 8),
+                        sigma=1.0, M=3)
+    real_ids = [t.track_id, t2b.track_id]
+    _Preal = _roles.extract_prototypes(t, seed=0)
+    O_real = _occ(world.couple(_Preal), _Preal)
+    for name in role_ops:
+        op = S._REGISTRY[name]
+        if op.arity == "role":
+            arr = op.fn(t, world, seed=11); arr2 = op.fn(t, world, seed=11)
+        else:
+            arr = op.fn([t, t2b], world, seed=11); arr2 = op.fn([t, t2b], world, seed=11)
+        S.assert_arrangement_real(arr, real_ids)        # (a)/(c) real-only, no fab
+        assert np.array_equal(arr.O, arr2.O), f"{name} not deterministic"
+        assert S.content_keys(t) == inp_keys, f"{name} mutated its input"
+        assert not np.allclose(arr.O, O_real, atol=1e-9), \
+            f"{name} was a no-op (did not disarrange the occupancy)"
+
+    # ...and the role-space guard BITES on a non-real (fabricated) source.
+    bogus = S.Arrangement(O=O_real.copy(), t1=0.0, mass_sources=(9999,))
+    bit = False
+    try:
+        S.assert_arrangement_real(bogus, real_ids)
+    except AssertionError:
+        bit = True
+    assert bit, "assert_arrangement_real did NOT catch a fabricated source (I-6)"
 
     # Prove the inventory guard is NON-VACUOUS.
     good = S.grid_shuffle(t, seed=1)

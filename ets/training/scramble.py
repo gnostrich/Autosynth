@@ -31,24 +31,35 @@ canonical content key is the provenance triple + mass + content descriptors;
 ``content_keys`` computes it and ``assert_inventory_preserved`` enforces
 inventory equality (I-6: re-arrangement, not fabrication; only real units).
 
-Implemented now vs blocked-on-c
--------------------------------
-Two family members are cleanly definable on the *current* (pre-anchor) Track
-schema and are IMPLEMENTED here: ``grid-shuffle`` and ``phase-rotate``. The other
-two are BLOCKED on build-order step c (anchors + F role assignment) and are
-registered as blocked stubs that REFUSE to run rather than fake a proxy:
+Two levels: Track-level and role-level
+--------------------------------------
+Two family members act on the Track (unit) arrangement and are IMPLEMENTED as
+``Track -> Track``: ``grid-shuffle`` and ``phase-rotate``. The other two act in
+ROLE space — they were correctly REFUSED before build-order step c because "role"
+(the unit→anchor assignment produced by F/anchors, spec §4/§5) did not exist.
+Step c built anchors + the coupling, so they are now ACTIVATED here, defined
+strictly through the gauge-invariant anchor channel (I-2):
 
-* ``role-permute`` needs the learned ROLE assignment (spec §4/§5: unit→role→
-  slot). "Role" does not exist until anchors/F assign it. The fixed filterbank
-  ``band`` is explicitly NOT a role (spec §2 step 3 forbids letting the band
-  decomposition pre-decide roles). Permuting bands would fabricate a role F never
-  assigned — forbidden. Blocked until step c/d.
-* ``cross-track-swap`` needs to move a unit across a track boundary. The only
-  I-2-legal channel for cross-track traffic is the gauge-invariant anchor/role
-  representation (spec §3/§4); a direct cross-track descriptor cost violates I-2,
-  and honest foreign provenance in a single ``track_id`` Track violates the
-  single-source schema (I-12 / ``assert_provenance_complete``). Blocked until the
-  anchor channel exists (step c). See the WALL note in PREREG.md.
+* ``role-permute`` (``(Track, world) -> Arrangement``): couple the track's
+  prototypes to the frozen anchors (world.couple, a pure-GW transport map), then
+  PERMUTE the anchor columns of that coupling — i.e. reassign which learned ROLE
+  each prototype plays. The permuted coupling no longer matches the barycentric
+  geometry, so transport (T1) and the occupancy terms move. The filterbank band
+  is NOT used as a role (spec §2 step 3); the role is the anchor assignment.
+* ``cross-track-swap`` (``([Track,Track], world) -> Arrangement``): couple BOTH
+  tracks to the SAME frozen anchors and swap a subset of ANCHOR ROWS of the two
+  occupancies. The only thing that crosses the track boundary is anchor-space
+  (role) mass — gauge-invariant, I-2-legal. No raw cross-track coordinate/cost is
+  ever formed, and no foreign unit is injected into a single-``track_id`` Track
+  (the output is an ``Arrangement`` in shared role space, not a Track), so the
+  single-source schema (I-12) is not violated either.
+
+Both role-level ops return an ``Arrangement`` (anchor×slot occupancy + transport
+scalar + the real ``mass_sources``) — the object F's occupancy terms consume —
+rather than a Track, because a role-space perturbation has no faithful single-Track
+realization. ``assert_arrangement_real`` is the I-6 guard for these ops: the
+occupancy is assembled ONLY from real tracks' couplings (no fabrication) and every
+contributing ``track_id`` is a real input id.
 """
 from __future__ import annotations
 
@@ -60,6 +71,9 @@ from typing import Callable, Dict, List, Tuple
 import numpy as np
 
 from ets.ingestion.track import CostStructure, Track
+from ets.geometry import roles
+from ets.functional import ot
+from ets.training.world import WorldFreeze, _occ
 
 
 # --------------------------------------------------------------------------
@@ -212,16 +226,8 @@ def assert_family_fixed() -> None:
         f"registered={sorted(got)} prereg={sorted(PREREGISTERED_FAMILY)}")
 
 
-def _blocked(name: str, reason: str) -> Callable:
-    """Build a stub that REFUSES to run (WALL PROTOCOL: report the dependency,
-    do not fabricate a proxy)."""
-    def stub(*_args, **_kwargs):
-        raise NotImplementedError(f"scramble '{name}' is blocked-on-c: {reason}")
-    return stub
-
-
 # --------------------------------------------------------------------------
-# IMPLEMENTED family members
+# TRACK-LEVEL family members
 # --------------------------------------------------------------------------
 
 @register(
@@ -312,32 +318,86 @@ def phase_rotate(track: Track, seed: int = 0) -> Track:
 
 
 # --------------------------------------------------------------------------
-# BLOCKED-on-c family members (registered, refuse to run — never faked)
+# ROLE-LEVEL family members (ACTIVATED at step c: anchors + coupling exist)
 # --------------------------------------------------------------------------
 
-register(
-    "role-permute", arity="track", status="blocked_on_c",
-    breaks="role assignment — permute which learned ROLE each unit plays. "
-           "Requires the anchor/F role map (unit→role→slot, spec §4/§5); the "
-           "fixed filterbank band is NOT a role (spec §2 step 3), so this cannot "
-           "be faked on bands. Blocked until step c/d.",
-)(_blocked(
-    "role-permute",
-    "'role' is assigned by anchors/F (spec §4,§5), which do not exist until "
-    "build-order step c/d; the filterbank band is explicitly not a role "
-    "(spec §2 step 3), so permuting bands would fabricate a role F never "
-    "assigned. Implement once the role map exists."))
+@dataclass(frozen=True)
+class Arrangement:
+    """A scored arrangement in shared role space: what F's occupancy terms
+    consume. ``O`` is the anchor×slot occupancy (gauge-invariant, I-2), ``t1`` the
+    transport cost to the anchors, ``mass_sources`` the real input ``track_id``\\s
+    whose couplings supplied the mass (I-6 provenance for role-space ops)."""
+    O: np.ndarray
+    t1: float
+    mass_sources: Tuple[int, ...]
 
-register(
-    "cross-track-swap", arity="corpus", status="blocked_on_c",
-    breaks="anchor-mediated cross-track coherence — swap real units between "
-           "tracks so the within-track coherence that anchors certify is broken. "
-           "Legal cross-track transfer requires the gauge-invariant anchor/role "
-           "channel (spec §3/§4); blocked until step c.",
-)(_blocked(
-    "cross-track-swap",
-    "moving a unit across a track boundary legally requires the gauge-invariant "
-    "anchor/role channel (spec §3,§4). A direct cross-track descriptor cost "
-    "violates I-2, and honest foreign provenance in a single-track_id Track "
-    "violates the single-source schema (I-12 / assert_provenance_complete). "
-    "Implement once anchors exist (step c). See PREREG.md wall note."))
+
+def assert_arrangement_real(arr: "Arrangement", real_ids) -> None:
+    """I-6 for role-space ops: the arrangement is assembled ONLY from real tracks'
+    couplings — no fabricated mass, no external source. Every contributing
+    ``track_id`` is a real input id, occupancy is finite/non-negative, and total
+    mass is a convex combination of real per-track occupancies (each sums to ~1)."""
+    real = set(int(i) for i in real_ids)
+    assert set(int(i) for i in arr.mass_sources) <= real, (
+        f"arrangement draws mass from a non-real source {arr.mass_sources} "
+        f"(external data / fabrication) — I-6")
+    O = np.asarray(arr.O)
+    assert np.all(np.isfinite(O)) and np.all(O >= -1e-12), \
+        "arrangement occupancy is non-finite/negative (fabrication) — I-6"
+    assert 0.5 < float(O.sum()) < 1.5, \
+        f"arrangement mass {float(O.sum())} is not a convex mix of real tracks — I-6"
+
+
+def _derangement(M: int, rng: np.random.Generator) -> np.ndarray:
+    """A permutation of range(M) with no fixed point when M>1 (a genuine
+    reassignment, not a silent identity)."""
+    perm = rng.permutation(M)
+    while M > 1 and np.any(perm == np.arange(M)):
+        perm = rng.permutation(M)
+    return perm
+
+
+@register(
+    "role-permute", arity="role", status="implemented",
+    breaks="role assignment — permutes which learned ROLE (anchor) each prototype "
+           "plays by deranging the anchor columns of the pure-GW coupling. The "
+           "permuted coupling no longer matches the barycentric geometry, so "
+           "transport (T1) and the occupancy terms move; the filterbank band is "
+           "NOT used as a role (spec §2 step 3). Needs the step-c anchor map.")
+def role_permute(track: Track, world: WorldFreeze, seed: int = 0) -> Arrangement:
+    """Permute the unit→role assignment via the frozen anchor coupling (spec §4/§5)."""
+    P = roles.extract_prototypes(track, seed=0)
+    pi = world.couple(P)
+    perm = _derangement(world.M, np.random.default_rng(
+        _subseed(seed, "role-permute", track.track_id)))
+    pi2 = pi[:, perm]
+    O = _occ(pi2, P)
+    t1 = ot.gw_distortion(P.cost, world.D, pi2)
+    return Arrangement(O=O, t1=float(t1), mass_sources=(int(track.track_id),))
+
+
+@register(
+    "cross-track-swap", arity="role_pair", status="implemented",
+    breaks="anchor-mediated cross-track coherence — couples BOTH tracks to the "
+           "same frozen anchors and swaps a subset of anchor (role) ROWS of their "
+           "occupancies. Only gauge-invariant anchor-space mass crosses the track "
+           "boundary (I-2-legal); no raw cross-track cost, no foreign unit in a "
+           "single-track Track. Needs the step-c anchor channel.")
+def cross_track_swap(tracks: List[Track], world: WorldFreeze,
+                     seed: int = 0) -> Arrangement:
+    """Swap real units between two tracks ONLY through the gauge-invariant anchor
+    channel (spec §3/§4): mix anchor rows of two co-coupled occupancies."""
+    ta, tb = tracks[0], tracks[1]
+    Pa = roles.extract_prototypes(ta, seed=0)
+    Pb = roles.extract_prototypes(tb, seed=0)
+    pia, pib = world.couple(Pa), world.couple(Pb)
+    Oa, Ob = _occ(pia, Pa), _occ(pib, Pb)
+    rng = np.random.default_rng(_subseed(seed, "cross-track-swap", ta.track_id))
+    Q = rng.random(world.M) < 0.5
+    O = np.where(Q[:, None], Ob, Oa)             # only anchor-space mass crosses
+    wj = float(Q.mean())
+    # T1 = mass-weighted sum of each track's OWN transport (no cross-track cost)
+    t1 = (1.0 - wj) * ot.gw_distortion(Pa.cost, world.D, pia) \
+        + wj * ot.gw_distortion(Pb.cost, world.D, pib)
+    return Arrangement(O=O, t1=float(t1),
+                       mass_sources=(int(ta.track_id), int(tb.track_id)))

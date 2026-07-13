@@ -200,16 +200,19 @@ The two halves are complementary and neither is redundant.
     rescue a null result. A null G1 is reported as-is.
 
 
-## Scramble family (training comparison class)  (status: DRAFT)
+## Scramble family (training comparison class)  (status: REGISTERED)
+- prereg_commit: this commit (registers the family + activation); code_under_test: step d
+- registry_ids: [train-nce-2026-07-13]
 
 Scope: spec §6 requires the internal scramble family — the comparison class for
 the contrastive/NCE fit of F-weights — to be FIXED IN PREREG before any training
 run, with a stated rationale per member (which equilibrium property each member
-breaks). This entry PRE-STAGES that fixed family. It is DRAFT: the training run
-itself is build-order step d and depends on F (step c), which does not exist yet.
-No training is run here; no REGISTRY.jsonl line is appended here. At step d, when
-training actually runs, this entry moves to REGISTERED with a prereg_commit and a
-`REGISTRY.jsonl` line is appended commit-before-run.
+breaks). This entry FIXES that family and is REGISTERED commit-before-run for the
+step-d training. All four members are now IMPLEMENTED: step c built the anchors +
+coupling, ACTIVATING the two role-level members (role-permute, cross-track-swap)
+that were correctly refused before the role map existed. The family (four names)
+is frozen; the negatives are drawn ONLY through it (`nce.draw_pairs` calls
+`assert_family_fixed` and iterates `scramble.family()`; no second scrambler path).
 
 Invariant: I-6 (no external negative data; comparison class from GOOD tracks
 only; family fixed here). The family is enforced as a CLOSED, enumerated set by
@@ -232,15 +235,18 @@ Fixed family — the ONLY four members (spec §6, verbatim names):
    (groove) is destroyed; the band inventory and the grid itself survive, so the
    negative differs from the real track ONLY in metrical arrangement.
 
-2. role-permute  —  arity: Track → Track  —  status: BLOCKED-ON-C
-   Operation (intended): permute which learned ROLE each unit plays.
-   Breaks: ROLE ASSIGNMENT (unit→role coupling, spec §5 π).
-   WALL: "role" is assigned by anchors/F (spec §4/§5) and does not exist until
-   build-order step c/d. The fixed filterbank `band` is explicitly NOT a role
-   (spec §2 step 3 forbids the band decomposition pre-deciding roles), so this
-   MUST NOT be faked on bands — doing so would fabricate a role F never assigned.
-   Deferred to step c/d; the family SLOT is fixed now, the implementation lands
-   with the role map. Registered as a stub that refuses to run.
+2. role-permute  —  arity: (Track, world) → Arrangement  —  status: IMPLEMENTED
+   Operation: couple the track's prototypes to the frozen anchors (pure-GW
+   transport map, world.couple), then DERANGE the anchor columns of that coupling
+   — reassign which learned ROLE (anchor) each prototype plays. Returns a role-
+   space Arrangement (anchor×slot occupancy + transport).
+   Breaks: ROLE ASSIGNMENT (unit→role coupling, spec §5 π). The permuted coupling
+   no longer matches the barycentric geometry, so transport (T1) and the occupancy
+   terms move.
+   ACTIVATED at step c: "role" is the anchor assignment (spec §4/§5), which now
+   exists. The filterbank `band` is NOT used as a role (spec §2 step 3). No role
+   is fabricated — only the real coupling is permuted (I-6 via
+   `assert_arrangement_real`).
 
 3. phase-rotate  —  arity: Track → Track  —  status: IMPLEMENTED
    Operation: rotate the metrical phase by a DIFFERENT offset per band
@@ -251,27 +257,88 @@ Fixed family — the ONLY four members (spec §6, verbatim names):
    gauge-fixing) and the cross-band phase lock, without touching any audio.
    (Requires ≥2 bands; a single band admits only the F-invariant global shift.)
 
-4. cross-track-swap  —  arity: [Track] → Track  —  status: BLOCKED-ON-C
-   Operation (intended): swap real units between tracks so a negative contains
-   units from multiple source tracks.
+4. cross-track-swap  —  arity: ([Track,Track], world) → Arrangement  —  status: IMPLEMENTED
+   Operation: couple BOTH tracks to the SAME frozen anchors and swap a subset of
+   ANCHOR (role) ROWS of their occupancies. Returns a role-space Arrangement whose
+   transport is the mass-weighted sum of each track's OWN transport.
    Breaks: ANCHOR-MEDIATED CROSS-TRACK COHERENCE. All legitimate cross-track
    traffic factors through anchors in gauge-invariant role space (spec §4); a
-   swapped-together track breaks the within-track coherence that anchors certify.
-   WALL: the only I-2-legal way to move a unit across a track boundary is the
-   gauge-invariant anchor/role channel (spec §3/§4), which does not exist until
-   step c. A direct cross-track descriptor cost violates I-2, and honest foreign
-   provenance inside a single-`track_id` Track violates the single-source schema
-   (I-12 / `assert_provenance_complete`). Registered as a stub that refuses to
-   run. Deferred to step c; family SLOT fixed now.
+   swapped occupancy breaks the within-track coherence that anchors certify.
+   ACTIVATED at step c: the ONLY thing crossing the track boundary is anchor-space
+   (role) mass — gauge-invariant, I-2-legal. No raw cross-track descriptor/cost is
+   ever formed, and no foreign unit is injected into a single-`track_id` Track
+   (the output is an Arrangement in shared role space, not a Track), so I-12 /
+   single-source is not violated either. I-6 via `assert_arrangement_real`.
 
-Proposed spec follow-ups (for the human; not applied here):
-  - role-permute and cross-track-swap are named in §6 as if constructible at
-    corpus-time, but both DEPEND on the anchor/role machinery (§4/§5). Recommend
-    §6 note that these two members activate at step c/d (after the role map /
-    anchor channel exist); the other two are corpus-time constructible. The fixed
-    FAMILY (all four names) is registered now regardless, satisfying "fixed in
-    PREREG before any training run."
+Kill / discipline: this family is frozen for step d. If a run shows the comparison
+class is mis-specified, the fix is a NEW pre-registered family entry (new version),
+never an edit to this one (append-only discipline).
 
-Kill / discipline: this family is frozen once training runs (step d). If a run
-shows the comparison class is mis-specified, the fix is a NEW pre-registered
-family entry (new version), never an edit to this one (append-only discipline).
+
+## Training — real-tracks-are-equilibria separation  (status: RUN)
+- prereg_commit: this commit (registers the check); code_under_test: step d
+- registry_ids: [train-nce-2026-07-13]
+- corpus: cache/ingest/track_00..19 (the 20 G0-passing tracks); frozen LAMBDA-free
+  reference world (ets.training.world.build_reference_world).
+
+- claim under test (spec §6): each real track is an EQUILIBRIUM of F; its
+  re-arrangements are not. Operationally: with LAMBDA fit by the convex logistic
+  NCE (T1 = reference scale 1), F(real) < F(scramble) for EVERY member of the fixed
+  scramble family, by a margin, on held-out scramble seeds.
+
+- fit vs validity metric (I-5 — disjoint, so no fit metric is a gate metric):
+  * FIT metric  : logistic NCE loss on the fit seeds {1,2,3} — used to fit LAMBDA.
+  * VALIDITY metric : per-member SEPARATION RATE = fraction of (real,scramble)
+    pairs with F(real) < F(scramble), evaluated on HELD-OUT seeds {4,5}. Distinct
+    quantity, distinct data. Not used to fit LAMBDA.
+
+- procedure: build the LAMBDA-free world; draw negatives ONLY through the fixed
+  family (assert_family_fixed); phi = (T1,T2,T3,T4) at native gauge (T5 == 0 for
+  every member — a global section-gauge move is orthogonal to every re-arrangement,
+  so lambda_5 is NOT corpus-time identifiable); fit lambda_{T2,T3,T4} >= 0 by
+  projected-gradient logistic NCE on fit seeds; measure per-member held-out
+  separation; apply the kill.
+
+- null: a scramble that is a NO-OP would give separation ~0.5 (chance). A member
+  whose F is invariant to the disarrangement sits at chance and fails.
+
+- pass / KILL (pre-registered): PASS iff min over members of held-out separation
+  rate >= SEP_MIN = 0.90. KILL iff any member < 0.90 — then F does not separate
+  real from that re-arrangement for the fitted LAMBDA, i.e. an F term is
+  mis-specified for that member (WALL PROTOCOL): STOP, do NOT emit an authoritative
+  LAMBDA, do NOT hand-tune LAMBDA or drop the offending member to force a split,
+  do NOT add external negatives. Report the wall + candidate spec revision.
+
+### RESULT (training_results.json; registry train-nce-2026-07-13): KILL — WALL.
+The estimator is well-posed for the transport/role weight but NOT for the
+occupancy-term weights on this corpus. Held-out per-member separation:
+role-permute ~1.0 (separates, but ONLY via T1, whose weight is FIXED = 1 —
+identifies no lambda); grid-shuffle ~0.55; phase-rotate weak; cross-track-swap
+~0.50 with a NEGATIVE median margin (F(swap) is not above F(real)). The logistic
+fit drives lambda_2 = lambda_3 = 0 because grid-shuffle and phase-rotate demand
+OPPOSITE-SIGN T2 gradients (verified: mean dT2 = -0.19 vs +0.15) — no lambda_2 >= 0
+satisfies both. Diagnosis (first principles): F's occupancy terms live at anchor×
+slot resolution (M~5 × S=8), which is near-invariant to within-track unit
+re-arrangements (the discriminative groove signal is finer than the occupancy
+marginals); and T2's shared target is necessarily smoother than an individual
+groove, so within-track shuffles move TOWARD it (wrong sign). F-1 is therefore NOT
+discharged; LAMBDA remains the step-c placeholder (undischarged) pending the spec
+revision below. See ETS_BUILD_NOTES / build report.
+
+### Proposed spec revisions (for the human; not applied)
+  R1 (§5/§6): the occupancy-level T2/T3/T4 cannot be contrastively fit against
+     within-track re-arrangements at anchor×slot resolution. Either (a) T3
+     (masking) / T4 (continuity) are re-typed at unit / fine-π resolution so a
+     within-track shuffle registers, or (b) §6 acknowledges that grid-shuffle and
+     cross-track-swap do not identify the occupancy weights and names the members
+     that do. Changing F is a step-c revision, not a step-d patch.
+  R2 (§5/§6): T2's "mass conservation" target must be a per-role GROOVE profile in
+     a gauge-aligned frame, not a corpus mean (which is smoother than individuals
+     and inverts the T2 gradient under shuffle). Requires a gauge-alignment pass.
+  R3 (§6/§8): lambda_5 (T5 gauge-fixing weight) is NOT corpus-time identifiable —
+     no re-arrangement perturbs the global section-gauge variable. It is a run-time
+     gauge-stiffness baseline (panel knob 4), to be derived at the writer
+     calibration (connector σ-scaling, step f), NOT at corpus-time NCE.
+
+Kill / discipline: this is a RUN entry; its result stands. A future attempt with a
+revised F (R1/R2) is a NEW pre-registered entry, never an edit to this one.
