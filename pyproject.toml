@@ -1,0 +1,15 @@
+[project]
+name = "ets"
+version = "0.0.0"
+description = "Equilibrium Tape Synth — engine"
+requires-python = ">=3.10"
+# Runtime deps are added as the features that need them land (build order 5b+).
+# No web/browser stack is permitted in the runtime (spec I-13).
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
