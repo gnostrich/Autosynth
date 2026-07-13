@@ -13,19 +13,25 @@ Realization reads that coupling OUT as unit->slot placements. Two pieces:
 
   2. The PER-SLOT PLACEMENT: for each output slot, the SETTLED column O_tape[:,s]
      (with the frozen band gains B) decides WHICH roles sound in WHICH bands here,
-     and thus which real unit is laid. This is decided by the settlement, per slot
-     — never a fixed table (connector NO STATIC KEYMAP). Change the anchors or
-     LAMBDA (step d) or, later, the tilt, and O_tape changes, so the placements
-     change. The choice of unit is a WRITER decision (spec §8 temperature lives in
-     the writer); the render only applies it (I-11).
+     HOW LOUD (each placement carries its cell's settled mass), and thus which
+     real unit is laid. This is decided by the settlement, per slot — never a
+     fixed table (connector NO STATIC KEYMAP). Change the anchors or LAMBDA
+     (step d) or, later, the tilt, and O_tape changes, so the placements change.
+     The choice of unit is a WRITER decision (spec §8 temperature lives in the
+     writer); the render only applies it (I-11). There is NO threshold anywhere:
+     every band the settlement put energy into sounds, at its settled mass — the
+     continuous settled field reaches the tape untruncated (registry finding
+     writer-settled-field-truncation; I-15 pattern class).
 
 Clamped cells (I-7) pass through verbatim: a ``unit_demands`` clamp forces its
 exact unit at its slot; a ``role_columns`` clamp already shaped O_tape and thus
 its realization. There is no exception path — a clamp is just a cell.
 
 The emitted gauge is IDENTITY (u=0, lanes constant): one section, no transpose,
-no phase shift, unit loudness. The tape's coupling IS the provenance record
-(connector (i)) — the render then discharges I-12 sample-by-sample.
+no phase shift, unit gauge loudness. Loudness STRUCTURE is not gauge: it rides on
+each placement as its settled mass (settlement output; see ``realize``). The
+tape's coupling IS the provenance record (connector (i)) — the render then
+discharges I-12 sample-by-sample.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
@@ -176,15 +182,30 @@ def build_index(fstate, protos, tracks) -> RealizationIndex:
 
 # ---- settled occupancy -> Schedule ----------------------------------------
 
-def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
-            band_frac: float = 0.15) -> Tuple[Schedule, dict]:
-    """Turn the settled tape occupancy into a Schedule (unit->slot + gauge).
+def realize(O: np.ndarray, tape, fstate, index: RealizationIndex
+            ) -> Tuple[Schedule, dict]:
+    """Turn the settled tape occupancy into a Schedule (unit->slot+mass + gauge).
 
-    ``band_frac``: a band sounds at a slot when its settled energy clears this
-    fraction of that slot's peak band energy. This is the tape's density coming
-    from the settlement (spec §8 lane 2 sits on top of it later); at u=0 it is the
-    untilted equilibrium density. It is a threshold on the SETTLED field, not a
-    second decision channel.
+    THE SETTLED FIELD IS CARRIED WHOLE — no threshold, no flat gain. At slot s
+    the settlement routed energy e[b] = (O[:,s] @ B)[b] to band b; every band
+    with e[b] > 0 places a unit, and the placement carries mass sqrt(e[b]).
+
+    Mass derivation (conservation, no free constant). B's rows are simplex
+    (frozen band gains sum to 1 per role), so the slot's settled mass is
+    E_s = sum_b e[b] = sum_k O[k,s]. The render overlap-adds; band-disjoint
+    units are energy-orthogonal, so the slot's rendered energy is
+    sum_b mass_b^2 * (unit energy), with unit energies comparable by
+    unitization. Requiring (i) band shares follow the settled field,
+    mass_b^2 proportional to e[b]/E_s, and (ii) the slot total follow the
+    settled slot mass, sum_b mass_b^2 = E_s, forces mass_b = sqrt(e[b])
+    uniquely. Fewer active bands never get louder: one active band carrying
+    all of E_s renders at energy E_s, the same total as E_s spread over
+    eight — the flat-unit-gain behavior this replaces scaled with the COUNT
+    of surviving bands, which was the deleted structure.
+
+    A unit-demand clamp (I-7) passes through verbatim with neutral mass 1.0:
+    the demand names an exact unit for the whole slot; its loudness is the
+    demand's, not a settled (slot, band) cell's.
     """
     B = fstate.B                                              # (M, n_bands) frozen
     n_slots = int(tape.grid.n_slots)
@@ -214,21 +235,18 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
         z = pool[int(near[c % len(near)])]
         return (z[0], z[1])
 
-    rows: List[Tuple[int, int, int, int]] = []
+    rows: List[Tuple[int, int, int, int, float]] = []
     for s in range(n_slots):
         if s in clamps.unit_demands:                          # I-7 verbatim passthrough
             tid, uid, _b = clamps.unit_demands[s]
-            rows.append((s, int(tid), int(uid), 0))
+            rows.append((s, int(tid), int(uid), 0, 1.0))
             continue
         col = O[:, s]                                         # (M,) settled roles
         e = col @ B                                           # (n_bands,) band energy
-        emax = float(e.max())
-        if emax <= 0:
-            continue
         psi = (s % S_phase) / float(S_phase)                 # slot metrical phase
         for b in range(n_bands):
-            if e[b] <= band_frac * emax or e[b] <= 0:
-                continue
+            if e[b] <= 0:
+                continue                                      # no settled energy: nothing
             k = int(np.argmax(col * B[:, b]))                 # role carrying band b here
             cur = run_head.get(b)
             nxt = index.successor.get(cur) if cur is not None else None
@@ -236,14 +254,17 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
             if place is None:
                 continue
             run_head[b] = place
-            rows.append((s, int(place[0]), int(place[1]), 0))
+            # settled mass -> amplitude: sqrt(e[b]) conserves the slot's settled
+            # mass sum_b e[b] as rendered energy (see docstring derivation).
+            rows.append((s, int(place[0]), int(place[1]), 0, float(np.sqrt(e[b]))))
 
     p = np.zeros(len(rows), dtype=PLACEMENT_DTYPE)
-    for i, (s, tid, uid, sec) in enumerate(rows):
+    for i, (s, tid, uid, sec, mass) in enumerate(rows):
         p[i]["out_slot"] = s
         p[i]["src_track"] = tid
         p[i]["src_unit"] = uid
         p[i]["section"] = sec
+        p[i]["mass"] = mass
 
     sections = (Section(0, 0, n_slots, IDENTITY),)            # identity gauge (u=0)
     sched = Schedule(sr=int(tape.grid.sr),
@@ -253,7 +274,6 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
         "n_placements": int(len(rows)),
         "n_slots": n_slots,
         "n_tracks_used": int(len({r[1] for r in rows})),
-        "band_frac": float(band_frac),
         "clamped_unit_slots": sorted(clamps.unit_demands),
     }
     return sched, meta

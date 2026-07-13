@@ -338,7 +338,10 @@ def _check_i11() -> None:
 
     # Build a tiny, audio-free schedule+sources (equal-length units -> no phase
     # vocoder; keeps this check fast and dependency-light). Overlapping slots +
-    # a loudness gauge make order genuinely observable.
+    # a loudness gauge make order genuinely observable, and DISTINCT per-placement
+    # settled masses make the mass field participate in every tooth below: a
+    # render that mis-bound masses to placements (e.g. applied them positionally)
+    # would break order-independence.
     rng = np.random.default_rng(1111)
     L = 64
     bounds = np.array([0, L, 2 * L, 3 * L], dtype=np.int64)  # 3 output slots
@@ -351,9 +354,11 @@ def _check_i11() -> None:
             aud = rng.standard_normal(L)
             bank.add(SourceUnit(track_id=0, unit_id=uid, band=0,
                                 src_start=0, src_end=L, audio=aud, sr=44100))
-            placement_rows.append((slot, 0, uid, 0))
+            placement_rows.append((slot, 0, uid, 0, 0.3 + 0.2 * uid))  # distinct mass
             uid += 1
     placements = np.array(placement_rows, dtype=PLACEMENT_DTYPE)
+    assert len(set(placements["mass"])) == len(placements), \
+        "masses must be distinct for the order-independence tooth to cover them"
     sections = (Section(0, 0, 3, Gauge(loudness_scale=0.7)),)  # non-identity gauge
     sched = Schedule(sr=44100, slot_boundaries=bounds,
                      placements=placements, sections=sections)
@@ -370,13 +375,24 @@ def _check_i11() -> None:
         "determinism check is vacuous"
 
     # (C) order-independence: permuted placements -> same audio (allclose; FP
-    # summation reorders at ~1e-15). Selection logic would break this.
+    # summation reorders at ~1e-15). Selection logic would break this. The rows
+    # carry DISTINCT masses, so each placement's settled mass participates: the
+    # permutation moves whole rows, and a render that bound mass to POSITION
+    # rather than to its placement would fail this.
     perm = rng.permutation(len(placements))
     sched_perm = Schedule(sr=44100, slot_boundaries=bounds,
                           placements=placements[perm], sections=sections)
     a_perm, _ = render(sched_perm, bank)
     assert np.allclose(a1, a_perm, atol=1e-9), \
         "render output depends on placement order — it is selecting, not applying (I-11)"
+    # ...and mass participation is NON-VACUOUS: neutralizing the masses changes
+    # the audio, so the order-independence above genuinely covered them.
+    placements_unit = placements.copy()
+    placements_unit["mass"] = 1.0
+    a_unit, _ = render(Schedule(sr=44100, slot_boundaries=bounds,
+                                placements=placements_unit, sections=sections), bank)
+    assert not np.allclose(a1, a_unit, atol=1e-9), \
+        "mass coverage is vacuous: distinct masses did not change the render"
 
     # bite: a SELECTING reference (keep only the first placement seen per slot,
     # drop the rest) genuinely depends on order, so it FAILS allclose under the

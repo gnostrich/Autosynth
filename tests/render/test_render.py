@@ -135,6 +135,7 @@ def test_nontrivial_transform():
     p["src_track"] = track.track_id
     p["src_unit"] = u["unit_id"][keep]
     p["section"] = 0
+    p["mass"] = 1.0                      # neutral settled mass (hand-built schedule)
     sections = (Section(0, 0, n_use, Gauge(transpose_semitones=0.0)),)
     sched = Schedule(sr=track.sr, slot_boundaries=out_bounds,
                      placements=p, sections=sections)

@@ -29,7 +29,9 @@ PROV_SEG_DTYPE = np.dtype([
     ("src_unit", np.int64),
     ("stretch_ratio", np.float64),    # in_len / out_len applied (1.0 == no stretch)
     ("pitch_semitones", np.float64),  # transposition applied
-    ("loudness_scale", np.float64),   # loudness applied
+    ("loudness_scale", np.float64),   # section-global gauge loudness applied
+    ("mass", np.float64),             # placement's settled mass applied (amplitude;
+                                      # settlement output, not gauge — schedule.py)
     ("phase_shift_samples", np.int64),# beat-phase shift resolved to samples
 ])
 
@@ -66,6 +68,8 @@ class ProvenanceStream:
         assert np.all(np.isfinite(s["stretch_ratio"])), "non-finite stretch in provenance"
         assert np.all(np.isfinite(s["pitch_semitones"])), "non-finite pitch in provenance"
         assert np.all(s["loudness_scale"] >= 0), "negative loudness in provenance"
+        assert np.all(np.isfinite(s["mass"]) & (s["mass"] >= 0)), \
+            "non-finite/negative settled mass in provenance"
 
         cov = self.coverage()
         active = np.abs(audio) > eps

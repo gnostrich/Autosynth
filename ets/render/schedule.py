@@ -7,9 +7,10 @@ this module fixes its SHAPE so the render can be written against it now.
 A Schedule is two things and nothing else:
 
   1. PLACEMENT — an assignment of SOURCE UNITS -> OUTPUT SLOTS on the output beat
-     grid. ``placements`` says, for each output slot, which source (track, unit)
-     is laid there. This is the whole "what goes where" content; the render only
-     *applies* it (I-11).
+     grid, each carrying its SETTLED MASS. ``placements`` says, for each output
+     slot, which source (track, unit) is laid there and with what settled
+     amplitude. This is the whole "what goes where, how loud" content; the render
+     only *applies* it (I-11).
 
   2. GAUGE, PER SECTION — a global transposition, beat-phase shift, and loudness
      scale (spec §3 gauge group) attached to a contiguous run of output slots.
@@ -18,6 +19,16 @@ A Schedule is two things and nothing else:
      "per-section global transposition/phase choice; never per-unit chromatic
      correction." A per-unit chromatic correction is not merely discouraged here
      — it is unrepresentable.
+
+MASS IS NOT GAUGE. The per-placement ``mass`` is SETTLEMENT OUTPUT — the settled
+energy of the (slot, band) cell the placement realizes, expressed as the
+amplitude factor that conserves the slot's settled mass (see realize()). It is
+part of "what the equilibrium said", exactly like which unit goes where; the
+render applies it multiplicatively with the section gauge loudness. The gauge
+loudness_scale remains the ONLY loudness the gauge group acts with, and it stays
+section-global (spec §5 T5): mass is not a per-unit gauge field, it is the
+settled field itself reaching the tape. A writer that wanted a per-unit gauge
+correction still has no representation for one.
 
 The output grid is expressed in output-sample indices (``slot_boundaries``); the
 grid IS the master clock of the output tape (spec §1). Nothing here scores,
@@ -29,13 +40,18 @@ from typing import Tuple
 import numpy as np
 
 # One placement row = "at output slot ``out_slot`` lay source unit
-# (src_track, src_unit), governed by section ``section``". No gauge field lives
-# here: gauge is section-global (spec §5 T5), never per-placement.
+# (src_track, src_unit) at settled amplitude ``mass``, governed by section
+# ``section``". No gauge field lives here: gauge is section-global (spec §5 T5),
+# never per-placement. ``mass`` is not gauge — it is settlement output (the
+# settled energy of the placement's (slot, band) cell, carried as the amplitude
+# factor that conserves the slot's settled mass; see module docstring and
+# ets.writer.realize). mass = 1.0 is the neutral value (hand-built schedules).
 PLACEMENT_DTYPE = np.dtype([
     ("out_slot", np.int64),   # index into the output grid's slots
     ("src_track", np.int64),  # source Track id
     ("src_unit", np.int64),   # source unit id within that track
     ("section", np.int64),    # index into ``sections`` governing this placement
+    ("mass", np.float64),     # settled amplitude factor (settlement output)
 ])
 
 
@@ -127,6 +143,9 @@ class Schedule:
         p = self.placements
         if len(p) == 0:
             return
+        if not np.all(np.isfinite(p["mass"])) or not np.all(p["mass"] >= 0.0):
+            raise ValueError("placement mass must be finite and >= 0 (settled "
+                             "amplitude factor)")
         os = p["out_slot"]
         sid = p["section"]
         if not (np.all(os >= 0) and np.all(os < n_slots)):
@@ -165,5 +184,6 @@ class Schedule:
         p["src_track"] = track.track_id
         p["src_unit"] = u["unit_id"]
         p["section"] = 0
+        p["mass"] = 1.0          # neutral: playback carries no settled field
         sections = (Section(0, 0, n_slots, IDENTITY),)
         return cls(sr=track.sr, slot_boundaries=bounds, placements=p, sections=sections)

@@ -66,7 +66,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=420.0)
     ap.add_argument("--out", type=str, default="samples/batch_smoke.flac")
-    ap.add_argument("--band-frac", type=float, default=0.15)
     ap.add_argument("--sigma", type=float, default=None,
                     help="frozen corpus affinity scale; default = this set's median")
     ap.add_argument("--max-iter", type=int, default=800)
@@ -91,8 +90,7 @@ def main():
           f"(~{world.out_tatum_len/world.sr*1000:.0f} ms)")
 
     print(f"[3/5] batch settlement of a {args.seconds:.0f}s tape (u=0) ...")
-    out = generate_batch(world, seconds=args.seconds, band_frac=args.band_frac,
-                         max_iter=args.max_iter)
+    out = generate_batch(world, seconds=args.seconds, max_iter=args.max_iter)
     res = out["settle"]
     tr = np.asarray(res.trace)
     n_dec = int(np.sum(np.diff(tr) < -1e-12))
