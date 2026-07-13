@@ -112,6 +112,132 @@ def _check_i12() -> None:
         raise AssertionError("provenance check passed on an out-of-bounds span")
 
 
+# --- source-level structural helpers (AST, so docstrings/comments that merely
+#     NAME a forbidden concept are ignored — only real code identifiers count) --
+
+def _code_identifiers(src: str) -> set:
+    """Every identifier USED IN CODE (names, attributes, defs, args, kwargs).
+    String literals and comments are excluded, so a docstring saying 'holonomy
+    appears NOWHERE' does not trip a forbidden-token scan; a variable named
+    `holonomy` does."""
+    import ast
+    idents = set()
+    tree = ast.parse(src)
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name):
+            idents.add(n.id)
+        elif isinstance(n, ast.Attribute):
+            idents.add(n.attr)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            idents.add(n.name)
+        elif isinstance(n, ast.arg):
+            idents.add(n.arg)
+        elif isinstance(n, ast.keyword) and n.arg:
+            idents.add(n.arg)
+    return idents
+
+
+def _forbidden_hits(src: str, tokens) -> list:
+    """Forbidden tokens that appear as a substring of any CODE identifier."""
+    idents = _code_identifiers(src)
+    return sorted({t for t in tokens for i in idents if t in i.lower()})
+
+
+def _module_src(mod) -> str:
+    import inspect
+    return inspect.getsource(mod)
+
+
+# Forbidden identifier substrings per invariant.
+_FORBID_I3 = ["pressure", "accumulator", "accum", "ema", "momentum",
+              "velocity", "smoother", "running_"]
+_FORBID_I4 = ["tether", "eta_kl", "kl_tether", "aux_loss", "auxloss",
+              "second_objective", "trainloss", "training_loss"]
+_FORBID_I5 = ["holonomy", "drift", "meter", "novelty", "saturation",
+              "hankel", "eoc"]
+
+
+def _check_i3() -> None:
+    """I-3 no pressure accumulator / no duplicate smoothing mechanism. The anchor
+    state carries ONLY support+mass; no accumulator/EMA/momentum field or code
+    identifier exists in the functional, solver, or anchor modules."""
+    from ets.functional import f as ff, solver as sv, anchors as an
+    from ets.functional.f import FState
+
+    # (a) the anchor/solver state has ONLY the allowed fields — no accumulator.
+    allowed = {"D", "a", "B", "theta", "pis", "phase_off", "transpose"}
+    fields = set(FState.__dataclass_fields__)
+    assert fields <= allowed, f"FState carries non-allowed (accumulator?) state: {fields - allowed}"
+
+    # (b) no accumulator/smoothing identifier in the code of any F-side module.
+    for mod in (ff, sv, an):
+        hits = _forbidden_hits(_module_src(mod), _FORBID_I3)
+        assert not hits, f"I-3: accumulator/smoothing identifier in {mod.__name__}: {hits}"
+
+    # (c) NON-VACUITY: the scanner actually bites on an accumulator pattern.
+    assert _forbidden_hits("def step(g):\n    self.pressure_accum = self.pressure_accum + g\n",
+                           _FORBID_I3), "I-3 scanner is vacuous"
+
+
+def _check_i4() -> None:
+    """I-4 one F: no training loss distinct from F; no eta-KL tether / second
+    authority. The solver's accept/reject decision reads the single functional
+    f.F and nothing else."""
+    import ast
+    from ets.functional import f as ff, solver as sv, anchors as an
+    assert callable(ff.F), "the single objective f.F must exist"
+
+    ssrc = _module_src(sv)
+    # (a) no second-objective / tether identifier anywhere on the F side.
+    for mod in (sv, an, ff):
+        hits = _forbidden_hits(_module_src(mod), _FORBID_I4)
+        assert not hits, f"I-4: second-objective identifier in {mod.__name__}: {hits}"
+
+    # (b) STRUCTURAL: the acceptance scalar in batch_solve is produced by f.F and
+    #     the accept guard compares those F values — no parallel objective.
+    tree = ast.parse(ssrc)
+    bs = next((n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name == "batch_solve"), None)
+    assert bs is not None, "batch_solve not found"
+    f_assigned = set()      # variables assigned from a call to ff.F / f.F
+    for n in ast.walk(bs):
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call):
+            fn = n.value.func
+            is_F = isinstance(fn, ast.Attribute) and fn.attr == "F"
+            if is_F:
+                for tgt in n.targets:
+                    if isinstance(tgt, ast.Tuple):
+                        for e in tgt.elts:
+                            if isinstance(e, ast.Name):
+                                f_assigned.add(e.id)
+                    elif isinstance(tgt, ast.Name):
+                        f_assigned.add(tgt.id)
+    assert "F_cand" in f_assigned and "F_cur" in f_assigned, \
+        "acceptance scalars F_cand/F_cur are not both produced by f.F"
+    # the accept guard must be a comparison between those F values.
+    guards = [n for n in ast.walk(bs) if isinstance(n, ast.Compare)]
+    names_in_guards = {x.id for g in guards for x in ast.walk(g) if isinstance(x, ast.Name)}
+    assert "F_cand" in names_in_guards and "F_cur" in names_in_guards, \
+        "accept guard does not compare the F values"
+
+    # (c) NON-VACUITY: the second-objective scanner bites.
+    assert _forbidden_hits("aux = eta_kl_tether(x)\naccept = aux < 0\n",
+                           _FORBID_I4), "I-4 scanner is vacuous"
+
+
+def _check_i5() -> None:
+    """I-5 meters/holonomy never in any objective/gradient/settlement decision.
+    The functional module f.py contains NO holonomy/drift/meter/novelty/hankel/eoc
+    identifier — those quantities are instruments (spec §9, I-14), never in F."""
+    from ets.functional import f as ff
+    hits = _forbidden_hits(_module_src(ff), _FORBID_I5)
+    assert not hits, f"I-5: meter/holonomy identifier appears in F (f.py): {hits}"
+
+    # NON-VACUITY: the scanner bites on a holonomy/meter term in an F-like source.
+    bad = "def F(state):\n    return transport(state) + holonomy_drift(state)\n"
+    assert _forbidden_hits(bad, _FORBID_I5), "I-5 scanner is vacuous"
+
+
 @dataclass(frozen=True)
 class Invariant:
     id: str                 # "I-1"
@@ -140,14 +266,14 @@ INVARIANTS = [
               Status.ENFORCED, _check_i2),
     Invariant("I-3", "no duplicate smoothing",
               "no pressure accumulator or any duplicate smoothing mechanism.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i3),
     Invariant("I-4", "one F",
               "no training loss distinct from F; no eta-KL tether or second "
               "authority over equilibrium gains.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i4),
     Invariant("I-5", "meters out of the loss",
               "meters never in any objective/gradient/settlement decision.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i5),
     Invariant("I-6", "no external negatives",
               "no external negative data; comparison class derived from good "
               "tracks only; scramble family fixed in PREREG.",
