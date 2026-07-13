@@ -71,6 +71,51 @@ LAMBDA = {"T2": 4.9923137910018385, "T3": 0.8023184886520748,
           "T4": 10.457681912759295, "T5": 0.1, "T1p": 8.758101446990384}
 
 
+# --- I-15 term-input contract (rev-r1 §5, CI-enforced) -----------------------
+# Every F term declares the decision-variable class it is POSED on. The
+# authoritative partition is fixed by spec §5 (rev-r1) and checked by
+# tests/invariants (_check_i15, on main). A term is legal iff it either
+#   (a) CONSUMES the full unit-resolved coupling pi  ("full-pi"), or
+#   (b) is a MARGINAL of pi that provably factors through the occupancy O and
+#       carries a WRITTEN factorization proof below ("marginal"), or
+#   (c) is a per-SECTION gauge charge reading neither pi nor O ("gauge").
+# "Premature aggregation / structure-deleting projection" — posing a term that
+# the spec mandates on full pi (T1, T4) onto the marginal O instead — is the
+# fidelity breach I-15 exists to forbid. There is no proof route for T1/T4.
+# This partition is EXACTLY fork C's implementation: T1's phase-displacement
+# charge and T4's unit-successor continuation read the fiber (ets.training.fiber /
+# writer realize); T2/T3 read the occupancy marginal O.
+TERM_INPUT_CONTRACT = {
+    "T1": "full-pi",   # transport (GW) + circular metrical phase-displacement charge
+    "T2": "marginal",  # mass conservation — a property of role x slot occupancy
+    "T3": "marginal",  # spectral masking — a property of role x slot occupancy
+    "T4": "full-pi",   # unit-successor continuity — needs which unit follows which
+    "T5": "gauge",     # per-section transposition/phase cost; never per unit
+}
+
+# Written factorization proofs for every "marginal" term. Each states WHY the
+# quantity is genuinely a function of the marginal O (and nothing finer), so no
+# unit-resolved structure is silently deleted. _check_i15 additionally verifies
+# each behaviorally: the term is invariant under any O-preserving pi rearrangement.
+FACTORIZATION_PROOFS = {
+    "T2": (
+        "T2 = generalized-KL(O || a[k]*theta[k,:]). Mass conservation asks only "
+        "how much role-k mass lands at slot s; that quantity IS O[k,s] by "
+        "definition (O[k,s] = sum_units pi[u,k] q[u,s]). Two unit-couplings with "
+        "equal O carry identical per-role-per-slot mass, hence identical T2. The "
+        "term therefore factors through O with no loss of unit structure — mass "
+        "is intrinsically a marginal observable."
+    ),
+    "T3": (
+        "T3 = collision energy sum_{s,b} E[s,b]^2 - self, with E[s,b] = sum_k "
+        "O[k,s] B[k,b]. Spectral masking is a property of how much band-b energy "
+        "co-occurs at slot s; E is linear in O and reads no finer index than "
+        "(role, slot). Equal O => equal E => equal T3. Masking is intrinsically a "
+        "marginal (per-slot-per-band) observable; it does not see unit identity."
+    ),
+}
+
+
 @dataclass
 class FState:
     """Full corpus-time state F ranges over. Anchors carry ONLY support (D) and

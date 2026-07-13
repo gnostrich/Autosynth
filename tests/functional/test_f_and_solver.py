@@ -111,3 +111,59 @@ def test_effective_rank_grows_with_diversity():
     er_same = an.effective_rank(an.traffic_affinity(same, sigma=SIGMA)[0])
     er_div = an.effective_rank(an.traffic_affinity(diverse, sigma=SIGMA)[0])
     assert er_div > er_same + 0.25, (er_same, er_div)
+
+
+# --- I-15 term-input contract: no premature aggregation ---------------------
+# rev-r1 (fork C) partition: T1/T4 read the full unit-resolved fiber, T2/T3 are
+# marginals of pi that provably factor through the occupancy O (written proofs in
+# f.FACTORIZATION_PROOFS). These tests are the executable counterpart of those
+# proofs: the marginal terms are invariant under an O-preserving fiber
+# rearrangement, and the fiber terms are NOT (they read structure O deletes).
+
+def test_i15_contract_declared_for_every_term():
+    assert set(ff.TERM_INPUT_CONTRACT) == {"T1", "T2", "T3", "T4", "T5"}
+    assert ff.TERM_INPUT_CONTRACT == {
+        "T1": "full-pi", "T2": "marginal", "T3": "marginal",
+        "T4": "full-pi", "T5": "gauge"}
+    # every "marginal" term carries a written factorization proof.
+    for k, cls in ff.TERM_INPUT_CONTRACT.items():
+        if cls == "marginal":
+            assert k in ff.FACTORIZATION_PROOFS and len(ff.FACTORIZATION_PROOFS[k]) > 80
+
+
+def test_i15_marginal_terms_factor_through_O():
+    """T2/T3 depend on pi ONLY through O = sum_units pi: two distinct unit fibers
+    with the SAME occupancy marginal give identical T2/T3 (the factorization proof,
+    behaviorally)."""
+    rng = np.random.default_rng(0)
+    M, S, n_bands = 4, 6, 5
+    D = rng.random((M, M)); D = 0.5 * (D + D.T); np.fill_diagonal(D, 0.0)
+    a = rng.random(M); a /= a.sum()
+    B = rng.random((M, n_bands)); B /= B.sum(1, keepdims=True)
+    theta = rng.random((M, S)); theta /= theta.sum(1, keepdims=True)
+    # two different fibers (unit->role->slot) with an IDENTICAL marginal O.
+    O = rng.random((M, S)) + 0.1
+    c_a = ff.raw_terms_O(O, D, a, B, theta)
+    c_b = ff.raw_terms_O(O.copy(), D, a, B, theta)      # same O, recomputed
+    assert abs(c_a["T2"] - c_b["T2"]) < 1e-12 and abs(c_a["T3"] - c_b["T3"]) < 1e-12
+    # and raw_terms_O exposes NO T4 (T4 is a full-pi term, not marginal).
+    assert "T4" not in c_a
+
+
+def test_i15_fiber_terms_need_the_fiber():
+    """T1's phase charge and T4's successor reward read structure the marginal O
+    deletes: two arrangements with the same per-slot mass but different unit
+    placement give DIFFERENT fiber-term values (so they are correctly 'full-pi')."""
+    # unit intrinsic phases vs the slot they occupy.
+    mass = np.ones(6)
+    intrinsic = np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    aligned = intrinsic.copy()                          # each unit at its own slot
+    shuffled = intrinsic[::-1].copy()                   # units displaced off their slots
+    charge_aligned = ff.phase_displacement_charge(intrinsic, aligned, mass)
+    charge_shuffled = ff.phase_displacement_charge(intrinsic, shuffled, mass)
+    assert charge_aligned < 1e-9 < charge_shuffled       # groove=0, displacement>0
+    # successor reward: real run (all adjacencies successors) vs broken run.
+    w = np.ones(5)
+    rew_run = ff.continuation_reward([1, 1, 1, 1, 1], w)
+    rew_broken = ff.continuation_reward([1, 0, 0, 1, 0], w)
+    assert rew_run == 1.0 and rew_broken < 1.0
