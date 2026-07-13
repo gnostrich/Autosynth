@@ -515,6 +515,224 @@ def _check_i6() -> None:
     assert bit, "inventory guard did NOT catch a dropped unit (lost inventory)"
 
 
+def _check_i7() -> None:
+    """I-7 clamped-cell interventions: all interventions (committed past, human
+    demands) are CLAMPED CELLS of the SAME TYPE as history; there is ONE
+    intervention channel and NO exception path / recovery mode.
+
+    Guarded feature: the batch writer's tape node + clamp interface
+    (ets/writer/tape.py, settle.py, realize.py). The check is non-vacuous — every
+    branch is shown to bite.
+    """
+    import inspect
+    import numpy as np
+    from ets.ingestion.pipeline import synthetic_track
+    from ets import writer as W
+    from ets.writer import ClampSet, TapeNode
+
+    # (a) SINGLE ENTRY / NO EXCEPTION PATH (structural). The tape node's only
+    # intervention surface is its ClampSet; ClampSet carries exactly the two
+    # same-species demand kinds (role columns, unit demands) and nothing else; and
+    # the public generate/settle entry points expose no second placement-injection
+    # or recovery/override parameter.
+    tape_fields = set(TapeNode.__dataclass_fields__)
+    assert "clamps" in tape_fields, "tape node lacks the clamp channel"
+    clamp_fields = set(ClampSet.__dataclass_fields__)
+    assert clamp_fields == {"role_columns", "unit_demands"}, \
+        f"ClampSet grew a non-clamp intervention field: {clamp_fields}"
+    forbidden = {"force", "override", "inject", "bypass", "recovery", "mode",
+                 "special", "fallback"}
+    for fn in (W.generate_batch, W.settle_tape, W.realize):
+        params = set(inspect.signature(fn).parameters)
+        bad = params & forbidden
+        assert not bad, f"{fn.__name__} exposes a non-clamp intervention param: {bad}"
+        # the ONLY intervention channel is the clamp-bearing tape/ClampSet.
+        assert ("clamps" in params) or ("tape" in params), \
+            f"{fn.__name__} has no clamp/tape channel"
+
+    # Build a tiny frozen world to exercise the interface behaviorally.
+    tracks = [synthetic_track(track_id=t, n_slots=24, seed=t) for t in range(4)]
+    world = W.build_world_from_tracks(tracks, sigma=0.5)
+    M = world.M
+
+    # (b) A CLAMPED CELL IS THE SAME TYPE AS A SETTLED CELL. A settled column is an
+    # (M,) float role-occupancy vector; a clamp column is exactly that shape/dtype.
+    base = W.generate_batch(world, seconds=3.0)
+    settled_col = base["settle"].O[:, 3]
+    assert settled_col.shape == (M,) and settled_col.dtype == np.float64
+
+    demand_col = np.zeros(M); demand_col[0] = 1.0
+    assert demand_col.shape == settled_col.shape, "clamp column type != settled column"
+
+    # role-column clamp: the settlement pins that exact cell (boundary condition),
+    # same mechanism as every other cell — no special path.
+    s_role = 5
+    clamped = W.generate_batch(world, seconds=3.0,
+                               clamps=ClampSet(role_columns={s_role: demand_col.copy()}))
+    assert np.allclose(clamped["settle"].O[:, s_role], demand_col), \
+        "role clamp was not honored as a boundary condition on the settlement"
+    # bite: an unclamped run does NOT pin that column to the demand.
+    assert not np.allclose(base["settle"].O[:, s_role], demand_col), \
+        "I-7 role-clamp check is vacuous (column already equaled the demand)"
+
+    # unit-demand clamp: the exact source unit appears VERBATIM at its slot.
+    s_unit = 7
+    tid, uid = int(tracks[1].track_id), int(tracks[1].units["unit_id"][10])
+    demanded = W.generate_batch(
+        world, seconds=3.0,
+        clamps=ClampSet(unit_demands={s_unit: (tid, uid, 0)}))
+    p = demanded["schedule"].placements
+    at_slot = p[p["out_slot"] == s_unit]
+    hit = any(int(r["src_track"]) == tid and int(r["src_unit"]) == uid for r in at_slot)
+    assert hit, "unit demand was not placed verbatim at its clamped slot"
+    # bite: without the clamp, that exact unit is not forced onto that slot.
+    p0 = base["schedule"].placements
+    at0 = p0[p0["out_slot"] == s_unit]
+    forced_anyway = any(int(r["src_track"]) == tid and int(r["src_unit"]) == uid
+                        for r in at0)
+    assert not forced_anyway, \
+        "I-7 unit-demand check is vacuous (unit appears without being clamped)"
+
+    # (c) the demand raises loudly if it addresses a cell outside the tape (a
+    # malformed intervention is rejected, not silently dropped / recovered).
+    bit = False
+    try:
+        W.generate_batch(world, seconds=3.0,
+                         clamps=ClampSet(role_columns={10_000: demand_col.copy()}))
+    except ValueError:
+        bit = True
+    assert bit, "out-of-bounds clamp was not rejected (silent recovery path?)"
+
+
+def _iter_runtime_sources():
+    """Yield (path, source) for every .py file in the ets/ runtime package."""
+    import os
+    import ets
+    root = os.path.dirname(os.path.abspath(ets.__file__))
+    for dirpath, _dirs, files in os.walk(root):
+        for fn in files:
+            if fn.endswith(".py"):
+                p = os.path.join(dirpath, fn)
+                with open(p, "r", encoding="utf-8") as fh:
+                    yield p, fh.read()
+
+
+def _module_strings_in_source(src: str) -> set:
+    """Every module reference an AST import makes, plus any dynamic-import string
+    constant. Returns dotted strings (e.g. 'PySide6.QtWidgets', 'flask',
+    'PySide6.QtWebEngineWidgets'). String literals in docstrings/comments do NOT
+    count unless passed to importlib.import_module/__import__."""
+    import ast
+    mods: set = set()
+    tree = ast.parse(src)
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                mods.add(a.name)
+        elif isinstance(n, ast.ImportFrom):
+            base = n.module or ""
+            if base:
+                mods.add(base)
+            for a in n.names:                       # `from PySide6 import QtWebEngineWidgets`
+                mods.add((base + "." + a.name) if base else a.name)
+                mods.add(a.name)
+        elif isinstance(n, ast.Call):
+            fn = n.func
+            is_dyn = ((isinstance(fn, ast.Attribute) and fn.attr == "import_module")
+                      or (isinstance(fn, ast.Name) and fn.id == "__import__"))
+            if is_dyn and n.args and isinstance(n.args[0], ast.Constant) \
+                    and isinstance(n.args[0].value, str):
+                mods.add(n.args[0].value)
+    return mods
+
+
+_WEB_TOP = frozenset({
+    "electron", "tauri", "webview", "pywebview", "cef", "cefpython3",
+    "flask", "django", "aiohttp", "bottle", "tornado", "cherrypy", "werkzeug",
+    "wsgiref", "gunicorn", "uvicorn", "starlette", "fastapi", "sanic", "quart",
+    "dash", "streamlit", "gradio", "nicegui", "eel", "remi",
+    "selenium", "playwright", "pyppeteer", "webbrowser",
+})
+
+
+_WEB_FULL = frozenset({"http.server", "wsgiref.simple_server"})
+
+
+_WEB_QT = frozenset({
+    "QtWebEngineWidgets", "QtWebEngineCore", "QtWebEngineQuick",
+    "QtWebEngine", "QtWebView", "QtWebChannel", "QtWebSockets", "QtHttpServer",
+})
+
+
+def _web_hits(mod_strings) -> list:
+    """Which of the given module strings are forbidden web/browser tech."""
+    hits = set()
+    for m in mod_strings:
+        parts = m.split(".")
+        if parts[0].lower() in _WEB_TOP:
+            hits.add(m)
+        if any(p in _WEB_QT for p in parts):
+            hits.add(m)
+        if m in _WEB_FULL or any(m.startswith(f + ".") for f in _WEB_FULL):
+            hits.add(m)
+    return sorted(hits)
+
+
+def _check_i13() -> None:
+    """I-13 no browser/web tech in the runtime.
+
+    Structural: every .py file in the ets/ package is AST-scanned for imports;
+    NONE may reference web/browser/UI-server tech (Electron/Tauri/WebView/CEF,
+    Flask/Django/aiohttp/FastAPI/…, Qt WebEngine, http.server). The runtime's UI
+    stack is native Qt (PySide6) + OSC (python-osc) and nothing web.
+
+    Non-vacuous in two independent ways:
+      (i) the scanner BITES on planted web imports (flask, Qt WebEngine,
+          http.server, dynamic import of tauri); and
+     (ii) it is demonstrably reading real code — the sanctioned native stack
+          (PySide6 + pythonosc) is actually present in the scanned tree, so an
+          empty/no-op scan cannot masquerade as a pass.
+    """
+    # (a) the real runtime is clean.
+    sanctioned_seen = {"PySide6": False, "pythonosc": False}
+    for path, src in _iter_runtime_sources():
+        mods = _module_strings_in_source(src)
+        hits = _web_hits(mods)
+        assert not hits, f"I-13: web/browser import in runtime file {path}: {hits}"
+        for m in mods:
+            top = m.split(".")[0]
+            if top in sanctioned_seen:
+                sanctioned_seen[top] = True
+
+    # (b) NON-VACUITY (ii): the scan actually saw the native Qt + OSC stack, so
+    #     it is genuinely parsing imports, not passing on an empty set.
+    assert sanctioned_seen["PySide6"], \
+        "I-13 scan saw no PySide6 import — the native panel stack is missing or unscanned"
+    assert sanctioned_seen["pythonosc"], \
+        "I-13 scan saw no pythonosc import — the OSC transport is missing or unscanned"
+
+    # (c) NON-VACUITY (i): the scanner BITES on each web-tech pattern.
+    mutants = {
+        "flask server": "import flask\napp = flask.Flask(__name__)\n",
+        "qt webengine": "from PySide6 import QtWebEngineWidgets\n",
+        "qt webengine submodule": "from PySide6.QtWebEngineWidgets import QWebEngineView\n",
+        "stdlib http server": "import http.server\n",
+        "dynamic tauri": "import importlib\nimportlib.import_module('tauri')\n",
+        "electron": "import electron\n",
+    }
+    for name, src in mutants.items():
+        assert _web_hits(_module_strings_in_source(src)), \
+            f"I-13 scanner is vacuous: did not flag web tech in mutant {name!r}"
+
+    # ...and it does NOT false-positive on the sanctioned native stack.
+    clean = ("import numpy as np\n"
+             "from PySide6.QtWidgets import QWidget, QSlider\n"
+             "from PySide6.QtCore import Qt, Signal\n"
+             "from pythonosc import udp_client, osc_server, dispatcher\n")
+    assert not _web_hits(_module_strings_in_source(clean)), \
+        "I-13 scanner false-positives on native Qt widgets + OSC"
+
+
 @dataclass(frozen=True)
 class Invariant:
     id: str                 # "I-1"
@@ -558,7 +776,7 @@ INVARIANTS = [
     Invariant("I-7", "clamped-cell interventions",
               "all interventions (past, human demands) are clamped cells; no "
               "exception paths, no recovery modes.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i7),
     Invariant("I-8", "streaming stability",
               "streaming stability certificate; halt-and-report on state growth "
               "under stationary input.",
@@ -579,7 +797,7 @@ INVARIANTS = [
               Status.ENFORCED, _check_i12),
     Invariant("I-13", "no web tech",
               "no browser/web tech in runtime.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i13),
     Invariant("I-14", "Hankel/holonomy are instruments",
               "Hankel/holonomy quantities are instruments; event triggers must "
               "not fork decision authority from F.",
