@@ -1,0 +1,60 @@
+{
+  "world": {
+    "M_star": 5,
+    "sigma": 0.5532324477839268
+  },
+  "fit": {
+    "lambda_T2T3T4": [
+      3.167556536284489,
+      0.0,
+      1.2411594914229016
+    ],
+    "logistic_loss": 0.5749798564929439,
+    "grad_norm": 0.0008585446347716078,
+    "n_pairs": 240,
+    "fit_seeds": [
+      1,
+      2,
+      3
+    ],
+    "note": "T1 = reference scale 1 (fixed); T5 not identifiable (phi_T5 == 0 for every family member at native gauge)."
+  },
+  "separation_heldout": {
+    "grid-shuffle": {
+      "sep_rate": 0.35,
+      "median_margin": -0.14790377118777964,
+      "n": 40
+    },
+    "role-permute": {
+      "sep_rate": 0.975,
+      "median_margin": 0.978658968879131,
+      "n": 40
+    },
+    "phase-rotate": {
+      "sep_rate": 0.85,
+      "median_margin": 0.5162837991971705,
+      "n": 40
+    },
+    "cross-track-swap": {
+      "sep_rate": 0.55,
+      "median_margin": 0.10107405271479183,
+      "n": 40
+    },
+    "overall_min_sep": 0.35
+  },
+  "heldout_seeds": [
+    4,
+    5
+  ],
+  "sep_min_threshold": 0.9,
+  "t5_feature_max": 0.0,
+  "KILL": true,
+  "killed_members": [
+    "grid-shuffle",
+    "phase-rotate",
+    "cross-track-swap"
+  ],
+  "verdict": "KILL \u2014 F does not separate real from these re-arrangements for any LAMBDA>=0; F term(s) mis-specified (WALL). No authoritative LAMBDA emitted; F-1 remains open.",
+  "lambda_emitted": null,
+  "prereg": "PREREG.md 'Scramble family' + 'Training \u2014 real-tracks-are-equilibria separation'; registry train-nce-2026-07-13"
+}

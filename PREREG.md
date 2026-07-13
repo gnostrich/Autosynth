@@ -323,7 +323,7 @@ re-arrangements (the discriminative groove signal is finer than the occupancy
 marginals); and T2's shared target is necessarily smoother than an individual
 groove, so within-track shuffles move TOWARD it (wrong sign). F-1 is therefore NOT
 discharged; LAMBDA remains the step-c placeholder (undischarged) pending the spec
-revision below. See ETS_BUILD_NOTES / build report.
+revision below. See the step-d builder report (session hand-off) + f.py LAMBDA note.
 
 ### Proposed spec revisions (for the human; not applied)
   R1 (§5/§6): the occupancy-level T2/T3/T4 cannot be contrastively fit against
