@@ -28,7 +28,7 @@ no phase shift, unit loudness. The tape's coupling IS the provenance record
 (connector (i)) — the render then discharges I-12 sample-by-sample.
 """
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Tuple
 import numpy as np
 
@@ -58,11 +58,26 @@ def _track_membership(fstate, proto, n_settle: int = 4) -> np.ndarray:
 
 @dataclass
 class RealizationIndex:
-    """(anchor k, band b) -> representative real source unit (track_id, unit_id)."""
+    """(anchor k, band b) -> representative real source unit (track_id, unit_id),
+    plus the SOURCE-RUN structure the unit-successor T4 threads at write time
+    (spec §5 rev-r1: run-continuation is a fiber term).
+
+    successor : (track_id, unit_id) -> the source-consecutive real unit in the SAME
+                band of the same track (the real run one step on), or absent at a
+                track/band boundary. Threading it makes the tape PLAY real runs
+                rather than re-lay one fixed unit per role every bar.
+    unit_role : (track_id, unit_id) -> the unit's dominant anchor role.
+    candidates: (anchor k, band b) -> [(track_id, unit_id, intrinsic_phase)] real
+                units of role k in band b, used to SEED a new run (phase-matched).
+    These carry defaults so a minimal index (unit_of only) still realizes — with no
+    runs available the writer falls back to the representative unit (old behavior)."""
     unit_of: Dict[Tuple[int, int], Tuple[int, int]]
     role_track: Dict[int, int]     # anchor k -> the track that best carries it
     M: int
     n_bands: int
+    successor: Dict[Tuple[int, int], Tuple[int, int]] = field(default_factory=dict)
+    unit_role: Dict[Tuple[int, int], int] = field(default_factory=dict)
+    candidates: Dict[Tuple[int, int], list] = field(default_factory=dict)
 
 
 def build_index(fstate, protos, tracks) -> RealizationIndex:
@@ -117,8 +132,46 @@ def build_index(fstate, protos, tracks) -> RealizationIndex:
             unit_of[(k, b)] = (int(tr.track_id), int(u["unit_id"][pick]))
     for k in range(M):
         role_track[k] = int(max(role_track_votes[k], key=role_track_votes[k].get))
+
+    # ---- source-run structure the unit-successor T4 threads (spec §5 rev-r1) ----
+    # successor: within each track+band, the source-consecutive real unit (a real
+    # run one step on). unit_role: each unit's dominant anchor (nearest prototype in
+    # timbre -> that prototype's anchor membership). candidates[(k,b)]: real role-k,
+    # band-b units with their intrinsic (arrangement == source) phase, to seed runs.
+    successor: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    unit_role: Dict[Tuple[int, int], int] = {}
+    candidates: Dict[Tuple[int, int], list] = {(k, b): [] for k in range(M)
+                                               for b in range(n_bands)}
+    for ti, (P, tr) in enumerate(zip(protos, tracks)):
+        u = tr.units
+        tid = int(tr.track_id)
+        desc = tr.C_timbre.desc                                # (n,4)
+        g = memb[ti]                                           # (K,M) membership
+        # nearest prototype per unit (timbre), then its dominant anchor
+        dp = np.linalg.norm(desc[:, None, :] - P.timbre[None, :, :], axis=2)
+        proto_of = dp.argmin(1)
+        role_of = g.argmax(1)[proto_of]                       # (n,) unit -> anchor
+        band = u["band"].astype(int)
+        uid = u["unit_id"].astype(int)
+        phase = u["phase"].astype(float)
+        src = tr.provenance_index["src_start"].astype(np.int64)
+        for j in range(len(uid)):
+            key = (tid, int(uid[j]))
+            unit_role[key] = int(role_of[j])
+            candidates[(int(role_of[j]), int(band[j]))].append(
+                (tid, int(uid[j]), float(phase[j])))
+        # source-successor within each band (by source order)
+        for b in np.unique(band):
+            idx = np.where(band == b)[0]
+            srt = idx[np.argsort(src[idx])]
+            for a, c in zip(srt[:-1], srt[1:]):
+                successor[(tid, int(uid[a]))] = (tid, int(uid[c]))
+    # order each candidate pool by phase (stable), so a new run seeds phase-matched.
+    for key in candidates:
+        candidates[key].sort(key=lambda z: z[2])
     return RealizationIndex(unit_of=unit_of, role_track=role_track,
-                            M=M, n_bands=n_bands)
+                            M=M, n_bands=n_bands, successor=successor,
+                            unit_role=unit_role, candidates=candidates)
 
 
 # ---- settled occupancy -> Schedule ----------------------------------------
@@ -137,6 +190,29 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
     n_slots = int(tape.grid.n_slots)
     n_bands = int(B.shape[1])
     clamps = tape.clamps
+    S_phase = int(tape.grid.s_phase)
+
+    # unit-successor run-continuation (spec §5 rev-r1 T4, at write time): each band
+    # carries a REAL source run; at each active slot the run continues to the source
+    # successor of its last unit. When no run is in flight the settled role seeds a
+    # new, phase-matched run. This threads long real runs across bar boundaries, so
+    # bar N and bar N+1 hold DIFFERENT real content even though the settled role
+    # occupancy O is bar-periodic — the static bar-loop vanishes while groove
+    # (which roles/bands sound where) stays stable. Choosing which unit continues a
+    # run is a WRITER decision (spec §8); the render only applies it (I-11).
+    run_head: Dict[int, Tuple[int, int]] = {}     # band -> (track_id, unit_id) in flight
+    seed_cursor: Dict[Tuple[int, int], int] = {}  # (role,band) -> new-run rotation
+
+    def _seed(k: int, b: int, psi: float):
+        pool = index.candidates.get((k, b), [])
+        if not pool:
+            return index.unit_of.get((k, b))      # fallback: minimal index / degenerate
+        d = np.array([min((z[2] - psi) % 1.0, (psi - z[2]) % 1.0) for z in pool])
+        near = np.argsort(d)[:min(8, len(pool))]  # phase-matched candidates (low T1 charge)
+        c = seed_cursor.get((k, b), 0)
+        seed_cursor[(k, b)] = c + 1               # rotate so repeated seeds spread
+        z = pool[int(near[c % len(near)])]
+        return (z[0], z[1])
 
     rows: List[Tuple[int, int, int, int]] = []
     for s in range(n_slots):
@@ -149,12 +225,18 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
         emax = float(e.max())
         if emax <= 0:
             continue
+        psi = (s % S_phase) / float(S_phase)                 # slot metrical phase
         for b in range(n_bands):
             if e[b] <= band_frac * emax or e[b] <= 0:
                 continue
             k = int(np.argmax(col * B[:, b]))                 # role carrying band b here
-            tid, uid = index.unit_of[(k, b)]
-            rows.append((s, int(tid), int(uid), 0))
+            cur = run_head.get(b)
+            nxt = index.successor.get(cur) if cur is not None else None
+            place = nxt if nxt is not None else _seed(k, b, psi)
+            if place is None:
+                continue
+            run_head[b] = place
+            rows.append((s, int(place[0]), int(place[1]), 0))
 
     p = np.zeros(len(rows), dtype=PLACEMENT_DTYPE)
     for i, (s, tid, uid, sec) in enumerate(rows):

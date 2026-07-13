@@ -63,12 +63,17 @@ def _tape_state(fstate, theta_out: np.ndarray):
 
 
 def _F_O(O: np.ndarray, state) -> tuple:
-    """The O-dependent part of the SINGLE functional F, via f.py's own terms.
-    Returns (scalar, decomposition). LAMBDA read live inside each term."""
+    """The O-MARGINAL part of the SINGLE functional F, via f.py's own terms
+    (spec §5 rev-r1: the terms that provably factor through the occupancy O).
+    Returns (scalar, decomposition). LAMBDA read live inside each term.
+
+    T4 is the unit-successor run-continuation (spec §5 rev-r1) — a FIBER term,
+    inexpressible over O; it is realized at the fiber block (``realize``: the tape's
+    per-slot unit choice threads real source runs), not in this O-settlement. The
+    'T4' key is reported as 0.0 here (the O-block carries no continuation)."""
     t2 = ff.term_T2(O, state)
     t3 = ff.term_T3(O, state)
-    t4 = ff.term_T4(O, state)
-    return t2 + t3 + t4, {"T2": t2, "T3": t3, "T4": t4, "F_O": t2 + t3 + t4}
+    return t2 + t3, {"T2": t2, "T3": t3, "T4": 0.0, "F_O": t2 + t3}
 
 
 def settle_tape(fstate, tape: TapeNode, u: Optional[np.ndarray] = None,

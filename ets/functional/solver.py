@@ -27,18 +27,18 @@ from . import ot
 # --------------------------------------------------------------------------
 
 def _dF_dO(O, state):
-    """Gradient of the O-dependent terms (T2+T3+T4) w.r.t. occupancy O."""
+    """Gradient of the O-marginal terms (T2+T3) w.r.t. occupancy O.
+
+    (rev-r1) The O-aggregate role-continuation gradient (g4) was REMOVED: T4 is now
+    the unit-successor term on pi's fiber (spec §5 rev-r1), which is inexpressible
+    over O and does not enter the O-block gradient. T2 (mass conservation) and T3
+    (masking) are the terms that provably factor through the marginal O."""
     L = ff.LAMBDA
     tgt = state.a[:, None] * state.theta + 1e-12
     g2 = L["T2"] * np.log((O + 1e-12) / tgt)                       # d gKL / dO
     E = O.T @ state.B
     g3 = L["T3"] * 2.0 * ((E @ state.B.T).T - O * (state.B ** 2).sum(1)[:, None])
-    W = np.exp(-state.D)
-    g4 = np.zeros_like(O)
-    S = O.shape[1]
-    for s in range(S):
-        g4[:, s] = -L["T4"] * (W @ O[:, (s + 1) % S] + W.T @ O[:, (s - 1) % S])
-    return g2 + g3 + g4
+    return g2 + g3
 
 
 def update_pi(state, protos, eps=0.1):

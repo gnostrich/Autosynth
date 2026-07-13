@@ -326,10 +326,19 @@ class Arrangement:
     """A scored arrangement in shared role space: what F's occupancy terms
     consume. ``O`` is the anchor×slot occupancy (gauge-invariant, I-2), ``t1`` the
     transport cost to the anchors, ``mass_sources`` the real input ``track_id``\\s
-    whose couplings supplied the mass (I-6 provenance for role-space ops)."""
+    whose couplings supplied the mass (I-6 provenance for role-space ops).
+
+    (rev-r1) ``phase_charge`` and ``succ_reward`` are the FIBER scalars F now reads
+    directly (spec §5 rev-r1): the gauge-aligned phase-displacement charge and the
+    unit-successor run-continuation reward of the unit-resolved arrangement. They
+    default to the real-track values (charge 0, reward 1) — a role-space op that
+    does not disturb the metrical fiber (role-permute) carries them unchanged and
+    is separated by T1's GW transport instead."""
     O: np.ndarray
     t1: float
     mass_sources: Tuple[int, ...]
+    phase_charge: float = 0.0
+    succ_reward: float = 1.0
 
 
 def assert_arrangement_real(arr: "Arrangement", real_ids) -> None:
@@ -366,6 +375,7 @@ def _derangement(M: int, rng: np.random.Generator) -> np.ndarray:
            "NOT used as a role (spec §2 step 3). Needs the step-c anchor map.")
 def role_permute(track: Track, world: WorldFreeze, seed: int = 0) -> Arrangement:
     """Permute the unit→role assignment via the frozen anchor coupling (spec §4/§5)."""
+    from . import fiber
     P = roles.extract_prototypes(track, seed=0)
     pi = world.couple(P)
     perm = _derangement(world.M, np.random.default_rng(
@@ -373,7 +383,9 @@ def role_permute(track: Track, world: WorldFreeze, seed: int = 0) -> Arrangement
     pi2 = pi[:, perm]
     O = _occ(pi2, P)
     t1 = ot.gw_distortion(P.cost, world.D, pi2)
-    return Arrangement(O=O, t1=float(t1), mass_sources=(int(track.track_id),))
+    fib = fiber.role_permute_fiber(track, P, world)   # fiber unchanged: charge 0, reward 1
+    return Arrangement(O=O, t1=float(t1), mass_sources=(int(track.track_id),),
+                       phase_charge=fib["phase_charge"], succ_reward=fib["succ_reward"])
 
 
 @register(
@@ -386,18 +398,29 @@ def role_permute(track: Track, world: WorldFreeze, seed: int = 0) -> Arrangement
 def cross_track_swap(tracks: List[Track], world: WorldFreeze,
                      seed: int = 0) -> Arrangement:
     """Swap real units between two tracks ONLY through the gauge-invariant anchor
-    channel (spec §3/§4): mix anchor rows of two co-coupled occupancies."""
+    channel (spec §3/§4): mix anchor rows of two co-coupled occupancies.
+
+    (rev-r1) The swap decision (which anchor rows) also drives a UNIT-RESOLVED
+    graft whose run-continuation the fiber reads: at swapped roles, A's units are
+    replaced by real B units of the SAME anchor role. A grafted B-unit is no source
+    successor of any A-unit → the run breaks → succ_reward < 1. Only role identity
+    crosses the boundary (I-2); the successor test is within-track content
+    adjacency, so no foreign coordinate is compared."""
+    from . import fiber
     ta, tb = tracks[0], tracks[1]
     Pa = roles.extract_prototypes(ta, seed=0)
     Pb = roles.extract_prototypes(tb, seed=0)
     pia, pib = world.couple(Pa), world.couple(Pb)
     Oa, Ob = _occ(pia, Pa), _occ(pib, Pb)
-    rng = np.random.default_rng(_subseed(seed, "cross-track-swap", ta.track_id))
+    sub = _subseed(seed, "cross-track-swap", ta.track_id)
+    rng = np.random.default_rng(sub)
     Q = rng.random(world.M) < 0.5
     O = np.where(Q[:, None], Ob, Oa)             # only anchor-space mass crosses
     wj = float(Q.mean())
     # T1 = mass-weighted sum of each track's OWN transport (no cross-track cost)
     t1 = (1.0 - wj) * ot.gw_distortion(Pa.cost, world.D, pia) \
         + wj * ot.gw_distortion(Pb.cost, world.D, pib)
+    fib = fiber.cross_track_swap_fiber([ta, tb], [Pa, Pb], world, Q, seed=sub)
     return Arrangement(O=O, t1=float(t1),
-                       mass_sources=(int(ta.track_id), int(tb.track_id)))
+                       mass_sources=(int(ta.track_id), int(tb.track_id)),
+                       phase_charge=fib["phase_charge"], succ_reward=fib["succ_reward"])
