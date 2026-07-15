@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/user/Geodesic-Mixing/.claude/worktrees/* merge --ff-only *)",
+      "Bash(git -C /home/user/Geodesic-Mixing/.claude/worktrees/* rev-parse *)",
+      "Bash(git -C /home/user/Geodesic-Mixing/.claude/worktrees/* status *)"
+    ]
+  }
+}
