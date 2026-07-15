@@ -1,0 +1,597 @@
+\documentclass[11pt]{article}
+
+% --- packages (all ship with texlive: base + these) ---
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black,
+            citecolor=blue!55!black]{hyperref}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.4em}
+
+% arxiv-preprint-ish header/footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\thepage}
+\fancyhead[L]{\footnotesize\itshape Equilibrium Tape Synth --- Litepaper}
+\fancyhead[R]{\footnotesize\itshape preprint}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\lbltag}[1]{{\scriptsize\itshape\color{black!55}#1}}
+\definecolor{boxfill}{RGB}{245,247,250}
+\definecolor{boxline}{RGB}{110,120,135}
+\definecolor{emlfill}{RGB}{238,244,238}
+
+\title{\vspace{-2.5em}\textbf{Equilibrium Tape Synth (ETS)}\\[0.35em]
+  \large A frozen world, a causal writer, and one free energy}
+\author{ETS Project \\ \small (build documentation; author line placeholder)}
+\date{Post-v1 documentation}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+\noindent
+ETS learns a \emph{frozen ``world''} from $N$ real music tracks and lets a
+performer \emph{play} a causal writer through \emph{six control lanes}. The
+world is not a sample generator: it is a single free-energy functional
+$F$ whose equilibria are the real tracks, fit by contrastive estimation against
+the tracks' own disarrangements. The output is a \emph{settled tape} --- a
+progressively clamped $(N{+}1)$-th boundary node of the same hypergraph as the
+input tracks --- whose every emitted sample is a real source unit at a real
+metrical slot, provenance-traceable to \code{(track, unit, transform)}. Control
+never edits the world; it enters as a single \emph{exponential tilt} on
+gauge-invariant arrangement statistics --- the Doob conditioning induced by
+clamping the panel as a boundary measure. The system's distinctive commitment is
+its \emph{method}: a two-state invariant manifest (14 of 15 invariants enforced
+by executable checks), an adversarial builder/auditor pair,
+prereg-commit-before-run, and an append-only registry in which \emph{walls are
+information} and \emph{silent divergence is the breach class}. This paper leads
+with the architecture, gives the Gibbs energy-based model its due as the
+centerpiece, and states plainly what is real versus pending --- including a
+headline dissociation gate (G2, holonomy above null) that \emph{did not pass} at
+v0 and is reported as-is rather than retuned.
+\end{abstract}
+
+\noindent\textbf{Authorities.} \code{ets-spec-v0.md} (functional \S5, invariants
+\S14, panel \S8, render \S11); \code{ets-connector-v0.md} (Layer-0 tilt map);
+\code{REGISTRY.jsonl} (build history, honest numbers). Where those and this paper
+disagree, they win. Every figure below is traced to a committed source or results
+artifact.
+
+\section{Architecture overview (read this first)}
+
+ETS is a pipeline from real audio to a settled tape. Each stage has a plain-terms
+job and a formal object; the design's whole point is that \emph{exactly one stage
+makes value judgments} --- the functional $F$ --- and every other stage measures,
+transports, applies, or reports. Figure~\ref{fig:pipeline} is the labelled flow.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=6.5mm,
+  stage/.style={rectangle, rounded corners=2pt, draw=boxline, fill=boxfill,
+    line width=0.5pt, text width=0.86\linewidth, inner sep=5pt, align=left},
+  eml/.style={stage, fill=emlfill, line width=1.1pt, draw=black},
+  lbl/.style={font=\scriptsize\itshape, text=black!60},
+  ar/.style={-{Latex[length=2mm]}, line width=0.6pt},
+  edgelbl/.style={font=\scriptsize\itshape, text=black!55, fill=white,
+    inner sep=1pt}
+]
+\node[stage] (ingest) {\textbf{INGESTION} \hfill\lbltag{mechanism}\\[1pt]
+  beat clock (\code{beat\_this==1.1.0}) $\rightarrow$ metrical coordinate
+  (wall-clock seconds do not survive) $\bullet$ 8-band log-spaced raised-cosine
+  \emph{partition-of-unity} filterbank (not source separation) $\bullet$
+  beat-synchronous unitization, mass $=$ perceptual energy.\\
+  \code{Track \{units, masses, C\_timbre, C\_pitchclass(quot), C\_metrical(circ),
+  beat\_grid, provenance\}}};
+
+\node[stage, below=of ingest] (world) {\textbf{FROZEN WORLD} \hfill\lbltag{mechanism}\\[1pt]
+  self-size $M = \mathrm{round}\big(\mathrm{eff\_rank}(e^{-D_{\mathrm{role}}/\sigma})\big)$
+  $=$ participation ratio of the cross-track \emph{traffic} operator
+  $\rightarrow$ \textbf{M $=$ 5 anchors} on v0 corpus (eff\_rank 5.354) $\bullet$
+  settle free-support GW barycenter $(D,a,B,\theta)$ via $F$. Anchors carry
+  \emph{only} support+mass (I-3).};
+
+\node[eml, below=of world] (ebm) {\textbf{$F$ + SETTLEMENT}\hfill\textbf{the
+  EBM}\\[1pt]
+  $F = T_1(\text{GW transport} + \text{phase-charge}) + T_2(\text{mass}) +
+  T_3(\text{masking}) + T_4(\text{unit-successor}) + T_5(\text{gauge})$;
+  Gibbs measure $p \propto \exp(-F/T_s + \sum_i \lambda_i \varphi_i)$.
+  Solver: block-coordinate I-projections, Lyapunov $F$-descent certificate.
+  Weights \code{LAMBDA} fit \emph{once} by contrastive NCE, then \textbf{frozen}
+  (I-9).};
+
+\node[stage, below=of ebm] (writer) {\textbf{WRITER / TAPE}\hfill\lbltag{mechanism}\\[1pt]
+  the tape $=$ $(N{+}1)$-th track-typed \emph{boundary node} through the same
+  anchor star. Writing $=$ the settlement clamping its own frontier cells in
+  causal order (receding horizon). Clamps (committed past, user demands, knob
+  leans) $=$ the \emph{one} intervention species (I-7). Control enters only via
+  the Layer-0 tilt (I-1).};
+
+\node[stage, below=of writer] (render) {\textbf{RENDER}\hfill\lbltag{mechanism}\\[1pt]
+  beat-synchronous stretch/shift + overlap-add of \emph{real} source units.
+  Applies the chosen gauge/schedule; makes no choices (I-11, AST-checked: no
+  argmax/sort/sample). Coupling \emph{is} the provenance record (I-12).};
+
+\node[stage, below=of render, fill=white, draw=black!35, text width=0.86\linewidth]
+  (master) {\emph{optional} \textbf{EXTERNAL output master} --- compressor
+  $\rightarrow$ EBU R128 $\rightarrow$ limiter. Opt-in, downstream, never touches
+  the object; pure render byte-identical by default.};
+
+\draw[ar] (ingest) -- (world)
+  node[edgelbl, midway]{within-track costs only --- no coordinate crosses a track (I-2)};
+\draw[ar] (world) -- (ebm) node[edgelbl,midway]{frozen weights};
+\draw[ar] (ebm) -- (writer) node[edgelbl,midway]{the world never moves again};
+\draw[ar] (writer) -- (render)
+  node[edgelbl,midway]{Schedule: unit$\rightarrow$slot placements, each carrying settled mass};
+\draw[ar] (render) -- (master)
+  node[edgelbl,midway]{pure deterministic tape (byte-identical for a fixed determinism tuple)};
+\end{tikzpicture}
+\caption{The ETS pipeline. The energy-based model (bold box) is the only stage
+that makes value judgments; every other stage measures, transports, applies, or
+reports. Invariant tags (I-$k$) mark where each faithfulness law binds.}
+\label{fig:pipeline}
+\end{figure}
+
+There are two orthogonal control paths, and only two: (i) the six \textbf{CV
+lanes} enter the writer through a \emph{single jack}, the h-transform tilt (I-1);
+(ii) \textbf{clamps} --- committed tape, ``this unit at bar 33'', and knob leans
+as clamped role-space mass --- are all the same boundary-condition species (I-7,
+generalized by the connector). No third intervention mechanism exists. The
+desktop runtime is \emph{two processes} (\S6): an \textsc{engine} (Python core,
+streaming writer, audio) and a \textsc{panel} (PySide6/Qt) over OSC on localhost;
+killing the panel never touches the engine, and any OSC/MIDI hardware can replace
+the panel.
+
+\section{Ingestion, gauge, and the frozen world}
+
+\paragraph{Ingestion.} Audio is resampled to 44.1\,kHz, beat-tracked
+(\code{beat\_this==1.1.0}) to a tatum/beat/bar grid, and decomposed by a fixed
+8-band log-spaced filterbank --- deliberately \emph{not} a separator, because
+``a separator is a second authority pre-deciding roles before $F$ does'' (spec
+\S2.3). The raised-cosine masks form a \emph{partition of unity}
+(\code{ingestion/filterbank.py}: \code{N\_FFT=2048}, \code{HOP=512},
+\code{FMIN=40\,Hz}); the per-band ISTFTs sum back to the input to numerical
+precision, which makes the G0 reconstruction identity a coverage/scheduling test
+rather than a lossy-model test.
+
+\paragraph{Gauge (spec \S3).} Per track the gauge group is
+transposition~$\times$~beat-phase~$\times$~loudness~$\times$~timbre-basis. All
+cross-track communication is invariant under independent per-track gauge action;
+\emph{no coordinate crosses a track boundary} (I-2: descriptor arrays are private,
+the sole combiner refuses a cross-track pair, pitch-class cost is
+transposition-quotiented, metrical cost is circular). Microtiming deviation is
+\emph{not} gauge --- it is intrinsic groove content that must survive, and it is
+exactly what $T_1$'s phase charge later prices.
+
+\paragraph{Frozen world (self-sizing anchors, spec \S4).} All cross-track traffic
+factors through free-support barycenter \emph{anchors} in role space; there is no
+direct pairwise track coupling. The anchor count is not a hyperparameter --- it is
+\emph{derived} as the balanced-truncation effective rank (participation ratio
+$(\sum w)^2/\sum w^2$) of the cross-track GW role-affinity operator
+$e^{-D_{\mathrm{role}}/\sigma}$ (\code{anchors.py:effective\_rank}). On the v0
+world this is $M=5$ (eff\_rank $\approx 5.354$, $\sigma \approx 0.553$). The
+supports $(D,a,B,\theta)$ are then settled as the GW barycenter at that count.
+Anchors hold \emph{only} support and mass --- no accumulator, EMA, or momentum
+(I-3, structurally scanned).
+
+\emph{Honest note.} The effective-rank rule is a \emph{re-derivation after a wall}:
+the first sizing rule (a GW transport-residual growth criterion) provably failed
+to dissociate role-diverse from same-role corpora and grew with $N$, and was
+rejected; the current rule reads the spec's own ``McMillan degree of \emph{traffic}
+/ Hankel mass / balanced truncation'' language as a spectral rank
+(\code{RETRO\_AUDIT.md}). The wall was reported and the object re-posed, not
+patched.
+
+\section{The Gibbs energy-based model (centerpiece)}
+
+The heart of ETS is a \emph{single free-energy functional} $F$ (invariant I-4:
+there is no training loss distinct from $F$). Framed correctly, ETS is an
+\textbf{energy-based model}: the energy is $F$, the sampling looseness is a
+\emph{temperature} $T_s$, and control is an \emph{exponential tilt} in sufficient
+statistics $\varphi$. Real tracks are the low-energy equilibria; their
+rearrangements are not.
+
+\subsection{$F$ over the unit-resolved coupling}
+
+$F$ ranges over couplings $\pi$ (unit $\rightarrow$ role $\rightarrow$ metrical
+slot), channel gains $B$, anchor supports/masses $(D,a)$, and gauge sections $g$.
+Crucially, \emph{$F$ is posed on the full unit-resolved $\pi$}, not on its
+role-occupancy marginal $O[k,s]=\sum_{\text{units}}\pi$. A term may use the
+marginal \emph{only where it provably factors through it}; a term that needs the
+fiber (which real unit sits where) reads $\pi$ directly (Table~\ref{tab:terms}).
+
+\begin{table}[htbp]
+\centering
+\caption{The five terms of $F$ (\code{functional/f.py}, rev-r1).}
+\label{tab:terms}
+\small
+\begin{tabular}{@{}c l l l@{}}
+\toprule
+Term & Meaning & Posed on & Reads \\
+\midrule
+$T_1$ & GW transport \emph{plus} a circular metrical phase-displacement charge
+      & full-$\pi$ & GW via prototypes; charge via the unit fiber \\
+$T_2$ & mass conservation (unbalanced-OT gen.-KL of $O$ vs $a\theta$)
+      & marginal $O$ & with a written factorization proof \\
+$T_3$ & spectral masking (collision $\sum E^2-\text{self}$, $E=O^\top B$)
+      & marginal $O$ & with a written factorization proof \\
+$T_4$ & unit-successor run-continuation (Doob $h$-transform)
+      & full-$\pi$ & $\pi$'s fiber --- inexpressible over $O$ \\
+$T_5$ & per-\emph{section} gauge-fixing (global transpose/phase), never per-unit
+      & gauge & neither $\pi$ nor $O$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \textbf{phase-displacement charge} is what makes groove cost something. For
+each placed unit it charges the circular distance between the unit's
+\emph{intrinsic} metrical coordinate $x_u$ and the phase of the slot it occupies,
+quotiented by a single per-section global phase shift $\delta$ (a global
+beat-phase shift is free gauge; a per-unit displacement is charged). The
+$\delta$-quotient is solved in closed form,
+\begin{equation}
+  \min_{\delta}\ \sum_u m_u\big(1-\cos 2\pi(x_u-\delta)\big)
+  \;=\; 1-\Big|\textstyle\sum_u m_u\, e^{\,i 2\pi x_u}\Big|
+  \qquad(\text{masses normalized}),
+  \label{eq:phase}
+\end{equation}
+which is exactly $0$ when every unit sits at its own intrinsic slot up to one
+global shift (a real track's groove) and strictly positive for incoherent
+displacement. $T_4$ rewards output-adjacent slots holding genuine \emph{source}
+successors: a grid-shuffle re-deals content so almost no adjacency survives; a
+cross-track graft inserts units that are no track's successor, so the run breaks.
+Both fiber terms are gauge-invariant by construction (I-2). Holonomy, drift,
+novelty, and any meter appear \emph{nowhere} in $F$ (I-5, I-14; enforced by an AST
+scan that bites on a \code{holonomy\_drift} identifier and on any \code{ets.meters}
+import in the $F$ path).
+
+\subsection{The Gibbs measure and the Layer-0 tilt}
+
+The equilibrium measure over an arrangement $a$, with control applied, is
+\begin{equation}
+  p(a)\ \propto\ \exp\!\Big(-\tfrac{F(a)}{T_s} + \sum_i \lambda_i\,\varphi_i(a)\Big),
+  \qquad \lambda_i = \frac{u_i}{\sigma_{\varphi_i}}
+  \qquad(\text{connector Layer 0}).
+  \label{eq:gibbs}
+\end{equation}
+Here $T_s$ is the \emph{temperature} (sampling looseness around the settled
+optimum; it carries no $\varphi$); the $\varphi_i$ are five gauge-invariant
+arrangement statistics (region, density, continuity, gauge-move magnitude,
+novelty) computable from the candidate arrangement alone (\code{connector/phi.py}).
+The tilt is not a bolt-on: it is the \emph{Doob conditioning} the settlement
+inherits when the panel's boundary measure is clamped. Two of the five $\varphi$
+(region, density) are linear in $O$ and enter the O-block; continuity and novelty
+live on the fiber block; gauge on the (v0-frozen) gauge block. Run-time knobs move
+$\lambda$ and $T_s$, never $F$'s term weights (I-9).
+
+\subsection{Contrastive (NCE) training --- and the honest KILL}
+
+The weights \code{LAMBDA} are fit \emph{once}, at corpus time, by a convex
+logistic NCE (spec \S6, \code{training/nce.py}). The condition is: \emph{each real
+track is an equilibrium of $F$; its rearrangements are not}. There is \emph{no
+external ``bad music'' data anywhere} (I-6): the comparison class is generated
+internally by disarranging each real track's own units, drawn only from a fixed,
+pre-registered scramble family (Table~\ref{tab:scramble}). Because $F$ is linear in
+the weights and $\varphi$ is computed at the frozen \code{LAMBDA}-free world, the
+NCE objective is \emph{convex} with an exact gradient --- no circularity. The fit
+uses seeds $\{1,2,3\}$; held-out validity is measured on \emph{disjoint} seeds
+$\{4,5\}$, so no fit metric is a gate metric (I-5).
+
+\begin{table}[htbp]
+\centering
+\caption{The fixed pre-registered scramble family (the only negatives).}
+\label{tab:scramble}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+Scramble & What it breaks & Arity \\
+\midrule
+grid-shuffle & metrical placement (re-deal real units within a band) & Track$\rightarrow$Track \\
+phase-rotate & the single gauge-phase frame (incoherent \emph{per-band} rotation) & Track$\rightarrow$Track \\
+role-permute & role assignment (derange anchor columns of the pure-GW coupling) & (Track, world)$\rightarrow$Arr. \\
+cross-track-swap & anchor-mediated cross-track coherence (swap anchor rows) & (Track$^2$, world)$\rightarrow$Arr. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The KILL, then rev-r1 (load-bearing).} The \emph{first} $F$ was posed on
+the occupancy \emph{marginal} $O$. It \textbf{failed}: on the marginal, $F$ could
+not separate real from grid-shuffle --- held-out separation $\approx 0.35$, a
+\emph{negative margin} --- because the marginal is blind to \emph{which} unit sits
+at \emph{which} slot (registry \code{train-nce-2026-07-13} KILL). This was ruled a
+\emph{fidelity breach}: a silent aggregate projection of $\pi$, an unfaithful
+implementation \emph{plus} a missing invariant (registry
+\code{fidelity-breach-2026-07-13}). Per the wall protocol it was reported, not
+patched: no \code{LAMBDA} was emitted, the referee was left incorruptible, and $F$
+was re-posed on the full unit-resolved fiber (rev-r1). A new invariant, \textbf{I-15}
+(no premature aggregation / structure-deleting projection), was added to forbid the
+class. The re-posed $F$ (fork C: richer fiber + gauge-aligned groove target)
+\textbf{passed} (Table~\ref{tab:sep}; \code{training\_results.json}, registry
+\code{train-nce-revr1-2026-07-13}).
+
+\begin{table}[htbp]
+\centering
+\caption{Held-out per-member separation, rev-r1 fork C (disjoint seeds $\{4,5\}$).}
+\label{tab:sep}
+\small
+\begin{tabular}{@{}l c c@{}}
+\toprule
+Family member & held-out separation & median margin \\
+\midrule
+grid-shuffle      & \textbf{1.00}  & 18.79 \\
+role-permute      & \textbf{0.95}  & 1.07 \\
+phase-rotate      & \textbf{1.00}  & 6.02 \\
+cross-track-swap  & \textbf{0.975} & 7.33 \\
+\midrule
+\textbf{overall min} & \textbf{0.95} $\ge$ 0.90 (pre-registered) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+(logistic loss $0.0908$, grad-norm $0.0024$, 240 pairs.) The emitted weights, now
+\emph{frozen} and read live by the writer (I-9), are
+\[
+  \code{LAMBDA} = \{\,T_2\!:\!4.9923,\ T_3\!:\!0.8023,\ T_4\!:\!10.4577,\
+  T_{1p}\!:\!8.7581,\ T_5\!:\!0.1\,\},
+\]
+with $T_1$'s GW transport as the reference scale (weight~1). $T_5=0.1$ is a
+run-time gauge baseline, \emph{not} corpus-identifiable (a global section-gauge
+move is orthogonal to every rearrangement, so it carries no contrastive signal).
+An independent audit re-ran the fit and reproduced \code{LAMBDA} bit-exactly to 16
+digits.
+
+\subsection{Settlement as certified I-projections}
+
+Minimization is block-coordinate I-projections (\code{functional/solver.py}):
+Sinkhorn on $\pi$-blocks, exponentiated-gradient (mirror descent) on $B$-blocks,
+unbalanced multiplicative updates on masses, closed-form GW barycenter on $D$,
+exact minimization on the gauge block. The certificate is a \emph{Lyapunov
+$F$-descent guard}: every block step is accepted \emph{only} if $F$ does not
+increase, so the $F$-trajectory is monotone non-increasing and the run stops at
+$|\Delta F| < \text{tol}$. The accept/reject decision reads $F$ and nothing else
+--- no second objective, no meter (I-4/I-14, verified by parsing \code{batch\_solve}
+and confirming the guard compares $F_{\mathrm{cand}}/F_{\mathrm{cur}}$). In
+streaming mode the batch Lyapunov certificate becomes a per-step frontier
+$F$-descent plus a \emph{bounded-state} certificate: state growth on stationary
+input is a broken instrument --- halt and report (I-8).
+
+\section{The control surface}
+
+Six CV lanes, exhaustive (spec \S8); a seventh requires a spec revision
+(Table~\ref{tab:lanes}).
+
+\begin{table}[htbp]
+\centering
+\caption{The six lanes, their $\varphi$ statistics (\code{connector/phi.py}), and
+v0 status.}
+\label{tab:lanes}
+\small
+\begin{tabular}{@{}c l l l@{}}
+\toprule
+\# & Lane & $\varphi$ statistic & v0 status \\
+\midrule
+1 & REGION TILT (XY / channel strips) & $\varphi_{\text{region}}$: mass by anchor role & armed ($\sigma$ per anchor) \\
+2 & DENSITY & $\varphi_{\text{density}}$: bar scheduled mass & \textbf{disarmed} ($\sigma{=}0$ at $u{=}0$) \\
+3 & CONTINUITY $\leftrightarrow$ RECOMB. & $\varphi_{\text{cont}}$: source-successor count & armed ($\sigma\approx 0.301$) \\
+4 & GAUGE STIFFNESS & $\varphi_{\text{gauge}}$: frame-move magnitude & \textbf{disarmed} ($\sigma{=}0$, frozen frame) \\
+5 & NOVELTY PRESSURE & $\varphi_{\text{novelty}}$: $1/\Delta$ recency reuse & armed ($\sigma\approx 0.330$) \\
+6 & TEMPERATURE & \emph{(no $\varphi$)}: settlement sharpness & armed \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The knob-scaling law is derived, not hand-set.} Each lane's scale is
+$\lambda_i = u_i/\sigma_{\varphi_i}$, where $\sigma_{\varphi_i}$ is the
+\emph{equilibrium fluctuation} of $\varphi_i$ under the \emph{untilted} writer,
+measured by a registered calibration pass at world-freeze
+(\code{calibration/sigma\_phi.json}). The derivation is
+fluctuation--dissipation: with $p_u \approx p_0\, e^{\lambda\varphi}$ one has
+$d\langle\varphi\rangle/d\lambda|_0 = \mathrm{Var}_0(\varphi)$, so
+$\lambda = u/\sigma$ gives $d\langle\varphi\rangle/du|_0 = \sigma$ --- \emph{one
+knob unit $=$ one equilibrium-$\sigma$ lean}. $\sigma$ is the unique normalizer
+with this property and makes the tilt invariant to any rescaling of $\varphi$. No
+hand-set $\lambda$ scale exists in the runtime. The calibration ensemble was 7495
+bars (the corpus bar count --- the evidence scale, not a hand constant),
+$s_{\text{phase}}=8$.
+
+\paragraph{Two lanes are honestly disarmed at v0.} The untilted writer settles by a
+deterministic MAP descent on a bar-periodic anchor field, so $\varphi_{\text{density}}$
+(an $O$-marginal) is \emph{pinned} constant ($\sigma=0$ exactly), and the single
+identity-gauge section makes $\varphi_{\text{gauge}}\equiv 0$. Rather than invent a
+floor, the loader marks these lanes \code{identifiable=false}: $u$ still transmits,
+but no tilt is applied and the engine surfaces the state (\code{WorldNotCalibrated}
+on a lean into an uncalibrated world). This is a theorem about degenerate
+exponential families reported as a wall, not an error-hiding branch.
+
+\paragraph{Two processes over OSC (spec \S12).} The \textsc{engine}
+(\code{ets/engine}) owns the frozen world, the streaming writer, and audio
+(\code{sounddevice}, lazy, headless-graceful). The \textsc{panel}
+(\code{ets/panel}, PySide6/Qt) is a pure control surface: six lanes, XY vector pad,
+meter jacks as LEDs, patch-cable feedback metaphor, MIDI CC learn. IPC is OSC over
+localhost (\code{python-osc}); no web technology anywhere in the runtime (I-13,
+enforced by an import scan that even distinguishes the runtime's own
+\code{ets.panel} from the forbidden HoloViz \code{panel}). Control latency is a
+\emph{declared} $L$ bars measured by buffer math on the host (desktop: $L=2$ bars,
+$T_{\text{prod}}$ mean $0.568$\,s $< T_{\text{bar}}\,1.486$\,s;
+\code{latency\_desktop.json}); an underrun inside $L\cdot T_{\text{bar}}$ is a WALL
+--- there is no degraded-quality fallback.
+
+\paragraph{Meter jacks.} Read-only, never in any objective/gradient/settlement
+(I-5). The conflated DRIFT jack was split into two shadow meters --- \code{slide}
+(per-bar displacement of the settled gauge frame, in $F$'s own quotient) and
+\code{loop} (a per-committed-bar transplant of the G2 loop-defect integrator) ---
+then the old conflated jack was \emph{deleted} after a registered one-shot
+regression showed it is exactly informationless on every producible trace (residual
+$0.0$ at machine precision, registry \code{conflation-regression-stage1}).
+
+\section{The faithfulness discipline (the project's identity)}
+
+ETS treats faithfulness as an engineering surface with teeth, not a virtue.
+
+\paragraph{Two-state invariant manifest} (\code{tests/invariants/manifest.py}).
+Every invariant I-1..I-15 carries exactly one of two statuses --- \textsc{enforced}
+(an executable check that raises on violation) or \textsc{pending} (the guarded
+feature does not exist yet). There is \emph{no third state}: \textsc{pending} never
+means ``we chose not to check,'' and no invariant may be absent or vacuously
+satisfied. When a feature lands, its invariant moves to \textsc{enforced} \emph{in
+the same change} or the auditor rejects the diff. Current state: \textbf{14 of 15
+enforced}; only \textbf{I-10 (thin planner) is pending}, because the planner is not
+built. The checks are aggressively non-vacuous --- each proves it \emph{bites}
+against a planted mutant (a choosing render, an accumulator field, an
+$\eta{\cdot}$KL tether, a web import, an EOC-forked settlement guard).
+Table~\ref{tab:inv} lists all fifteen.
+
+\begin{table}[htbp]
+\centering
+\caption{The 15 invariants and enforcement state (spec \S14 + connector I-15).}
+\label{tab:inv}
+\small
+\begin{tabular}{@{}c l c@{}}
+\toprule
+ & Invariant & Enforced \\
+\midrule
+I-1 & single tilt jack --- no control path but the h-transform tilt & \checkmark \\
+I-2 & gauge law --- no coordinate crosses a track boundary & \checkmark \\
+I-3 & no pressure accumulator / duplicate smoothing & \checkmark \\
+I-4 & one $F$ --- no training loss distinct from $F$ & \checkmark \\
+I-5 & meters never in objective/gradient/settlement & \checkmark \\
+I-6 & no external negatives; scramble family fixed in PREREG & \checkmark \\
+I-7 & all interventions are clamped cells; no recovery modes & \checkmark \\
+I-8 & streaming stability; halt on state growth (stationary input) & \checkmark \\
+I-9 & run-time controls are tilt parameters only; $F$ weights frozen & \checkmark \\
+\textbf{I-10} & \textbf{planner stateless, external, thin} & \textbf{pending} \\
+I-11 & rendering applies, never chooses & \checkmark \\
+I-12 & provenance --- every sample traces to (track, unit, transform) & \checkmark \\
+I-13 & no browser/web tech in the runtime & \checkmark \\
+I-14 & Hankel/holonomy are instruments; no fork of $F$'s authority & \checkmark \\
+I-15 & no premature aggregation / structure-deleting projection & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Builder/auditor adversarial pair.} Implementation is done by an
+\code{ets-builder} agent and must be paired with a read-only \code{ets-auditor};
+no gate runs and no merge happens without an auditor PASS. The auditor reports
+verdicts and never fixes code.
+
+\paragraph{Prereg-commit-before-run, append-only registry.} Every gate's
+hypothesis, procedure, null, and kill condition is appended to \code{PREREG.md} and
+committed \emph{before} the run; \code{REGISTRY.jsonl} is append-only. Corrections
+are new entries, never edits.
+
+\paragraph{Operating slogan.} \emph{Walls are information, patches are sabotage,
+silent divergence is the breach class.} A wall (a failed gate, a non-identifiable
+scale, an unmeetable deadline) is surfaced and owned; the failure mode the
+discipline exists to catch is a \emph{silent} divergence between what the spec
+defines and what the code does.
+
+\subsection*{Case study --- the fidelity breach (the discipline working)}
+
+The most instructive event in the build is a \emph{fidelity breach caught before
+delivery} (registry \code{fidelity-breach-2026-07-13}). An early implementation
+silently collapsed the unit-resolved coupling $\pi$ to its marginal $O$ --- a
+structure-deleting conversion shim. The spec defines $\pi$ as unit-resolved
+(\S2/\S5); the implementation aggregated without presenting the divergence. It was
+caught not by luck but by the \emph{pre-registered exam}: the fixed scramble family
+correctly refused to separate (grid-shuffle held-out $\approx 0.35$, negative
+margin), the KILL condition fired, and --- critically --- no \code{LAMBDA} was
+emitted and the wall was surfaced pre-delivery. Remediation: (1) $F$ re-posed on
+the full fiber; (2) a new invariant \textbf{I-15} with two teeth --- a term-input
+contract in \code{f.py} behaviorally verified against an $O$-preserving $\pi$
+rearrangement, and a referee-non-degeneracy check that the scored corpus-time
+feature \emph{must} consume a unit-resolved fiber. The incident is logged
+\code{logged-permanent-no-relitigation}. This makes the paper \emph{stronger}: the
+mechanism meant to catch an unfaithful implementation did, and left a durable guard
+behind.
+
+\section{Honest limitations --- what is real vs.\ pending}
+
+The project's identity forbids overselling. Table~\ref{tab:status} is the honest
+state as of v1.
+
+\begin{table}[htbp]
+\centering
+\caption{Status ledger. Declared approximations and unpassed gates are reported,
+not rounded up.}
+\label{tab:status}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{0.40\linewidth} l p{0.34\linewidth}@{}}
+\toprule
+Item & Status & Note \\
+\midrule
+Ingestion $\rightarrow$ world $\rightarrow$ $F$ $\rightarrow$ writer $\rightarrow$ render
+  & \textsc{real} & deterministic pure render (H-8 receipt) \\
+Anchor self-sizing (eff.\ rank of traffic) & \textsc{real} & $M=5$ on v0 corpus; G1 passed \\
+Contrastive NCE fit of \code{LAMBDA} (rev-r1) & \textsc{real} & min held-out sep $0.95\ge0.90$; audit-reproduced bit-exactly \\
+14/15 invariants enforced & \textsc{real} & only I-10 pending \\
+Two-process engine+panel over OSC, MIDI CC learn & \textsc{real} & headless-graceful; $L=2$ bars declared \\
+\textbf{G0} ingestion/reconstruction & \textbf{pass} & recon rel-L2 $\approx 1.16\!\times\!10^{-8}$ \\
+\textbf{G1} anchor double dissociation & \textbf{pass} & diversity gap 2.04; SAME 2.38 $<$ NULL 3.30 $<$ DIVERSE 4.43; flat-in-$N$ \\
+\textbf{G2} holonomy above calibrated null & \textbf{did not pass} & $\kappa_{\text{real}}/\kappa_{\text{null}}\approx0.45$; reported as-is, no retune \\
+REGION / CONTINUITY / NOVELTY / TEMPERATURE lanes & \textsc{armed} & derived $\sigma_\varphi$ scales \\
+DENSITY / GAUGE lanes & \textsc{disarmed} & $\sigma_\varphi=0$ at $u{=}0$; $\lambda$ undefined, no tilt, surfaced \\
+Greedy fiber realization & \textsc{declared approx} & uncertified vs a joint fiber settlement; PASS-legal with declaration \\
+Streaming temperature sampler & \textsc{declared approx} & per-slot Laplace 2nd-order + orthant clip ($\sim0.11$ std bias, $\sim13\%$ clip at $T_s{=}1$) \\
+$\text{mass}=\sqrt{e[b]}$ settled-mass render & \textsc{declared approx} & exact on schedule; adjacent-band crossover leakage ($\sim{+}0.15$--$0.20$ worst case) \\
+\textbf{I-10 planner} & \textbf{pending} & closed-loop form thesis (G3--G6) untested \\
+Mono & \textsc{declared v0} & stereo restoration is real future scope, not a patch \\
+External output master & \textsc{outside object} & opt-in comp$\rightarrow$R128$\rightarrow$limiter; pure render byte-identical by default \\
+$u{=}0$ dynamic range / near-silence & \textsc{open finding} & wide per-bar mass $+$ global peak-normalize; no extrinsic AGC (structure-deleting class) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{G2 in detail (the headline that did not land).} G2 tests whether the
+frozen world carries \emph{holonomy} (loop-defect curvature) above a
+residual-conditioned null --- the dissociation that would support the conjecture
+that musical structure is real geometric curvature, at a demanding $20\times$
+target. It \textbf{failed} (\code{g2\_results.json}): real median curvature came in
+\emph{below} the null ($\kappa_{\text{real}}/\kappa_{\text{null}}\approx0.45$),
+dominance over null p95/p99 both false, \code{signal\_present\_above\_null=false}.
+Real curvature \emph{did} clear the solver floor
+($\kappa_{\text{real}}/\kappa_{\text{floor}}\approx2.0$), but not the
+residual-conditioned null. Per the pre-registered kill condition this is reported
+as-is, with no null-swap and no retune. Two consequences stated plainly:
+(i)~the strong ``curvature $=$ structure'' claim is \emph{unsupported at v0};
+(ii)~the instrument survives as a read-only meter (\code{loop}) regardless. The
+pairwise-blindness and closed-loop \emph{form} theses (G3--G6) depend on the
+planner, which is not built (I-10 pending), so they remain untested.
+
+\section{What ETS is, in one paragraph}
+
+ETS is an instrument whose ``world'' is a single Gibbs free energy fit so that real
+tracks are its equilibria, played by a causal writer that clamps its own frontier
+in real time and steered by an exact exponential tilt on gauge-invariant statistics
+whose knob scales are derived from equilibrium fluctuations. Its output is a settled
+tape of real source units, provenance-complete, not a synthesized sample. Its
+distinctive contribution is a \emph{method}: one authority ($F$), two-state
+invariants with executable non-vacuous checks, an adversarial auditor, and an
+append-only registry where a caught fidelity breach and a failed headline gate are
+recorded as first-class results. The honest ledger --- 14/15 invariants enforced,
+two lanes disarmed, one greedy realization, a failed G2, a pending planner --- is
+not an apology; it is the artifact.
+
+\vspace{1em}
+\noindent\rule{\linewidth}{0.4pt}\\[0.3em]
+{\footnotesize All figures are from the committed sources named inline
+(\code{ets-spec-v0.md}, \code{ets-connector-v0.md}, \code{REGISTRY.jsonl}) and the
+results artifacts \code{g0\_results.json}, \code{g1\_results.json},
+\code{g2\_results.json}, \code{training\_results.json}, \code{latency\_desktop.json},
+and \code{ets/calibration/sigma\_phi.json}. This document is post-v1 documentation;
+it modifies no source and affects no workflow.}
+
+\end{document}
+</content>
