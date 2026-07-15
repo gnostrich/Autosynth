@@ -19,3 +19,4 @@ samples/
 
 # legacy snapshots are FULLY tracked (H-1): negate the data excludes for them
 !legacy/**
+*.etsworld
