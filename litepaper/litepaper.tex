@@ -17,6 +17,16 @@
 \usepackage[htt]{hyphenat}   % allow hyphenation inside \texttt (fixes long-path overfull)
 \usepackage{enumitem}
 \setlist{nosep,leftmargin=1.4em}
+\usepackage[section]{placeins} % keep floats within the section that references them
+\usepackage{needspace}         % reserve space so a heading is never stranded
+
+% orphan/widow control: never leave a single line of a paragraph at a page break,
+% and never break a display equation across pages.
+\widowpenalty=10000
+\clubpenalty=10000
+\displaywidowpenalty=10000
+\brokenpenalty=10000
+\raggedbottom                  % avoid stretched interline glue; even, natural bottoms
 
 % arxiv-preprint-ish header/footer
 \usepackage{fancyhdr}
@@ -50,27 +60,22 @@
 
 \begin{abstract}
 \noindent
-The Equilibrium Tape Synth (ETS) is a corpus-based music synthesizer whose model
-is a single free-energy functional $F$ over optimal-transport couplings between
-beat-clocked audio units, taken from $N$ real tracks, and a set of self-sizing
-role anchors. Training fits the scalar term weights of $F$ by noise-contrastive
-estimation so that real tracks are its low-energy configurations and their
-rearrangements are not; no external or synthetic data is used. At inference the
-model is fixed --- the anchors, their masses, the channel gains, the metrical-slot
-targets, and the fitted weights are all held constant --- and a causal writer
-emits output one bar at a time by minimizing $F$ over the next bar and committing
-the result. Every emitted sample is a real source unit placed at a metrical slot,
-tagged with its source track and applied transform (full provenance). Control does
-not modify $F$: the six-lane panel enters as one exponential (Gibbs) tilt on
-gauge-invariant arrangement statistics, and the per-lane gains are derived from
-measured equilibrium fluctuations rather than hand-set. Beyond the instrument, the
-subject of this paper is a construction method for keeping an implementation
-faithful to its specification: a two-state invariant manifest (14 of 15 invariants
-enforced by executable checks that are themselves tested to fail on planted
-violations), an adversarial builder/auditor separation, pre-registration of every
-experiment before it is run, and an append-only decision log. We report what works
-and what does not, including the central dissociation gate (G2), which failed at
-v0 and is reported unchanged.
+The Equilibrium Tape Synth (ETS) is a musical instrument that a performer plays
+live. Instead of generating audio from scratch, it continuously rearranges small
+fragments of real recordings into an output ``tape,'' steered in real time by a
+handful of controls, and every sound it produces can be traced back to the exact
+recording it came from. Under the hood, ETS is built around a single learned
+energy function whose lowest-energy arrangements are real pieces of music; playing
+the instrument amounts to letting each new bar settle toward one of those
+low-energy arrangements while the controls gently lean the result one way or
+another. A second theme of the paper is how the system was built: a discipline for
+keeping the software honest to its written specification, using automated checks
+that must themselves be shown to catch deliberate mistakes, an independent
+adversarial reviewer, and an append-only log of every design decision and
+experiment. We report what works and what does not --- including one central
+test, of whether the learned model has the geometric structure we had
+conjectured, that did not pass, and which we report as-is rather than tuning it
+until it did.
 \end{abstract}
 
 \noindent\textbf{Contributions.}
@@ -716,8 +721,10 @@ results artifacts \code{g0\_results.json}, \code{g1\_results.json},
 and \code{ets/calibration/sigma\_phi.json}. This document is post-v1 documentation;
 it modifies no source and affects no workflow.}
 
+{\small
 \begin{thebibliography}{99}
-\setlength{\itemsep}{2pt}
+\setlength{\itemsep}{1pt}
+\setlength{\parskip}{0pt}
 
 \bibitem{lecun2006tutorial}
 Y.~LeCun, S.~Chopra, R.~Hadsell, M.~Ranzato, and F.-J.~Huang.
@@ -805,6 +812,7 @@ J.~Copet, F.~Kreuk, I.~Gat, T.~Remez, D.~Kant, G.~Synnaeve, Y.~Adi, and
   2023. \emph{arXiv:2306.05284}.
 
 \end{thebibliography}
+}
 
 \end{document}
 </content>
