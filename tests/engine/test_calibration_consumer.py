@@ -74,3 +74,26 @@ def test_registered_artifact_integration():
     assert cal.identifiable.get("density") is False
     assert cal.identifiable.get("gauge") is False
     assert len(cal.world_hash) >= 12
+
+
+def test_resolve_sigma_accepts_the_real_registered_artifact():
+    """Regression (integration bug caught at first live use): the REGISTERED
+    artifact stores region identifiability per-anchor (an (M,) bool array);
+    resolve_sigma must aggregate it (all-components rule), not bool()-coerce
+    an array. Runs against the actual committed artifact, not a synthetic."""
+    import numpy as np
+    from ets.calibration import load_sigma_phi
+    from ets.engine.engine import resolve_sigma
+
+    class _WF:  # minimal worldfile stub: no embedded sigma, hash matches
+        sigma_phi = None
+
+    cal = load_sigma_phi()
+    wf = _WF()
+    wf.world_content_hash = cal.world_hash
+    sig = resolve_sigma(wf, None)
+    assert isinstance(sig.identifiable["region"], bool)
+    assert sig.identifiable["region"] == bool(np.all(cal.identifiable["region"]))
+    # the two measured-unidentifiable lanes stay disarmed with the real artifact
+    assert sig.identifiable["density"] is False
+    assert sig.identifiable["gauge"] is False

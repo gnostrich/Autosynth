@@ -101,7 +101,14 @@ def resolve_sigma(wf: WorldFile, cli_path: Optional[str] = None
         gauge=float(cal.sigma.get("gauge", 0.0) or 0.0),
         novelty=float(cal.sigma["novelty"]),
         identifiable={
-            "region": bool(cal.identifiable.get("region", True)),
+            # region identifiability is PER-ANCHOR in the registered artifact
+            # (an (M,) bool array — each anchor's sigma measured separately).
+            # The lane arms iff EVERY component has a valid scale; a partially
+            # identifiable region lane would need component-wise disarm in the
+            # tilt map (declared: not implemented — all-or-nothing is the
+            # conservative reading, and the registered corpus artifact is
+            # all-True so the branch is currently inert).
+            "region": bool(np.all(cal.identifiable.get("region", True))),
             "density": bool(cal.identifiable.get("density", False)),
             "cont": bool(cal.identifiable.get("continuity", True)),
             "gauge": bool(cal.identifiable.get("gauge", False)),

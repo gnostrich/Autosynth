@@ -1132,6 +1132,43 @@ def _synth_proto_i15(track_id, K=6, S=8, n_bands=8, seed=0):
                       band_profile=band, timbre=timbre, chroma=chroma)
 
 
+def _check_i1() -> None:
+    """I-1 single tilt jack: the writer's ONLY control type is TiltTerms built by
+    the Layer-0 map; a non-tilt control object is refused with TypeError at
+    runtime (behavioral tooth), and no runtime code constructs TiltTerms outside
+    ets.writer.tilt's layer0/untilted (structural tooth lives in the H-6/C-3
+    suite; here we run the behavioral refusal, which is non-vacuous by
+    construction — the same call with the sanctioned object settles)."""
+    from tests.harness.test_i1_i9_engine import test_i1_nontilt_control_is_refused_at_runtime
+    test_i1_nontilt_control_is_refused_at_runtime()
+
+
+def _check_i8() -> None:
+    """I-8 streaming stability: state bounded by material heard on stationary
+    input AND the guard BITES on injected growth (StreamHalt) — both teeth, per
+    the no-vacuous-pass rule."""
+    from tests.harness.worldtools import build_synthetic_world
+    from tests.writer.test_stream import (
+        test_i8_state_bounded_by_material_on_stationary_input,
+        test_i8_guard_bites_on_injected_growth,
+    )
+    w = build_synthetic_world()
+    test_i8_state_bounded_by_material_on_stationary_input(w)
+    test_i8_guard_bites_on_injected_growth(w)
+
+
+def _check_i9() -> None:
+    """I-9 frozen F weights: live LAMBDA equals the registered training artifact,
+    and an AST write-scan proves nothing under ets/ (engine/panel included)
+    assigns to LAMBDA at runtime."""
+    from tests.harness.test_i1_i9_engine import (
+        test_i9_live_lambda_equals_registered_training_artifact,
+        test_i9_engine_and_panel_never_write_lambda,
+    )
+    test_i9_live_lambda_equals_registered_training_artifact()
+    test_i9_engine_and_panel_never_write_lambda()
+
+
 @dataclass(frozen=True)
 class Invariant:
     id: str                 # "I-1"
@@ -1153,7 +1190,7 @@ class Invariant:
 INVARIANTS = [
     Invariant("I-1", "single tilt jack",
               "no control path into the writer except h-transform tilt.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i1),
     Invariant("I-2", "gauge law",
               "no coordinates cross a track boundary; only normalized intrinsic "
               "cost structure.",
@@ -1179,11 +1216,11 @@ INVARIANTS = [
     Invariant("I-8", "streaming stability",
               "streaming stability certificate; halt-and-report on state growth "
               "under stationary input.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i8),
     Invariant("I-9", "frozen F weights",
               "run-time controls are tilt parameters only; F term-weights frozen "
               "after training.",
-              Status.PENDING),
+              Status.ENFORCED, _check_i9),
     Invariant("I-10", "thin planner",
               "planner stateless, external, thin; reads meters/map, writes lanes "
               "only.",
