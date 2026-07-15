@@ -1,28 +1,40 @@
-"""Native PySide6 panel widget (spec §8, §12) — the six lanes, meter jacks,
-MIDI CC learn. Headless-testable under QT_QPA_PLATFORM=offscreen.
+"""Native PySide6 panel widget (spec §8, §12) — the six lanes (strips + XY
+vector pad for REGION), the two declared tolerance knobs (LEASH/COMMA), meter
+jacks (incl. the slide/loop pairs and the deprecated conflated drift jack),
+clock display, MIDI CC learn. Headless-testable under QT_QPA_PLATFORM=offscreen.
 
 Native Qt only. No web/browser tech (I-13). The widget renders exactly the six
-lanes from `ets.panel.lanes.LANES` (its construction asserts exhaustiveness),
-routes every lane change to the OSC emitter (the one outbound boundary-measure
-channel), and paints the inbound meter jacks read-only. Meters never feed a
-lane: the meter widgets only read a `MeterState`; there is no signal from a jack
-to the lane vector.
+lanes from `ets.panel.lanes.LANES` (its construction asserts exhaustiveness)
+plus exactly the two tolerances from `ets.panel.tolerances.TOLERANCES` (also
+asserted), routes every lane change to the OSC emitter (the one outbound
+boundary-measure channel) and every tolerance change to /ets/tolerances, and
+paints the inbound meter jacks read-only. Meters never feed a lane or a knob:
+the meter widgets only read a `MeterState`; there is no signal from a jack to
+the lane vector or the tolerances.
 """
 from __future__ import annotations
 
+import math
 from typing import Dict, Optional
 
-from PySide6.QtCore import Qt, Signal
+import numpy as np
+
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import (
-    QGroupBox, QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget,
+    QCheckBox, QDoubleSpinBox, QGroupBox, QGridLayout, QHBoxLayout, QLabel,
+    QSlider, QVBoxLayout, QWidget,
 )
 
 from ets.panel.lanes import (
     LANES, LaneKind, LaneVector, assert_lanes_exhaustive, default_lane_vector,
     spec,
 )
-from ets.panel.meters import MeterState
+from ets.panel.meters import MeterState, fmt_reading
 from ets.panel.midi import CCMap, LaneTarget
+from ets.panel.tolerances import (
+    TOLERANCES, Tolerances, assert_tolerances_exhaustive, display as tol_display,
+)
 from ets.panel import osc_schema as S
 
 _SLIDER_STEPS = 1000
@@ -106,6 +118,115 @@ class _RegionStrips(QGroupBox):
         sl.blockSignals(False)
 
 
+class _RegionXYPad(QWidget):
+    """The XY VECTOR PAD view of the REGION lane (spec §8 lane 1: "growable
+    channel strips / XY vector pad"). A UI affordance over the SAME u_region
+    vector — it introduces no lane: dragging sets a lean profile over the K
+    discovered anchors (anchors sit on a circle; the pad position leans toward
+    the nearby anchors, center = no lean), emitted through the one region path.
+    """
+
+    changed = Signal(object)   # full (K,) region lean vector
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._K = 0
+        self._pos: Optional[QPointF] = None
+        self.setMinimumSize(140, 140)
+
+    def set_anchor_count(self, K: int) -> None:
+        self._K = int(K)
+        self.update()
+
+    def _anchor_xy(self, i: int):
+        r = 0.42 * min(self.width(), self.height())
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+        ang = 2.0 * math.pi * i / max(1, self._K)
+        return cx + r * math.cos(ang), cy + r * math.sin(ang)
+
+    def _vector_at(self, x: float, y: float) -> np.ndarray:
+        """Pad position -> region lean vector: lean magnitude = radial throw
+        (0 at center .. lane max at rim), distributed over anchors by inverse
+        distance (a vector-mixer crossfade, the Doepfer A-144 idiom)."""
+        s = spec("region")
+        K = self._K
+        u = np.zeros(K, dtype=np.float32)
+        if K == 0:
+            return u
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+        rmax = 0.42 * min(self.width(), self.height())
+        throw = min(1.0, math.hypot(x - cx, y - cy) / max(rmax, 1e-9))
+        w = np.zeros(K)
+        for i in range(K):
+            ax, ay = self._anchor_xy(i)
+            w[i] = 1.0 / (math.hypot(x - ax, y - ay) + 1e-6)
+        w = w / w.sum()
+        u[:] = (s.hi * throw) * w
+        return u
+
+    def mousePressEvent(self, ev) -> None:
+        self._drag(ev)
+
+    def mouseMoveEvent(self, ev) -> None:
+        if ev.buttons() & Qt.LeftButton:
+            self._drag(ev)
+
+    def _drag(self, ev) -> None:
+        p = ev.position()
+        self._pos = p
+        self.changed.emit(self._vector_at(p.x(), p.y()))
+        self.update()
+
+    def paintEvent(self, _ev) -> None:
+        qp = QPainter(self)
+        qp.setPen(QPen(Qt.gray, 1))
+        qp.drawRect(0, 0, self.width() - 1, self.height() - 1)
+        for i in range(self._K):
+            ax, ay = self._anchor_xy(i)
+            qp.drawEllipse(QPointF(ax, ay), 3, 3)
+            qp.drawText(int(ax) + 5, int(ay), str(i))
+        if self._pos is not None:
+            qp.setPen(QPen(Qt.black, 2))
+            qp.drawEllipse(self._pos, 5, 5)
+        qp.end()
+
+
+class _ToleranceKnob(QWidget):
+    """One declared tolerance knob (LEASH / COMMA). Displays 'inf' while the
+    infinity latch is on (the shipped default — unconstraining); unlatching
+    exposes a finite spin value. Emits (id, value)."""
+
+    changed = Signal(str, float)
+
+    def __init__(self, spec_, parent=None) -> None:
+        super().__init__(parent)
+        self.tol_id = spec_.id
+        lay = QHBoxLayout(self)
+        lay.addWidget(QLabel(f"{spec_.title} ({spec_.meaning})", self))
+        self._inf = QCheckBox("inf", self)
+        self._inf.setChecked(math.isinf(spec_.default))
+        self._spin = QDoubleSpinBox(self)
+        self._spin.setRange(spec_.lo, 1e9)
+        self._spin.setDecimals(3)
+        self._spin.setValue(1.0)
+        self._spin.setEnabled(not self._inf.isChecked())
+        self._value_label = QLabel(tol_display(spec_.default), self)
+        self._inf.toggled.connect(self._on_change)
+        self._spin.valueChanged.connect(self._on_change)
+        lay.addWidget(self._inf)
+        lay.addWidget(self._spin)
+        lay.addWidget(self._value_label)
+
+    def value(self) -> float:
+        return math.inf if self._inf.isChecked() else float(self._spin.value())
+
+    def _on_change(self, *_a) -> None:
+        self._spin.setEnabled(not self._inf.isChecked())
+        v = self.value()
+        self._value_label.setText(tol_display(v))
+        self.changed.emit(self.tol_id, v)
+
+
 class _MeterJack(QWidget):
     """A read-only meter indicator (LED/jack metaphor). Reads a value on
     `refresh`; has NO path back into any lane."""
@@ -123,14 +244,17 @@ class _MeterJack(QWidget):
 
 
 class Panel(QWidget):
-    """The panel. Exactly six lanes; meter jacks; MIDI CC learn; OSC out."""
+    """The panel. Exactly six lanes (+ the two declared tolerance knobs);
+    meter jacks incl. the slide/loop pairs; clock; MIDI CC learn; OSC out."""
 
     lanes_changed = Signal()
+    tolerances_changed = Signal()
 
     def __init__(self, emitter=None, n_anchors: int = 0, parent=None) -> None:
         super().__init__(parent)
         self.emitter = emitter
         self.u = default_lane_vector(n_anchors)
+        self.tolerances = Tolerances()          # leash=inf, comma=inf (shipped)
         self.meter_state = MeterState()
         self.cc_map = CCMap()
 
@@ -138,11 +262,18 @@ class Panel(QWidget):
         root = QVBoxLayout(self)
         lane_row = QHBoxLayout()
 
-        # REGION (vector lane) — growable strips over anchors.
+        # REGION (vector lane) — growable channel strips + XY vector pad, two
+        # views over the SAME u_region (spec §8 lane 1); no lane is added.
         self._region = _RegionStrips(self)
         self._region.set_anchor_count(n_anchors)
         self._region.changed.connect(self._on_region)
-        lane_row.addWidget(self._region)
+        self._xy = _RegionXYPad(self)
+        self._xy.set_anchor_count(n_anchors)
+        self._xy.changed.connect(self._on_region_vector)
+        region_col = QVBoxLayout()
+        region_col.addWidget(self._region)
+        region_col.addWidget(self._xy)
+        lane_row.addLayout(region_col)
 
         # The four scalar direction lanes + the sharpness lane.
         built_ids = ["region"]
@@ -161,25 +292,61 @@ class Panel(QWidget):
 
         root.addLayout(lane_row)
 
-        # Meter jacks (read-only).
+        # The two declared TOLERANCE knobs — NOT lanes (ets.panel.tolerances):
+        # they transmit on /ets/tolerances and nothing consumes them (Stage-1).
+        tol_box = QGroupBox(
+            "TOLERANCES (declared; no consumer until Stage-1)", self)
+        tlay = QVBoxLayout(tol_box)
+        self._tol_knobs: Dict[str, _ToleranceKnob] = {}
+        for tspec in TOLERANCES:
+            knob = _ToleranceKnob(tspec, self)
+            knob.changed.connect(self._on_tolerance)
+            self._tol_knobs[tspec.id] = knob
+            tlay.addWidget(knob)
+        assert_tolerances_exhaustive(self._tol_knobs.keys())
+        root.addWidget(tol_box)
+
+        # Clock display (master clock, /ets/clock) + engine link status
+        # (handshake reply /ets/welcome — includes the declared latency L).
+        clock_row = QHBoxLayout()
+        self._clock = QLabel("CLOCK —", self)
+        self._link = QLabel("engine: not connected", self)
+        clock_row.addWidget(self._clock)
+        clock_row.addWidget(self._link)
+        root.addLayout(clock_row)
+
+        # Meter jacks (read-only). The conflated drift jack is RETAINED but
+        # marked DEPRECATED (it sums what the slide/loop pairs split); the
+        # slide/loop pairs show '—' until the Stage-0 shadow feed arrives.
         meters_box = QGroupBox("METER JACKS (read-only)", self)
-        mlay = QVBoxLayout(meters_box)
+        mlay = QGridLayout(meters_box)
         self._jacks = {
-            "drift_key": _MeterJack("DRIFT key", self),
-            "drift_phase_feel": _MeterJack("DRIFT phase/feel", self),
-            "drift_timbre": _MeterJack("DRIFT timbre", self),
+            "drift_key": _MeterJack("DRIFT key [deprecated: conflated]", self),
+            "drift_phase_feel": _MeterJack(
+                "DRIFT phase/feel [deprecated: conflated]", self),
+            "drift_timbre": _MeterJack("DRIFT timbre [deprecated: conflated]", self),
+            "slide_key": _MeterJack("SLIDE key", self),
+            "slide_phase_feel": _MeterJack("SLIDE phase/feel", self),
+            "slide_timbre": _MeterJack("SLIDE timbre", self),
+            "loop_key": _MeterJack("LOOP key", self),
+            "loop_phase_feel": _MeterJack("LOOP phase/feel", self),
+            "loop_timbre": _MeterJack("LOOP timbre", self),
             "eoc": _MeterJack("PHRASE EOC gate", self),
             "novelty_sat": _MeterJack("NOVELTY saturation", self),
         }
-        for j in self._jacks.values():
-            mlay.addWidget(j)
+        for i, j in enumerate(self._jacks.values()):
+            mlay.addWidget(j, i % 6, i // 6)
         root.addWidget(meters_box)
         self.refresh_meters()
 
-    # --- the exhaustive control set (for the §8 test) -------------------------
+    # --- the exhaustive control set (for the §8 / H-6 tests) ------------------
     @property
     def lane_control_ids(self) -> tuple:
         return self._built_lane_ids
+
+    @property
+    def tolerance_control_ids(self) -> tuple:
+        return tuple(self._tol_knobs.keys())
 
     # --- lane edits → emit ----------------------------------------------------
     def _on_scalar(self, lane_id: str, value: float) -> None:
@@ -202,14 +369,36 @@ class Panel(QWidget):
             self.u.u_region[anchor] = value
         self._push()
 
+    def _on_region_vector(self, vec) -> None:
+        """The XY pad view sets the whole region lean at once (same lane)."""
+        vec = np.asarray(vec, dtype=np.float32).reshape(-1)
+        n = min(self.u.n_anchors, vec.shape[0])
+        self.u.u_region[:n] = vec[:n]
+        for i in range(min(self._region.anchor_count, n)):
+            self._region.set_anchor(i, float(vec[i]))
+        self._push()
+
     def _push(self) -> None:
         if self.emitter is not None:
             self.emitter.emit(self.u)
         self.lanes_changed.emit()
 
+    # --- tolerance knobs → /ets/tolerances (declared; consumed by nothing) ----
+    def _on_tolerance(self, tol_id: str, value: float) -> None:
+        if tol_id == "leash":
+            self.tolerances = Tolerances(leash=value, comma=self.tolerances.comma)
+        elif tol_id == "comma":
+            self.tolerances = Tolerances(leash=self.tolerances.leash, comma=value)
+        else:
+            raise AssertionError(f"unexpected tolerance knob {tol_id!r}")
+        if self.emitter is not None:
+            self.emitter.emit_tolerances(self.tolerances)
+        self.tolerances_changed.emit()
+
     def set_anchor_count(self, K: int) -> None:
         self.u.resize_region(K)
         self._region.set_anchor_count(K)
+        self._xy.set_anchor_count(K)
 
     # --- MIDI CC learn --------------------------------------------------------
     def arm_cc_learn(self, target: LaneTarget) -> None:
@@ -239,10 +428,24 @@ class Panel(QWidget):
     # --- meters (display only) ------------------------------------------------
     def refresh_meters(self) -> None:
         """Pull the latest MeterState into the read-only jack widgets. This is a
-        one-way read; it writes NOTHING into the lane vector or the emitter."""
-        d = self.meter_state.drift
-        self._jacks["drift_key"].refresh(f"{d['key']:+.3f}")
-        self._jacks["drift_phase_feel"].refresh(f"{d['phase_feel']:+.3f}")
-        self._jacks["drift_timbre"].refresh(f"{d['timbre']:+.3f}")
-        self._jacks["eoc"].refresh("ON" if self.meter_state.eoc_gate else "off")
-        self._jacks["novelty_sat"].refresh(f"{self.meter_state.novelty_saturation:.3f}")
+        one-way read; it writes NOTHING into the lane vector, the tolerances, or
+        the emitter. (The welcome-driven anchor-count resize below sizes the
+        region lane's SUPPORT — world structure — never a lean value.)"""
+        ms = self.meter_state
+        for prefix, comp in (("drift", ms.drift), ("slide", ms.slide),
+                             ("loop", ms.loop)):
+            self._jacks[f"{prefix}_key"].refresh(fmt_reading(comp["key"]))
+            self._jacks[f"{prefix}_phase_feel"].refresh(
+                fmt_reading(comp["phase_feel"]))
+            self._jacks[f"{prefix}_timbre"].refresh(fmt_reading(comp["timbre"]))
+        self._jacks["eoc"].refresh("ON" if ms.eoc_gate else "off")
+        self._jacks["novelty_sat"].refresh(f"{ms.novelty_saturation:.3f}")
+        if ms.clock_bar >= 0:
+            self._clock.setText(f"CLOCK bar {ms.clock_bar}  "
+                                f"({ms.clock_seconds:.1f}s)")
+        if ms.engine_K is not None:
+            self._link.setText(
+                f"engine: connected  K={ms.engine_K}  L={ms.engine_L} bars  "
+                f"world {ms.engine_world_hash[:8]}")
+            if ms.engine_K != self.u.n_anchors:
+                self.set_anchor_count(ms.engine_K)

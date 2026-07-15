@@ -41,6 +41,7 @@ import numpy as np
 from ..functional import f as ff
 from ..functional import solver as sv
 from ..render.schedule import Schedule, Section, IDENTITY, PLACEMENT_DTYPE
+from .tilt import fiber_choice_logits as fiber_logits
 
 
 # ---- role materialization index -------------------------------------------
@@ -84,6 +85,7 @@ class RealizationIndex:
     successor: Dict[Tuple[int, int], Tuple[int, int]] = field(default_factory=dict)
     unit_role: Dict[Tuple[int, int], int] = field(default_factory=dict)
     candidates: Dict[Tuple[int, int], list] = field(default_factory=dict)
+    unit_phase: Dict[Tuple[int, int], float] = field(default_factory=dict)
 
 
 def build_index(fstate, protos, tracks) -> RealizationIndex:
@@ -146,6 +148,7 @@ def build_index(fstate, protos, tracks) -> RealizationIndex:
     # band-b units with their intrinsic (arrangement == source) phase, to seed runs.
     successor: Dict[Tuple[int, int], Tuple[int, int]] = {}
     unit_role: Dict[Tuple[int, int], int] = {}
+    unit_phase: Dict[Tuple[int, int], float] = {}
     candidates: Dict[Tuple[int, int], list] = {(k, b): [] for k in range(M)
                                                for b in range(n_bands)}
     for ti, (P, tr) in enumerate(zip(protos, tracks)):
@@ -164,6 +167,7 @@ def build_index(fstate, protos, tracks) -> RealizationIndex:
         for j in range(len(uid)):
             key = (tid, int(uid[j]))
             unit_role[key] = int(role_of[j])
+            unit_phase[key] = float(phase[j])
             candidates[(int(role_of[j]), int(band[j]))].append(
                 (tid, int(uid[j]), float(phase[j])))
         # source-successor within each band (by source order)
@@ -172,12 +176,160 @@ def build_index(fstate, protos, tracks) -> RealizationIndex:
             srt = idx[np.argsort(src[idx])]
             for a, c in zip(srt[:-1], srt[1:]):
                 successor[(tid, int(uid[a]))] = (tid, int(uid[c]))
-    # order each candidate pool by phase (stable), so a new run seeds phase-matched.
+    # total deterministic order on each pool: (intrinsic phase, track, unit) —
+    # a fixed enumeration of the choice set, NOT a preference (the choice is
+    # made by the fiber measure in FiberThreader).
     for key in candidates:
-        candidates[key].sort(key=lambda z: z[2])
+        candidates[key].sort(key=lambda z: (z[2], z[0], z[1]))
     return RealizationIndex(unit_of=unit_of, role_track=role_track,
                             M=M, n_bands=n_bands, successor=successor,
-                            unit_role=unit_role, candidates=candidates)
+                            unit_role=unit_role, candidates=candidates,
+                            unit_phase=unit_phase)
+
+
+# ---- the fiber block: one threading mechanism for batch AND stream ---------
+
+class FiberThreader:
+    """Realizes the fiber block slot-by-slot under the Layer-0 measure.
+
+    At each (slot, band) with settled energy the choice set is
+        { continue the band's run (source successor of its last unit) }
+        ∪ { seed candidates: real units of the settled role in this band }.
+    Every choice is scored by F's OWN fiber terms (f.unit_phase_charge_at for
+    T1's phase-displacement integrand, f.LAMBDA['T4'] for the run-continuation
+    reward — the term math lives in f.py, single source), and the selection is
+    a draw from the Layer-0 tilted measure
+
+        p(c) ∝ exp( −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c) )
+
+    (ets.writer.tilt.fiber_choice_logits). With ``tilt=None`` and ``rng=None``
+    this reduces to the deterministic minimum-F choice (the batch T→0 mode);
+    with an rng it is an exact categorical draw via Gumbel-max (deterministic
+    given the seed — spec §8 TEMPERATURE = sampling looseness in the WRITER;
+    the render never samples, I-11).
+
+    This object carries the fiber STATE (runs in flight, last committed use per
+    unit) — the run/recency half of the working tape (spec §7). Its size is
+    bounded by material heard (≤ corpus units + bands), never by elapsed time
+    (I-8; see StreamWriter.state_size).
+
+    Note (declared, carried over): this remains a per-slot sequential
+    materialization of the fiber block, not a certified joint fiber settlement
+    (REGISTRY 'realize-greedy-fiber'). What CHANGED here: the choice energy is
+    now F's own T1p/T4 (the underived min(8,·) seed window and its rotation
+    cursor are DELETED — the full candidate pool is scored), and the Layer-0
+    tilt/temperature act on the same measure instead of beside it.
+    """
+
+    def __init__(self, index: RealizationIndex, fstate, s_phase: int,
+                 tilt=None, rng=None):
+        self.index = index
+        self.B = fstate.B
+        self.s_phase = int(s_phase)
+        self.tilt = tilt
+        self.rng = rng
+        self.run_head: Dict[int, Tuple[int, int]] = {}    # band -> unit in flight
+        self.last_used: Dict[Tuple[int, int], int] = {}   # unit -> last COMMITTED bar
+        self._pending: Dict[Tuple[int, int], int] = {}    # placed this (uncommitted) bar
+
+    # -- fiber state (the run/recency half of the working tape, spec §7) ------
+    def state_size(self) -> int:
+        return len(self.run_head) + len(self.last_used) + len(self._pending)
+
+    def commit_bar(self, bar: int) -> None:
+        """Commit the bar's placements into the recency state (the committed
+        tape is what φ_novelty reads — connector Layer 0)."""
+        for key, b in self._pending.items():
+            self.last_used[key] = b
+        self._pending.clear()
+
+    def _reuse(self, key: Tuple[int, int], bar: int) -> float:
+        """Recency weight r(Δ)=1/Δ vs the COMMITTED tape (see phi.py note)."""
+        last = self.last_used.get(key)
+        if last is None or bar - last < 1:
+            return 0.0
+        return 1.0 / float(bar - last)
+
+    def recency_snapshot(self, keys, bar: int) -> Dict[Tuple[int, int], int]:
+        """Δbars since last committed use, for the given keys (φ input)."""
+        out: Dict[Tuple[int, int], int] = {}
+        for key in keys:
+            last = self.last_used.get(key)
+            if last is not None and bar - last >= 1:
+                out[key] = bar - last
+        return out
+
+    def _choose(self, k: int, b: int, psi: float, bar: int):
+        """One (slot, band) fiber choice. Returns ((tid, uid), is_continuation)
+        or None if no material exists for (k, b)."""
+        idx = self.index
+        choices: List[Tuple[int, int]] = []
+        is_cont: List[bool] = []
+        cur = self.run_head.get(b)
+        nxt = idx.successor.get(cur) if cur is not None else None
+        if nxt is not None:
+            choices.append(nxt)
+            is_cont.append(True)
+        for (tid, uid, _ph) in idx.candidates.get((k, b), ()):
+            choices.append((int(tid), int(uid)))
+            is_cont.append(False)
+        if not choices:
+            fallback = idx.unit_of.get((k, b))    # minimal index / degenerate
+            return (fallback, False) if fallback is not None else None
+
+        # F's own fiber energies (LAMBDA live; term math from f.py).
+        phases = np.array([idx.unit_phase.get(c, psi) for c in choices])
+        charge = ff.unit_phase_charge_at(phases, psi)
+        cont = np.asarray(is_cont, float)
+        energies = ff.LAMBDA["T1p"] * charge - ff.LAMBDA["T4"] * cont
+
+        if self.tilt is None:
+            logits = -energies                     # T→0 deterministic reduction
+        else:
+            reuse = np.array([self._reuse(c, bar) for c in choices])
+            logits = fiber_logits(energies, cont, reuse, self.tilt)
+
+        if self.rng is None:
+            j = int(np.argmax(logits))             # first-max: fixed enumeration order
+        else:
+            gumbel = -np.log(-np.log(self.rng.uniform(size=len(logits))))
+            j = int(np.argmax(logits + gumbel))    # exact categorical draw
+        return (choices[j], bool(is_cont[j]))
+
+    def place_slot(self, s: int, col: np.ndarray, clamp_unit=None):
+        """Realize output slot ``s`` from its settled column ``col`` (M,).
+
+        Returns (rows, continues): rows = [(slot, tid, uid, section, mass)],
+        continues = [bool] per row (the φ_cont events). A unit-demand clamp
+        (I-7) passes through verbatim with neutral mass 1.0."""
+        bar = int(s) // self.s_phase
+        if clamp_unit is not None:
+            tid, uid, _b = clamp_unit
+            key = (int(tid), int(uid))
+            self._pending[key] = bar
+            return [(int(s), int(tid), int(uid), 0, 1.0)], [False]
+
+        B = self.B
+        e = np.asarray(col, float) @ B                 # (n_bands,) settled energy
+        psi = (int(s) % self.s_phase) / float(self.s_phase)
+        rows: List[Tuple[int, int, int, int, float]] = []
+        continues: List[bool] = []
+        for b in range(B.shape[1]):
+            if e[b] <= 0:
+                continue                               # no settled energy: nothing
+            k = int(np.argmax(col * B[:, b]))          # role carrying band b here
+            got = self._choose(k, b, psi, bar)
+            if got is None:
+                continue
+            (place, cont) = got
+            self.run_head[b] = place
+            self._pending[place] = bar
+            # settled mass -> amplitude: sqrt(e[b]) conserves the slot's settled
+            # mass sum_b e[b] as rendered energy (see realize docstring).
+            rows.append((int(s), int(place[0]), int(place[1]), 0,
+                         float(np.sqrt(e[b]))))
+            continues.append(bool(cont))
+        return rows, continues
 
 
 # ---- settled occupancy -> Schedule ----------------------------------------
@@ -207,56 +359,34 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex
     the demand names an exact unit for the whole slot; its loudness is the
     demand's, not a settled (slot, band) cell's.
     """
-    B = fstate.B                                              # (M, n_bands) frozen
     n_slots = int(tape.grid.n_slots)
-    n_bands = int(B.shape[1])
     clamps = tape.clamps
     S_phase = int(tape.grid.s_phase)
 
     # unit-successor run-continuation (spec §5 rev-r1 T4, at write time): each band
-    # carries a REAL source run; at each active slot the run continues to the source
-    # successor of its last unit. When no run is in flight the settled role seeds a
-    # new, phase-matched run. This threads long real runs across bar boundaries, so
-    # bar N and bar N+1 hold DIFFERENT real content even though the settled role
-    # occupancy O is bar-periodic — the static bar-loop vanishes while groove
-    # (which roles/bands sound where) stays stable. Choosing which unit continues a
-    # run is a WRITER decision (spec §8); the render only applies it (I-11).
-    run_head: Dict[int, Tuple[int, int]] = {}     # band -> (track_id, unit_id) in flight
-    seed_cursor: Dict[Tuple[int, int], int] = {}  # (role,band) -> new-run rotation
-
-    def _seed(k: int, b: int, psi: float):
-        pool = index.candidates.get((k, b), [])
-        if not pool:
-            return index.unit_of.get((k, b))      # fallback: minimal index / degenerate
-        d = np.array([min((z[2] - psi) % 1.0, (psi - z[2]) % 1.0) for z in pool])
-        near = np.argsort(d)[:min(8, len(pool))]  # phase-matched candidates (low T1 charge)
-        c = seed_cursor.get((k, b), 0)
-        seed_cursor[(k, b)] = c + 1               # rotate so repeated seeds spread
-        z = pool[int(near[c % len(near)])]
-        return (z[0], z[1])
+    # carries a REAL source run; at each active slot the fiber measure chooses to
+    # continue the source successor of its last unit or to seed a new run — the
+    # choice scored by F's OWN fiber terms (FiberThreader; the term math lives in
+    # f.py). This threads long real runs across bar boundaries, so bar N and bar
+    # N+1 hold DIFFERENT real content even though the settled role occupancy O is
+    # bar-periodic — the static bar-loop vanishes while groove (which roles/bands
+    # sound where) stays stable. Choosing which unit continues a run is a WRITER
+    # decision (spec §8); the render only applies it (I-11). Batch mode is the
+    # deterministic T→0 reduction (tilt=None, rng=None); the streaming writer
+    # drives this SAME mechanism with the Layer-0 tilt and temperature.
+    threader = FiberThreader(index, fstate, S_phase)
 
     rows: List[Tuple[int, int, int, int, float]] = []
+    bar_prev = 0
     for s in range(n_slots):
-        if s in clamps.unit_demands:                          # I-7 verbatim passthrough
-            tid, uid, _b = clamps.unit_demands[s]
-            rows.append((s, int(tid), int(uid), 0, 1.0))
-            continue
-        col = O[:, s]                                         # (M,) settled roles
-        e = col @ B                                           # (n_bands,) band energy
-        psi = (s % S_phase) / float(S_phase)                 # slot metrical phase
-        for b in range(n_bands):
-            if e[b] <= 0:
-                continue                                      # no settled energy: nothing
-            k = int(np.argmax(col * B[:, b]))                 # role carrying band b here
-            cur = run_head.get(b)
-            nxt = index.successor.get(cur) if cur is not None else None
-            place = nxt if nxt is not None else _seed(k, b, psi)
-            if place is None:
-                continue
-            run_head[b] = place
-            # settled mass -> amplitude: sqrt(e[b]) conserves the slot's settled
-            # mass sum_b e[b] as rendered energy (see docstring derivation).
-            rows.append((s, int(place[0]), int(place[1]), 0, float(np.sqrt(e[b]))))
+        bar = s // S_phase
+        if bar != bar_prev:
+            threader.commit_bar(bar_prev)                     # recency reads committed bars
+            bar_prev = bar
+        r, _cont = threader.place_slot(
+            s, O[:, s], clamp_unit=clamps.unit_demands.get(s))
+        rows.extend(r)
+    threader.commit_bar(bar_prev)
 
     p = np.zeros(len(rows), dtype=PLACEMENT_DTYPE)
     for i, (s, tid, uid, sec, mass) in enumerate(rows):

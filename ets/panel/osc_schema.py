@@ -19,37 +19,80 @@ else (connector: "emit u + T_s over the ONE OSC channel and nothing else"):
   ride ONE message unambiguously. This single message IS the clamped role-space
   measure the panel sets; there is no second outbound address.
 
-INBOUND (engine → panel), read-only meter jacks (spec §9). These feed the
-panel's DISPLAY only; nothing derived from them is ever emitted (I-5):
+OUTBOUND also carries exactly two non-lane messages, both control-plane:
 
+  /ets/tolerances  leash:float32, comma:float32
+      The two declared TOLERANCE knobs (directive v1): LEASH (slide tolerance)
+      and COMMA (loop tolerance; default = +inf, displayed 'inf'). They are
+      NOT lanes (the six lanes stay exhaustive, spec §8) and NOT tilt inputs:
+      the engine receives, logs, and stores them as declared tolerances;
+      NOTHING consumes them yet (Stage-1 authority wiring is a separate,
+      pre-registered feature). A tolerance reaching the writer/render is a
+      CI failure (tests/harness/test_h6_panel_exhaustive.py).
+  /ets/hello       meters_port:int32
+      The handshake: the panel announces where its meter receiver listens;
+      the engine replies on /ets/welcome. Carries no control value.
+
+INBOUND (engine → panel), read-only meter jacks (spec §9) + control-plane
+replies. These feed the panel's DISPLAY only; nothing derived from them is
+ever emitted (I-5):
+
+  /ets/welcome            K:int32, world_hash:str, L:int32,
+                          bar_seconds:float32, sr:int32
+                          (handshake reply: anchor count sizes the REGION
+                          strips; L is the DECLARED control latency in bars —
+                          plugin-latency semantics, surfaced, never hidden)
+  /ets/clock              bar:int32, seconds:float32   (master-clock display)
   /ets/meter/drift        key:float32, phase_feel:float32, timbre:float32
-                          (accumulated holonomy per gauge component — §9)
+                          (accumulated holonomy per gauge component — §9.
+                          DEPRECATED as a pair-conflating readout: it sums the
+                          slide and loop parts of drift; retained for
+                          compatibility, displayed as deprecated.)
+  /ets/meter/slide        key:float32, phase_feel:float32, timbre:float32
+  /ets/meter/loop         key:float32, phase_feel:float32, timbre:float32
+                          (the slide/loop jack PAIRS that split the conflated
+                          drift readout — values produced by the Stage-0
+                          meters; until that feed exists the panel displays
+                          '—'. NaN on the wire = no reading.)
   /ets/meter/eoc          gate:int32          (phrase end-of-chain gate; 0/1)
   /ets/meter/novelty_sat  saturation:float32  (novelty saturation CV; ~[0,1])
 
 There is deliberately NO inbound control address: the engine never writes the
-panel's lanes. The panel is the sole author of u/T_s; the engine is the sole
-author of meters. One direction each.
+panel's lanes. The panel is the sole author of u/T_s/tolerances; the engine is
+the sole author of meters/clock/welcome. One direction each. THIS LIST IS THE
+CLOSED MESSAGE SPACE: the engine binds exactly these addresses and the panel
+sends/receives exactly these (H-6/C-3 CI checks both directions).
 """
 from __future__ import annotations
 
+import math
 from typing import List, Tuple
 
 import numpy as np
 
 from ets.panel.lanes import LaneVector
+from ets.panel.tolerances import Tolerances
 
 # --- addresses (stable identifiers; the engine binds to these strings) --------
 ADDR_LANES = "/ets/lanes"                 # OUTBOUND, the one boundary-measure channel
-ADDR_METER_DRIFT = "/ets/meter/drift"     # INBOUND
+ADDR_TOLERANCES = "/ets/tolerances"       # OUTBOUND, declared tolerances (no consumer)
+ADDR_HELLO = "/ets/hello"                 # OUTBOUND, handshake
+ADDR_WELCOME = "/ets/welcome"             # INBOUND, handshake reply
+ADDR_CLOCK = "/ets/clock"                 # INBOUND, master-clock display
+ADDR_METER_DRIFT = "/ets/meter/drift"     # INBOUND (deprecated: conflates slide+loop)
+ADDR_METER_SLIDE = "/ets/meter/slide"     # INBOUND (Stage-0 shadow feed)
+ADDR_METER_LOOP = "/ets/meter/loop"       # INBOUND (Stage-0 shadow feed)
 ADDR_METER_EOC = "/ets/meter/eoc"         # INBOUND
 ADDR_METER_NOVELTY_SAT = "/ets/meter/novelty_sat"  # INBOUND
 
-OUTBOUND_ADDRESSES: Tuple[str, ...] = (ADDR_LANES,)
+OUTBOUND_ADDRESSES: Tuple[str, ...] = (ADDR_LANES, ADDR_TOLERANCES, ADDR_HELLO)
 INBOUND_ADDRESSES: Tuple[str, ...] = (
-    ADDR_METER_DRIFT, ADDR_METER_EOC, ADDR_METER_NOVELTY_SAT)
+    ADDR_WELCOME, ADDR_CLOCK,
+    ADDR_METER_DRIFT, ADDR_METER_SLIDE, ADDR_METER_LOOP,
+    ADDR_METER_EOC, ADDR_METER_NOVELTY_SAT)
 
-# Drift gauge components, in wire order (spec §9).
+# Drift gauge components, in wire order (spec §9); the slide/loop pairs split
+# the SAME components.
 DRIFT_COMPONENTS: Tuple[str, ...] = ("key", "phase_feel", "timbre")
 
 
@@ -94,8 +137,40 @@ def decode_lanes(args) -> LaneVector:
     return LaneVector(region, density, continuity, gauge, novelty, T_s)
 
 
+def encode_tolerances(t: Tolerances) -> List[float]:
+    """The two declared tolerance knobs. +inf rides the wire as IEEE-754 inf
+    (float32 has an exact inf), so 'comma untouched' is representable exactly."""
+    return [float(t.leash), float(t.comma)]
+
+
+def decode_tolerances(args) -> Tolerances:
+    args = list(args)
+    if len(args) != 2:
+        raise ValueError(f"/ets/tolerances arity {len(args)} != 2")
+    return Tolerances(leash=float(args[0]), comma=float(args[1]))
+
+
+def encode_hello(meters_port: int) -> List[int]:
+    return [int(meters_port)]
+
+
+def encode_welcome(K: int, world_hash: str, L: int, bar_seconds: float,
+                   sr: int) -> List:
+    return [int(K), str(world_hash), int(L), float(bar_seconds), int(sr)]
+
+
+def encode_clock(bar: int, seconds: float) -> List:
+    return [int(bar), float(seconds)]
+
+
 def encode_drift(key: float, phase_feel: float, timbre: float) -> List[float]:
     return [float(key), float(phase_feel), float(timbre)]
+
+
+# slide/loop pairs use the same 3-component wire shape as drift; NaN = "no
+# reading yet" (the Stage-0 shadow feed may be absent; the panel shows '—').
+encode_slide = encode_drift
+encode_loop = encode_drift
 
 
 def encode_eoc(gate: int) -> List[int]:

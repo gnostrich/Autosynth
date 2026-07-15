@@ -23,24 +23,38 @@ from pythonosc import osc_server, udp_client
 
 from ets.panel.lanes import LaneVector
 from ets.panel.meters import MeterState
+from ets.panel.tolerances import Tolerances
 from ets.panel import osc_schema as S
 
 
 class OscEmitter:
-    """Sends u + T_s on the single outbound channel `/ets/lanes`."""
+    """Sends the panel's THREE outbound messages (the closed outbound space,
+    osc_schema.OUTBOUND_ADDRESSES): the boundary-measure lanes, the declared
+    tolerances, and the handshake hello. Nothing else can leave the panel."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 9000) -> None:
         self.host = host
         self.port = int(port)
         self._client = udp_client.SimpleUDPClient(host, self.port)
-        self.last_args: Optional[list] = None  # for tests/telemetry only
+        self.last_args: Optional[list] = None            # for tests/telemetry only
+        self.last_tolerance_args: Optional[list] = None  # for tests/telemetry only
 
     def emit(self, u: LaneVector) -> None:
-        """Serialise and send the lane vector. This is the panel's ONLY output.
+        """Serialise and send the lane vector — the boundary-measure channel.
         Reads nothing but `u`; no meter value can influence this message."""
         args = S.encode_lanes(u)
         self.last_args = args
         self._client.send_message(S.ADDR_LANES, args)
+
+    def emit_tolerances(self, t: Tolerances) -> None:
+        """Send the declared LEASH/COMMA tolerances. Reads nothing but `t`."""
+        args = S.encode_tolerances(t)
+        self.last_tolerance_args = args
+        self._client.send_message(S.ADDR_TOLERANCES, args)
+
+    def emit_hello(self, meters_port: int) -> None:
+        """Announce the panel's meter-receiver port (handshake; no control)."""
+        self._client.send_message(S.ADDR_HELLO, S.encode_hello(meters_port))
 
 
 # --- inbound meter handlers: MeterState in, display out, nothing else ---------
@@ -66,12 +80,41 @@ def _on_novelty_sat(_addr: str, fixed, *args) -> None:
     meter_state.set_novelty_saturation(saturation)
 
 
+def _on_slide(_addr: str, fixed, *args) -> None:
+    meter_state = fixed[0]
+    key, phase_feel, timbre = args
+    meter_state.set_slide(key, phase_feel, timbre)
+
+
+def _on_loop(_addr: str, fixed, *args) -> None:
+    meter_state = fixed[0]
+    key, phase_feel, timbre = args
+    meter_state.set_loop(key, phase_feel, timbre)
+
+
+def _on_clock(_addr: str, fixed, *args) -> None:
+    meter_state = fixed[0]
+    bar, seconds = args
+    meter_state.set_clock(bar, seconds)
+
+
+def _on_welcome(_addr: str, fixed, *args) -> None:
+    meter_state = fixed[0]
+    K, world_hash, L, bar_seconds, sr = args
+    meter_state.set_welcome(K, world_hash, L, bar_seconds, sr)
+
+
 def build_meter_dispatcher(meter_state: MeterState) -> _dispatcher.Dispatcher:
-    """A dispatcher whose handlers write ONLY into `meter_state`."""
+    """A dispatcher whose handlers write ONLY into `meter_state` — every
+    inbound address of the closed message space, display-typed, no exceptions."""
     d = _dispatcher.Dispatcher()
     d.map(S.ADDR_METER_DRIFT, _on_drift, meter_state)
+    d.map(S.ADDR_METER_SLIDE, _on_slide, meter_state)
+    d.map(S.ADDR_METER_LOOP, _on_loop, meter_state)
     d.map(S.ADDR_METER_EOC, _on_eoc, meter_state)
     d.map(S.ADDR_METER_NOVELTY_SAT, _on_novelty_sat, meter_state)
+    d.map(S.ADDR_CLOCK, _on_clock, meter_state)
+    d.map(S.ADDR_WELCOME, _on_welcome, meter_state)
     return d
 
 

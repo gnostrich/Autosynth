@@ -16,8 +16,21 @@ and behaviourally.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
+
+
+def _nan_components() -> Dict[str, float]:
+    # NaN = "no reading yet": the slide/loop pairs are fed by the Stage-0
+    # meters; until that shadow feed exists the panel shows '—' (graceful,
+    # never fabricated).
+    return {"key": math.nan, "phase_feel": math.nan, "timbre": math.nan}
+
+
+def fmt_reading(v: float) -> str:
+    """Display formatting: '—' for NaN (absent shadow feed), signed value else."""
+    return "—" if (v is None or math.isnan(v)) else f"{v:+.3f}"
 
 
 @dataclass
@@ -29,9 +42,19 @@ class MeterState:
     field names make plain these are outputs of the engine, inputs to the eye.
     """
     drift: Dict[str, float] = field(default_factory=lambda: {
-        "key": 0.0, "phase_feel": 0.0, "timbre": 0.0})
+        "key": 0.0, "phase_feel": 0.0, "timbre": 0.0})   # DEPRECATED (conflated)
+    slide: Dict[str, float] = field(default_factory=_nan_components)
+    loop: Dict[str, float] = field(default_factory=_nan_components)
     eoc_gate: int = 0                 # phrase end-of-chain gate (0/1)
     novelty_saturation: float = 0.0   # ~[0,1]
+    clock_bar: int = -1               # -1 = no clock received yet
+    clock_seconds: float = math.nan
+    # handshake reply (/ets/welcome) — connection/status display only.
+    engine_K: Optional[int] = None
+    engine_world_hash: str = ""
+    engine_L: Optional[int] = None
+    engine_bar_seconds: float = math.nan
+    engine_sr: Optional[int] = None
 
     # --- inbound updates (the ONLY mutators; each writes display state only) --
     def set_drift(self, key: float, phase_feel: float, timbre: float) -> None:
@@ -39,8 +62,30 @@ class MeterState:
                       "phase_feel": float(phase_feel),
                       "timbre": float(timbre)}
 
+    def set_slide(self, key: float, phase_feel: float, timbre: float) -> None:
+        self.slide = {"key": float(key),
+                      "phase_feel": float(phase_feel),
+                      "timbre": float(timbre)}
+
+    def set_loop(self, key: float, phase_feel: float, timbre: float) -> None:
+        self.loop = {"key": float(key),
+                     "phase_feel": float(phase_feel),
+                     "timbre": float(timbre)}
+
     def set_eoc(self, gate: int) -> None:
         self.eoc_gate = int(bool(gate))
 
     def set_novelty_saturation(self, saturation: float) -> None:
         self.novelty_saturation = float(saturation)
+
+    def set_clock(self, bar: int, seconds: float) -> None:
+        self.clock_bar = int(bar)
+        self.clock_seconds = float(seconds)
+
+    def set_welcome(self, K: int, world_hash: str, L: int,
+                    bar_seconds: float, sr: int) -> None:
+        self.engine_K = int(K)
+        self.engine_world_hash = str(world_hash)
+        self.engine_L = int(L)
+        self.engine_bar_seconds = float(bar_seconds)
+        self.engine_sr = int(sr)

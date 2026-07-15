@@ -9,7 +9,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
-panel = ["PySide6-Essentials>=6.6", "python-osc>=1.8"]
+# 'panel' = the desktop runtime extra (panel + engine live mode). sounddevice
+# is imported LAZILY by the engine (live mode only) so offline/CI hosts
+# without PortAudio run the full suite without it (I-13-clean native stack).
+panel = ["PySide6-Essentials>=6.6", "python-osc>=1.8", "sounddevice>=0.4"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

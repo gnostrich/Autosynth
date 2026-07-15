@@ -41,6 +41,26 @@ def _dF_dO(O, state):
     return g2 + g3
 
 
+def _d2F_dO2_slot(O_col, state):
+    """Hessian of the O-marginal terms (T2+T3) w.r.t. ONE slot's occupancy
+    column (M,). The O-terms are slot-separable (T2 is cellwise; T3 couples
+    roles only WITHIN a slot through E[s,b] = Σ_k O[k,s]B[k,b]), so the full
+    Hessian is block-diagonal over slots and this (M,M) block is exact:
+
+        d²T2/dO[k,s]dO[k',s] = L2 · δ_kk' / O[k,s]
+        d²T3/dO[k,s]dO[k',s] = 2 L3 · (G[k,k'] − δ_kk' G[k,k]),   G = B Bᵀ
+
+    This is the same F the gradient `_dF_dO` differentiates — single source of
+    truth for the F-side curvature the writer's temperature sampling uses
+    (spec §8 lane 6: sampling looseness AROUND the settled optimum)."""
+    L = ff.LAMBDA
+    o = np.asarray(O_col, float) + 1e-12
+    G = state.B @ state.B.T                       # (M,M)
+    H = 2.0 * L["T3"] * (G - np.diag(np.diag(G)))
+    H = H + np.diag(L["T2"] / o)
+    return H
+
+
 def update_pi(state, protos, eps=0.1):
     O = ff.occupancy(state, protos)
     gO = _dF_dO(O, state)                       # (M,S)
