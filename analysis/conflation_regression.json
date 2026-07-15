@@ -1,0 +1,310 @@
+{
+ "analysis": "conflation regression: conflated ~ a*slide + b*loop + c per gauge component",
+ "directive": "stage1-delete-conflated-jack (registered one-shot; replaces the deprecation window's observational purpose)",
+ "traces": {
+  "mixed_role_and_unit": {
+   "file": "mixed_role_and_unit.gauge_trace.json",
+   "n_bars": 40,
+   "bar_seconds": 1.486077097505669,
+   "clamp_summary": "20 downbeat role columns (even bars) + 5 unit demands",
+   "F_monotone": true,
+   "F_converged": true,
+   "render_run": false
+  },
+  "role_clamp_downbeats": {
+   "file": "role_clamp_downbeats.gauge_trace.json",
+   "n_bars": 40,
+   "bar_seconds": 1.486077097505669,
+   "clamp_summary": "one-hot role column at every bar downbeat, role = bar % 5, column mass = frozen anchor-field slot mass (mass-neutral)",
+   "F_monotone": true,
+   "F_converged": true,
+   "render_run": false
+  },
+  "role_clamp_single": {
+   "file": "role_clamp_single.gauge_trace.json",
+   "n_bars": 40,
+   "bar_seconds": 1.486077097505669,
+   "clamp_summary": "one-hot role column, mass 1.0, slot 4 (verbatim writer fixture)",
+   "F_monotone": true,
+   "F_converged": true,
+   "render_run": false
+  },
+  "u0_unclamped": {
+   "file": "u0_unclamped.gauge_trace.json",
+   "n_bars": 40,
+   "bar_seconds": 1.486077097505669,
+   "clamp_summary": "no clamps (expected degenerate)",
+   "F_monotone": true,
+   "F_converged": true,
+   "render_run": false
+  },
+  "unit_demand_sparse": {
+   "file": "unit_demand_sparse.gauge_trace.json",
+   "n_bars": 40,
+   "bar_seconds": 1.486077097505669,
+   "clamp_summary": "5 unit demands, one per 8 bars (fixture pattern)",
+   "F_monotone": true,
+   "F_converged": true,
+   "render_run": false
+  }
+ },
+ "components": {
+  "key": {
+   "component": "key",
+   "n_bars_pooled": 200,
+   "pooled_fit": {
+    "a_slide": 0.0,
+    "b_loop": 0.0,
+    "c_intercept": 0.0,
+    "R2": null,
+    "R2_note": "undefined: Var(conflated) == 0 exactly over all pooled bars (never fabricated as 1.0)",
+    "ssr": 0.0
+   },
+   "augmented_fit": {
+    "columns": [
+     "slide",
+     "loop",
+     "slide*loop",
+     "slide^2",
+     "loop^2"
+    ],
+    "ssr": 0.0,
+    "R2": null,
+    "materially_better": null,
+    "note": "no improvement possible: linear SSR is already exactly 0"
+   },
+   "residuals": {
+    "max_abs": 0.0,
+    "mean": 0.0,
+    "std": 0.0,
+    "MAD": 0.0,
+    "n_exactly_zero": 200,
+    "exact_at_machine_precision": true
+   },
+   "threshold": {
+    "rule": "flag |r| > sigma_hat * k; sigma_hat = MAD/Phi^{-1}(3/4) (Gaussian-consistent, 50% breakdown); k = Phi^{-1}(1 - alpha/(2T)) (two-sided Bonferroni over the T pooled bars, family-wise error <= alpha under the iid-Gaussian residual null)",
+    "alpha": 0.05,
+    "T": 200,
+    "k": 3.662259930887615,
+    "sigma_hat": 0.0,
+    "threshold": 0.0,
+    "degenerate_branch": true,
+    "degenerate_note": "residuals exactly constant 0.0 -> null scale 0 by definition (exact-constancy discipline, sigma-phi-untilted-fix1): any residual != 0.0 exactly would flag"
+   },
+   "flagged_bars": [],
+   "per_run": {
+    "mixed_role_and_unit": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 3.993458584983234e-06
+     }
+    },
+    "role_clamp_downbeats": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 4.6070282482268965e-06
+     }
+    },
+    "role_clamp_single": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 0.0
+     }
+    },
+    "u0_unclamped": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 0.0
+     }
+    },
+    "unit_demand_sparse": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 0.0
+     }
+    }
+   }
+  },
+  "phase": {
+   "component": "phase",
+   "n_bars_pooled": 200,
+   "pooled_fit": {
+    "a_slide": 0.0,
+    "b_loop": 0.0,
+    "c_intercept": 0.0,
+    "R2": null,
+    "R2_note": "undefined: Var(conflated) == 0 exactly over all pooled bars (never fabricated as 1.0)",
+    "ssr": 0.0
+   },
+   "augmented_fit": {
+    "columns": [
+     "slide",
+     "loop",
+     "slide*loop",
+     "slide^2",
+     "loop^2"
+    ],
+    "ssr": 0.0,
+    "R2": null,
+    "materially_better": null,
+    "note": "no improvement possible: linear SSR is already exactly 0"
+   },
+   "residuals": {
+    "max_abs": 0.0,
+    "mean": 0.0,
+    "std": 0.0,
+    "MAD": 0.0,
+    "n_exactly_zero": 200,
+    "exact_at_machine_precision": true
+   },
+   "threshold": {
+    "rule": "flag |r| > sigma_hat * k; sigma_hat = MAD/Phi^{-1}(3/4) (Gaussian-consistent, 50% breakdown); k = Phi^{-1}(1 - alpha/(2T)) (two-sided Bonferroni over the T pooled bars, family-wise error <= alpha under the iid-Gaussian residual null)",
+    "alpha": 0.05,
+    "T": 200,
+    "k": 3.662259930887615,
+    "sigma_hat": 0.0,
+    "threshold": 0.0,
+    "degenerate_branch": true,
+    "degenerate_note": "residuals exactly constant 0.0 -> null scale 0 by definition (exact-constancy discipline, sigma-phi-untilted-fix1): any residual != 0.0 exactly would flag"
+   },
+   "flagged_bars": [],
+   "per_run": {
+    "mixed_role_and_unit": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 3.993458584983234e-06
+     }
+    },
+    "role_clamp_downbeats": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 4.6070282482268965e-06
+     }
+    },
+    "role_clamp_single": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 0.0
+     }
+    },
+    "u0_unclamped": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 0.0
+     }
+    },
+    "unit_demand_sparse": {
+     "n_bars": 40,
+     "a_slide": 0.0,
+     "b_loop": 0.0,
+     "c_intercept": 0.0,
+     "R2": null,
+     "R2_note": "undefined: Var(conflated) == 0 exactly on this run",
+     "ssr": 0.0,
+     "max_abs_residual": 0.0,
+     "conflated_exactly_zero": true,
+     "max_abs": {
+      "conflated": 0.0,
+      "slide": 0.0,
+      "loop": 0.0
+     }
+    }
+   }
+  }
+ },
+ "structural_check": {
+  "claim": "conflated_key_running is an EXACT trajectory functional of the slide_key per-bar signal alone (winding unwraps exactly because per-bar increments are minimal signed representatives in [-6,6))",
+  "max_abs_reconstruction_error": 0.0,
+  "phase_caveat": "no analogous inverse exists for phase: the slide phase CHARGE is a many-to-one |.| reduction (discards sign and whole-circle winding of the displacement); the phase conclusion rests on the fit + the producible-domain evidence only"
+ }
+}
