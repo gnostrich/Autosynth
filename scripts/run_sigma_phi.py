@@ -67,8 +67,10 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-MAIN = "/home/user/Geodesic-Mixing"
-CACHE = os.path.join(MAIN, "cache/ingest")
+# Portable path resolution (env-overridable; defaults to the repo root).
+MAIN = os.environ.get(
+    "ETS_MAIN", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CACHE = os.environ.get("ETS_CACHE", os.path.join(MAIN, "cache", "ingest"))
 REGISTRY_ID = "sigma-phi-untilted-2026-07-15"
 
 

@@ -47,7 +47,9 @@ from ets.meters.holonomy import loop_defect
 EPS = 0.05                 # entropic-GW regulariser (same as G1 role couplings)
 LATENT_DIM = 8             # null latent embedding dim (pre-registered)
 TARGET_SEP = 20.0          # spec §13-G2 "order 20x" G4-class separation target
-CACHE = "/home/user/Geodesic-Mixing/cache/ingest/track_*.npz"
+CACHE = os.path.join(os.environ.get("ETS_CACHE", os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache", "ingest")),
+    "track_*.npz")
 
 
 # ---- survey primitives ----------------------------------------------------

@@ -24,9 +24,12 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-MAIN = "/home/user/Geodesic-Mixing"
-CACHE = os.path.join(MAIN, "cache/ingest")
-CORPUS = os.path.join(MAIN, "corpus")
+# Portable path resolution: default to the repo root (this script lives in
+# scripts/), overridable per host via env vars (mirrors run_training's ETS_CACHE).
+MAIN = os.environ.get(
+    "ETS_MAIN", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CACHE = os.environ.get("ETS_CACHE", os.path.join(MAIN, "cache", "ingest"))
+CORPUS = os.environ.get("ETS_CORPUS", os.path.join(MAIN, "corpus"))
 
 
 def main():

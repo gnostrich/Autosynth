@@ -25,9 +25,11 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-MAIN = "/home/user/Geodesic-Mixing"
-CACHE = os.path.join(MAIN, "cache/ingest")
-CORPUS = os.path.join(MAIN, "corpus")
+# Portable path resolution (env-overridable; defaults to the repo root).
+MAIN = os.environ.get(
+    "ETS_MAIN", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CACHE = os.environ.get("ETS_CACHE", os.path.join(MAIN, "cache", "ingest"))
+CORPUS = os.environ.get("ETS_CORPUS", os.path.join(MAIN, "corpus"))
 
 
 def _corpus_paths():

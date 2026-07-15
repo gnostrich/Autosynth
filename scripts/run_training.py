@@ -35,7 +35,8 @@ SEP_MIN = 0.90                 # pre-registered kill threshold (per-member sep r
 # The 20 frozen ingested tracks live in the MAIN checkout (absolute path); the
 # isolated worktree has no cache. NEVER re-run ingestion (it re-materializes huge
 # audio) — read the frozen npz by absolute path, like scripts/generate_batch.py.
-CACHE = os.environ.get("ETS_CACHE", "/home/user/Geodesic-Mixing/cache/ingest")
+CACHE = os.environ.get("ETS_CACHE", os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache", "ingest"))
 
 
 def main():
