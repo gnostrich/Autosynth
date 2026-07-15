@@ -18,6 +18,11 @@ from .drift_cv import (
     DriftCV, DriftReadout, drift_cv, key_drift, phase_drift, timbre_drift,
     KEY_MODULUS, TIMBRE_MODULUS,
 )
+from .gauge_slide import (
+    GaugeSlide, SlideReadout, gauge_slide, slide_key, slide_phase,
+    displacement_from_home, KEY_CARDINALITY,
+)
+from .gauge_loop import loop_g, bar_blocks, star_edge, metrical_cost
 from .phrase import PhraseEOC, phrase_eoc, dominant_period
 from .novelty import NoveltySaturation, novelty_saturation
 
@@ -25,6 +30,9 @@ __all__ = [
     "signed_increment", "circular_holonomy", "barycentric_map", "loop_defect",
     "DriftCV", "DriftReadout", "drift_cv", "key_drift", "phase_drift",
     "timbre_drift", "KEY_MODULUS", "TIMBRE_MODULUS",
+    "GaugeSlide", "SlideReadout", "gauge_slide", "slide_key", "slide_phase",
+    "displacement_from_home", "KEY_CARDINALITY",
+    "loop_g", "bar_blocks", "star_edge", "metrical_cost",
     "PhraseEOC", "phrase_eoc", "dominant_period",
     "NoveltySaturation", "novelty_saturation",
 ]

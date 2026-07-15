@@ -940,6 +940,7 @@ def _check_i14() -> None:
     #     match "ot"); the entire F path lives under ets.functional, training
     #     under ets.training.
     meter_mods = ["ets.meters", "ets.meters.holonomy", "ets.meters.drift_cv",
+                  "ets.meters.gauge_slide", "ets.meters.gauge_loop",
                   "ets.meters.phrase", "ets.meters.novelty"]
     forbidden_pkg = {"functional", "training"}
 
