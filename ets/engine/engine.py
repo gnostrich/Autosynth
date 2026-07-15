@@ -271,7 +271,8 @@ class Engine:
     # OFFLINE RENDER MODE
     # ------------------------------------------------------------------
     def render_offline(self, seconds: float, knob_script: Optional[str] = None,
-                       out_path: Optional[str] = None) -> OfflineResult:
+                       out_path: Optional[str] = None,
+                       bank: "Optional[SourceUnitBank]" = None) -> OfflineResult:
         world = self.world
         s_phase = self.writer.s_phase
         n_bars = max(1, int(round(seconds / self.writer.bar_seconds)))
@@ -288,7 +289,12 @@ class Engine:
             bars.append(self.writer.write_bar(tilt=tilt))
 
         used = sorted({int(t) for r in bars for (_s, t, _u, _sec, _m) in r.rows})
-        bank = build_bank(self.wf, track_ids=set(used))
+        # A caller may inject a pre-built (warm) bank to avoid re-materializing
+        # source units on every render (batch/streaming convenience). Byte-
+        # identical: the bank holds the same deterministic units either way, so
+        # determinism (H-8) is unaffected. Default None = build it here, as before.
+        if bank is None:
+            bank = build_bank(self.wf, track_ids=set(used))
         chunks = []
         prov_all = []
         for r in bars:
