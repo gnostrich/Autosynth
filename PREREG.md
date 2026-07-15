@@ -475,3 +475,98 @@ revised F (R1/R2) is a NEW pre-registered entry, never an edit to this one.
   are OWNED BY the concurrent calibration feature (ets.calibration); this
   feature consumes its artifact via the documented loader and refuses to
   invent scales (WorldNotCalibrated on lean-without-σ).
+
+---
+
+## Directive-v1 FEATURE 2 STAGE 1 — authority typing + conflated-jack deletion  (status: REGISTERED)
+- prereg_commit: this commit (registers hypothesis/scope/acceptance BEFORE the
+  work); registry_ids: [stage1-delete-conflated-jack (operator amendment,
+  already LAW), stage1-authority-typing-2026-07-15 (this entry's completion
+  receipt, appended after the work)]
+
+- SCOPE GUARD (enforced in the diff, not just declared): touches ONLY the
+  read-only meter layer + panel/OSC surface + a new typed consumer contract.
+  F, LAMBDA, world, exam, settlement, writer (solve path), render, tape,
+  provenance = ZERO diffs. The only writer-adjacent file touched is
+  scripts/generate_batch.py's read-only `gauge_trace()` sidecar (drops the
+  now-deleted conflated fields; does not touch settlement/render/schedule).
+
+- HYPOTHESIS: (1) the conflated DRIFT jack can be deleted outright (code,
+  panel element, OSC address, registry/schema field) with zero information
+  loss, per the merged evidence (REGISTRY conflation-regression-stage1-
+  2026-07-15: residual exactly 0.0 at machine precision on every producible
+  Stage-0 trace). (2) A checkable TYPING CONTRACT can be stated for the two
+  surviving jacks (slide[g] -> continuous/tilt-lane-setting consumers only;
+  loop[g] -> discrete/comparator+veto+gate consumers only; no third kind)
+  that is non-vacuous today even though NO live decision consumer of either
+  jack exists yet (I-10 thin planner is PENDING; grep-zero on any
+  autopilot/steering/ending code path, mirroring Feature 1's LEASH finding).
+  (3) Deleting the jack + adding the contract module changes NOTHING on the
+  audio path (H-3 shadow property already proved meters computed vs stubbed
+  is bit-identical; this stage removes bytes, it does not add a read).
+
+- PROCEDURE: (a) inventory every consumer of drift_cv/ADDR_METER_DRIFT/the
+  panel drift jacks (grep across ets/, tests/, scripts/ — see session report);
+  (b) delete ets/meters/drift_cv.py, its ets/meters/__init__.py exports, the
+  now-orphaned `holonomy.circular_holonomy` primitive (used by nothing else),
+  the panel drift jacks (widget.py, meters.py MeterState.drift), the OSC
+  surface (ADDR_METER_DRIFT, encode_drift, DRIFT_COMPONENTS ->
+  GAUGE_COMPONENTS, engine osc_io.py MeterEmitter.drift, panel transport.py
+  _on_drift), the engine's stub emission call, and scripts/generate_batch.py's
+  conflated-jack computation + trace fields; (c) add ets/meters/contract.py
+  (the typing registry + the Stage-1 `safe_to_end` ending-veto predicate,
+  reset-discharge semantics taken as an opaque bool input — Stage 2 deferred,
+  not decided here); (d) add tests/harness/test_h5_authority_typing.py (H-5,
+  two non-vacuous teeth: typing sweep, zero-references sweep) and
+  tests/meters/test_contract.py (behavioural coverage of the registry +
+  safe_to_end); (e) update every test that referenced the deleted jack
+  (tests/meters/test_meters.py, tests/harness/test_h6_panel_exhaustive.py,
+  tests/panel/test_osc_roundtrip.py, tests/panel/test_meters_display_only.py,
+  tests/invariants/manifest.py meter_mods) to the post-deletion surface;
+  (f) full suite green; (g) auditor PASS before merge.
+
+- NULL CONSTRUCTION (what "clean" would falsely look like, and how each
+  acceptance guards against it): a scanner that never fires (vacuous) would
+  falsely report zero dangling references even with one present — every
+  scanner here is proven to bite on a planted mutant/fixture BEFORE it is
+  trusted on the real tree (same discipline as every prior _forbidden_hits /
+  H-6 scanner in this repo). A typing contract that accepts any return shape
+  would falsely "enforce" nothing — registration itself type-checks the
+  consumer's output against canary calls and is proven to reject both wrong
+  shapes (bool where float required, float where bool required).
+
+- ACCEPTANCE (kill condition = any of these fails):
+  1. H-5a typing sweep: zero decision-adjacent (writer/engine/render/
+     functional/planner) imports of ets.meters.gauge_slide / gauge_loop
+     outside the registered contract; proven to bite on a planted fixture
+     import. register_slide_consumer/register_loop_consumer reject the wrong
+     output shape; proven to bite.
+  2. H-5b zero-references sweep: no ets/scripts/tests *.py file (as seen by
+     `git ls-files`, not just the working tree) contains an identifier of
+     {drift_cv, DriftCV, DriftReadout, key_drift, phase_drift, timbre_drift,
+     KEY_MODULUS, TIMBRE_MODULUS, circular_holonomy, ADDR_METER_DRIFT,
+     encode_drift, drift_key, drift_phase_feel, drift_timbre,
+     DRIFT_COMPONENTS} or the literal OSC address "/ets/meter/drift"; proven
+     to bite on a planted fixture file.
+  3. Acceptance fixture (veto-blocks-ending): safe_to_end(slide≈0, loop≠0,
+     reset_discharged=False) is False; safe_to_end(slide≈0, loop≈0, False) is
+     True; safe_to_end(slide≈0, loop≠0, reset_discharged=True) is True;
+     safe_to_end(slide≠0, loop≈0, False) is False (slide alone vetoes too).
+  4. H-8 cross-version bit-identity: a SYNTHETIC-world (never the 20-track
+     corpus — a concurrent builder is rendering the full corpus and the box
+     OOMs on two source banks) offline render at a fixed seed, with the
+     shipped default Tolerances (leash=inf, comma=inf — untouched by this
+     stage, still consumed by nothing), reproduces the EXACT audio_sha256 /
+     provenance_sha256 captured from the pre-Stage-1 tree (golden values
+     pinned in the test, captured before any edit in this session).
+  5. Fresh-clone-clean: H-1's tracked-file view (`git ls-files`) shows no
+     stray untracked artifacts from this stage and the H-5b sweep re-run
+     against exactly that tracked-file list is clean (closes the a1-
+     untracked-npz lesson: the acceptance check must run against what a
+     clone actually receives, not the working tree).
+  6. Full suite green; auditor PASS.
+
+- KILL CONDITION: any acceptance item fails -> STOP, do not loosen the
+  threshold/scanner, report the wall. A scanner found to be vacuous is fixed
+  and re-proven non-vacuous before it may gate anything (never silently
+  trusted).
