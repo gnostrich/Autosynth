@@ -62,6 +62,91 @@ def source_bank_for(schedule, tracks):
     return bank, used
 
 
+def bar_frame_and_mass(sched, s_phase):
+    """Per-bar gauge frame + settled mass, read off the realized Schedule
+    (SCHEDULE-side quantities only; see gauge_trace() for the typing note).
+
+    For bar b the frame is the Gauge of the section governing the bar's
+    downbeat slot (transpose in semitones on Z_12; phase_shift in slot units on
+    the S-slot metrical circle). The bar's settled mass is sum(mass^2) over the
+    bar's placements — EXACT on the schedule (registry amendment
+    writer-settled-mass-approximation-declared: Sigma mass^2 = settled slot
+    mass to machine precision; the rendered-tape energy is only approximate in
+    fixed instruments and is deliberately NOT read)."""
+    S = int(s_phase)
+    n_bars = sched.n_out_slots // S
+    transpose = np.zeros(n_bars)
+    phase = np.zeros(n_bars)
+    mass = np.zeros(n_bars)
+    p = sched.placements
+    for b in range(n_bars):
+        down = b * S
+        sec = next(s for s in sched.sections
+                   if s.out_slot_start <= down < s.out_slot_end)
+        transpose[b] = float(sec.gauge.transpose_semitones)
+        phase[b] = float(sec.gauge.phase_shift)
+        in_bar = (p["out_slot"] >= down) & (p["out_slot"] < down + S)
+        mass[b] = float(np.sum(p["mass"][in_bar] ** 2))
+    return transpose, phase, mass
+
+
+def gauge_trace(sched, O, s_phase):
+    """STAGE-0 shadow drift-meter split (directive-v1 feature 2): the per-bar
+    trace dict for the sidecar. READ-ONLY (I-5/I-14): computed from quantities
+    the machine already produced; nothing feeds back. Zero behavior change —
+    the audio path never sees this (H-3 test: meters computed vs stubbed =>
+    bit-identical audio)."""
+    from ets.meters import drift_cv, gauge_slide, loop_g
+
+    S = int(s_phase)
+    transpose, phase, mass = bar_frame_and_mass(sched, S)
+    n_bars = len(transpose)
+    conflated = drift_cv(transpose, phase, phase_modulus=S)   # existing jack
+    slide = gauge_slide(transpose, phase, phase_modulus=S, mass=mass)
+    lg = loop_g(np.asarray(O)[:, :n_bars * S], S)             # committed bars
+    return {
+        "instrument": "gauge drift-meter split, STAGE 0 shadow "
+                      "(directive-v1 feature 2)",
+        "registry_id": "meter-split-gauge-slide-loop-2026-07-15",
+        "shadow": True,
+        "reads": {
+            "slide[g]": "SCHEDULE-side: realized per-section Gauge "
+                        "(transpose_semitones on Z_12; phase_shift in slot "
+                        "units on the S-slot circle) sampled at each bar "
+                        "downbeat; bar masses = sum(mass^2) of the bar's "
+                        "placements (exact on the schedule per registry "
+                        "writer-settled-mass-approximation-declared).",
+            "loop[g]": "SETTLEMENT-side: settled tape occupancy O (the tape "
+                       "node's coupling to the anchor star) restricted to "
+                       "committed complete bars.",
+            "tape_side": "NOTHING — no meter reads rendered audio; rendered "
+                         "energies are approximate-in-fixed-instruments per "
+                         "the declared amendment and are not meter inputs.",
+        },
+        "estimators": {
+            "slide_key_disp": "composed frame increments reduced to the Z_12 "
+                              "minimal signed representative in [-6,6)",
+            "slide_phase_charge": "1 - |sum_{tau<=t} m e^{i2pi x}| / sum m "
+                                  "over running displacements-from-home x "
+                                  "(F's phase-charge quotient, restated)",
+            "loop_g": "antisymmetrized committed-cycle defect of star-"
+                      "factored bar couplings (G2 loop_defect transplant)",
+        },
+        "n_bars": int(n_bars),
+        "s_phase": S,
+        "key_cardinality": 12,
+        "per_bar": {
+            "bar_settled_mass": mass.tolist(),
+            "slide_key_disp": slide.key.per_bar.tolist(),
+            "slide_phase_charge": slide.phase.per_bar.tolist(),
+            "loop_g": lg.tolist(),
+            "conflated_drift_key_running": conflated.key.running.tolist(),
+            "conflated_drift_phase_running": conflated.phase.running.tolist(),
+        },
+        "conflated_totals": conflated.as_dict(),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=420.0)
@@ -139,6 +224,13 @@ def main():
     }
     with open(side, "w") as f:
         json.dump(prov_summary, f, indent=2)
+
+    # STAGE-0 shadow drift-meter split sidecar (read-only; audio unchanged).
+    trace = gauge_trace(sched, out["settle"].O, out["tape"].grid.s_phase)
+    trace_path = out_path.rsplit(".", 1)[0] + ".gauge_trace.json"
+    with open(trace_path, "w") as f:
+        json.dump(trace, f, indent=2)
+    print(f"      gauge trace (shadow drift split) -> {trace_path}")
     dur = len(audio) / sched.sr
     print(f"DONE in {time.time()-t0:.1f}s: {out_path}  ({dur:.1f}s audio, "
           f"{len(sched.placements)} placements, provenance -> {side})")
