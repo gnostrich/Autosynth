@@ -704,9 +704,20 @@ def _iter_runtime_sources():
 
 def _module_strings_in_source(src: str) -> set:
     """Every module reference an AST import makes, plus any dynamic-import string
-    constant. Returns dotted strings (e.g. 'PySide6.QtWidgets', 'flask',
-    'PySide6.QtWebEngineWidgets'). String literals in docstrings/comments do NOT
-    count unless passed to importlib.import_module/__import__."""
+    constant. Returns dotted strings with HONEST PROVENANCE:
+
+      import panel                  -> 'panel'                 (top-level root)
+      import ets.panel              -> 'ets.panel'
+      from ets import panel         -> 'ets', 'ets.panel'      (submodule position)
+      from . import panel           -> '.panel'                (relative: leading dot)
+      from .panel import widget     -> '.panel', '.panel.widget'
+      importlib.import_module('x')  -> 'x'
+
+    A from-import target or relative import is NEVER emitted as a bare top-level
+    name, so a forbidden-ROOT check on parts[0] cannot confuse the runtime's own
+    ets.panel with the HoloViz 'panel' framework, while Qt-component matching
+    (any dotted part) is unchanged. String literals in docstrings/comments do
+    NOT count unless passed to importlib.import_module/__import__."""
     import ast
     mods: set = set()
     tree = ast.parse(src)
@@ -715,12 +726,12 @@ def _module_strings_in_source(src: str) -> set:
             for a in n.names:
                 mods.add(a.name)
         elif isinstance(n, ast.ImportFrom):
-            base = n.module or ""
-            if base:
+            base = ("." * n.level) + (n.module or "")   # relative keeps its dots
+            if n.module:
                 mods.add(base)
+            sep = "." if n.module else ""               # `from . import x` -> '.x'
             for a in n.names:                       # `from PySide6 import QtWebEngineWidgets`
-                mods.add((base + "." + a.name) if base else a.name)
-                mods.add(a.name)
+                mods.add(base + sep + a.name)
         elif isinstance(n, ast.Call):
             fn = n.func
             is_dyn = ((isinstance(fn, ast.Attribute) and fn.attr == "import_module")
@@ -731,11 +742,21 @@ def _module_strings_in_source(src: str) -> set:
     return mods
 
 
+# Forbidden import ROOTS (matched against parts[0] of a module string only).
 _WEB_TOP = frozenset({
     "electron", "tauri", "webview", "pywebview", "cef", "cefpython3",
     "flask", "django", "aiohttp", "bottle", "tornado", "cherrypy", "werkzeug",
     "wsgiref", "gunicorn", "uvicorn", "starlette", "fastapi", "sanic", "quart",
     "dash", "streamlit", "gradio", "nicegui", "eel", "remi",
+    # streamlit-kin / browser-rendered app-framework long tail. 'panel' is the
+    # HoloViz framework: as a ROOT it can only be a genuine top-level import —
+    # the runtime's own ets.panel appears as 'ets.panel' / '.panel' (never as
+    # root 'panel') under _module_strings_in_source's provenance rules. 'anvil'
+    # covers anvil-uplink (imports as `anvil`); anvil-app-server imports as
+    # `anvil_app_server`. 'bokeh' includes its server (BokehJS = browser tech).
+    # plotly-dash variants all import as `dash` (already listed above).
+    "flet", "reflex", "anvil", "anvil_app_server", "justpy", "pywebio",
+    "taipy", "solara", "marimo", "panel", "bokeh",
     "selenium", "playwright", "pyppeteer", "webbrowser",
 })
 
@@ -750,7 +771,13 @@ _WEB_QT = frozenset({
 
 
 def _web_hits(mod_strings) -> list:
-    """Which of the given module strings are forbidden web/browser tech."""
+    """Which of the given module strings are forbidden web/browser tech.
+
+    _WEB_TOP entries are forbidden import ROOTS: they match parts[0] only, so a
+    relative ('.panel') or submodule ('ets.panel') reference never matches.
+    _WEB_QT entries match ANY dotted component (Qt web modules are reachable
+    from several PySide6 bases). _WEB_FULL entries match the exact dotted path
+    or a subpath."""
     hits = set()
     for m in mod_strings:
         parts = m.split(".")
@@ -771,12 +798,18 @@ def _check_i13() -> None:
     Flask/Django/aiohttp/FastAPI/…, Qt WebEngine, http.server). The runtime's UI
     stack is native Qt (PySide6) + OSC (python-osc) and nothing web.
 
-    Non-vacuous in two independent ways:
-      (i) the scanner BITES on planted web imports (flask, Qt WebEngine,
-          http.server, dynamic import of tauri); and
+    Non-vacuous in three independent ways:
+      (i) the scanner BITES on planted web imports — one mutant per forbidden
+          framework family, including the streamlit-kin long tail (flet, reflex,
+          anvil, justpy, pywebio, taipy, solara, marimo, HoloViz panel, bokeh),
+          Qt WebEngine, http.server, and a dynamic import of tauri;
      (ii) it is demonstrably reading real code — the sanctioned native stack
           (PySide6 + pythonosc) is actually present in the scanned tree, so an
-          empty/no-op scan cannot masquerade as a pass.
+          empty/no-op scan cannot masquerade as a pass; and
+    (iii) it is PRECISE — the runtime's own ets.panel package (same leaf name as
+          the forbidden HoloViz 'panel') is proven to never false-positive in
+          any import form the runtime can use, while every acquisition channel
+          for the HoloViz framework still bites.
     """
     # (a) the real runtime is clean.
     sanctioned_seen = {"PySide6": False, "pythonosc": False}
@@ -796,7 +829,8 @@ def _check_i13() -> None:
     assert sanctioned_seen["pythonosc"], \
         "I-13 scan saw no pythonosc import — the OSC transport is missing or unscanned"
 
-    # (c) NON-VACUITY (i): the scanner BITES on each web-tech pattern.
+    # (c) NON-VACUITY (i): the scanner BITES on each web-tech pattern — one
+    #     planted mutant per forbidden framework in the long-tail extension.
     mutants = {
         "flask server": "import flask\napp = flask.Flask(__name__)\n",
         "qt webengine": "from PySide6 import QtWebEngineWidgets\n",
@@ -804,6 +838,17 @@ def _check_i13() -> None:
         "stdlib http server": "import http.server\n",
         "dynamic tauri": "import importlib\nimportlib.import_module('tauri')\n",
         "electron": "import electron\n",
+        "flet": "import flet\nflet.app(lambda page: None)\n",
+        "reflex": "import reflex as rx\n",
+        "anvil uplink": "import anvil.server\n",
+        "anvil app server": "import anvil_app_server\n",
+        "justpy": "import justpy as jp\n",
+        "pywebio": "from pywebio.output import put_text\n",
+        "taipy": "from taipy.gui import Gui\n",
+        "solara": "import solara\n",
+        "marimo": "import marimo\n",
+        "holoviz panel": "import panel as pn\n",
+        "bokeh server": "from bokeh.server.server import Server\n",
     }
     for name, src in mutants.items():
         assert _web_hits(_module_strings_in_source(src)), \
@@ -816,6 +861,39 @@ def _check_i13() -> None:
              "from pythonosc import udp_client, osc_server, dispatcher\n")
     assert not _web_hits(_module_strings_in_source(clean)), \
         "I-13 scanner false-positives on native Qt widgets + OSC"
+
+    # (d) NON-VACUITY (iii) — PRECISION PROOF for ets.panel vs HoloViz panel.
+    #     Our runtime package ets.panel shares its leaf name with the forbidden
+    #     framework. Every import form the runtime can use to reach OUR panel
+    #     must scan clean...
+    ours = {
+        "absolute import": "import ets.panel\n",
+        "absolute from": "from ets.panel import lanes, meters, osc_schema\n",
+        "absolute deep from": "from ets.panel.lanes import LaneVector\n",
+        "from ets import panel": "from ets import panel\n",
+        "relative from-dot": "from . import panel\n",
+        "relative from .panel": "from .panel import widget\n",
+        "relative deep": "from ..panel.lanes import LaneVector\n",
+        "dynamic relative": ("import importlib\n"
+                             "importlib.import_module('.panel', 'ets')\n"),
+    }
+    for name, src in ours.items():
+        fp = _web_hits(_module_strings_in_source(src))
+        assert not fp, \
+            f"I-13 false-positives on the runtime's own ets.panel ({name}): {fp}"
+    # ...while every acquisition channel for the HoloViz framework still bites
+    # (this is the mutant pair that makes the precision claim two-sided).
+    theirs = {
+        "import panel": "import panel as pn\n",
+        "import panel submodule": "import panel.widgets\n",
+        "from panel import": "from panel import Row\n",
+        "from panel.io import": "from panel.io.server import serve\n",
+        "dynamic top-level panel": ("import importlib\n"
+                                    "importlib.import_module('panel')\n"),
+    }
+    for name, src in theirs.items():
+        assert _web_hits(_module_strings_in_source(src)), \
+            f"I-13 precision cut too deep: HoloViz panel not flagged via {name!r}"
 
 
 def _imported_modules(src: str) -> set:
