@@ -72,9 +72,26 @@ CACHE = os.path.join(MAIN, "cache/ingest")
 REGISTRY_ID = "sigma-phi-untilted-2026-07-15"
 
 
+def _std(x: np.ndarray) -> float:
+    """Sample std (ddof=1), computed CORRECTLY on constant input.
+
+    np.std of an exactly-constant sequence returns ~1 ulp, not 0: its computed
+    mean of N identical values rounds (pairwise summation, N not a power of
+    two), leaving uniform ~ulp residuals. The sample standard deviation of a
+    constant sequence is 0 BY DEFINITION, so the exact-constancy case is
+    evaluated exactly. This is the correct value of the pre-registered
+    estimator on that input — not a floor, not a threshold: any genuine
+    fluctuation (two or more distinct floats) takes the ordinary formula.
+    Uniform for every observable and every region component (single path)."""
+    x = np.asarray(x, float)
+    if np.all(x == x.flat[0]):
+        return 0.0
+    return float(x.std(ddof=1))
+
+
 def _lag1(x: np.ndarray) -> float:
     x = np.asarray(x, float)
-    if x.std() == 0.0 or len(x) < 3:
+    if _std(x) == 0.0 or len(x) < 3:
         return float("nan")
     return float(np.corrcoef(x[:-1], x[1:])[0, 1])
 
@@ -154,7 +171,7 @@ def main() -> None:
     for name in PHI_NAMES:
         x = phis[name]
         if name == "region":
-            sig = x.std(axis=0, ddof=1)
+            sig = np.array([_std(x[:, k]) for k in range(x.shape[1])])
             mu = x.mean(axis=0)
             ident = (sig > 0.0)
             entry = {"lane": 1, "sigma": [float(v) for v in sig],
@@ -165,7 +182,7 @@ def main() -> None:
                 entry["note"] = ("component(s) with sigma == 0.0 exactly: not "
                                  "identifiable at u=0; no floor invented")
         else:
-            sig = float(x.std(ddof=1))
+            sig = _std(x)
             mu = float(x.mean())
             entry = {"lane": {"density": 2, "continuity": 3, "gauge": 4,
                               "novelty": 5}[name],
