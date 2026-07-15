@@ -42,24 +42,52 @@ def test_decode_rejects_bad_arity():
         S.decode_lanes([])                    # empty
 
 
-def test_single_outbound_channel():
-    # The boundary-measure typing: exactly ONE outbound address, nothing else.
-    assert S.OUTBOUND_ADDRESSES == ("/ets/lanes",)
+def test_outbound_space_is_closed():
+    # The closed outbound space (directive v1): the boundary-measure lanes,
+    # the two declared tolerances, and the handshake hello. Nothing else can
+    # leave the panel; ONLY /ets/lanes carries control that reaches the writer
+    # (via the Layer-0 map — C-3), tolerances have no consumer, hello carries
+    # a port number.
+    assert S.OUTBOUND_ADDRESSES == (
+        "/ets/lanes", "/ets/tolerances", "/ets/hello")
 
 
-def test_inbound_addresses_are_the_meter_jacks_only():
+def test_inbound_addresses_are_display_only_jacks():
+    # welcome/clock are control-plane display; drift (deprecated, conflated),
+    # the slide/loop pairs (Stage-0 shadow feed), eoc and novelty_sat are the
+    # meter jacks. All inbound is display-typed (I-5).
     assert set(S.INBOUND_ADDRESSES) == {
-        "/ets/meter/drift", "/ets/meter/eoc", "/ets/meter/novelty_sat"}
+        "/ets/welcome", "/ets/clock",
+        "/ets/meter/drift", "/ets/meter/slide", "/ets/meter/loop",
+        "/ets/meter/eoc", "/ets/meter/novelty_sat"}
 
 
 def test_schema_addresses_are_pinned():
     # Golden values — the engine binds to these strings; a rename is a breaking
     # contract change and must fail loudly here.
     assert S.ADDR_LANES == "/ets/lanes"
+    assert S.ADDR_TOLERANCES == "/ets/tolerances"
+    assert S.ADDR_HELLO == "/ets/hello"
+    assert S.ADDR_WELCOME == "/ets/welcome"
+    assert S.ADDR_CLOCK == "/ets/clock"
     assert S.ADDR_METER_DRIFT == "/ets/meter/drift"
+    assert S.ADDR_METER_SLIDE == "/ets/meter/slide"
+    assert S.ADDR_METER_LOOP == "/ets/meter/loop"
     assert S.ADDR_METER_EOC == "/ets/meter/eoc"
     assert S.ADDR_METER_NOVELTY_SAT == "/ets/meter/novelty_sat"
     assert S.DRIFT_COMPONENTS == ("key", "phase_feel", "timbre")
+
+
+def test_tolerances_roundtrip_including_inf():
+    import math
+    from ets.panel.tolerances import Tolerances
+    t = Tolerances()                       # shipped defaults: both inf
+    args = S.encode_tolerances(t)
+    back = S.decode_tolerances(args)
+    assert math.isinf(back.leash) and math.isinf(back.comma)
+    t2 = Tolerances(leash=0.25, comma=math.inf)
+    back2 = S.decode_tolerances(S.encode_tolerances(t2))
+    assert back2.leash == pytest.approx(0.25) and math.isinf(back2.comma)
 
 
 def test_live_udp_loopback_roundtrip():

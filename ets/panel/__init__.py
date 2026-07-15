@@ -13,19 +13,23 @@ The pure modules import no Qt, so tooling and the I-13 scan need no display.
 """
 from __future__ import annotations
 
-from ets.panel import lanes, meters, midi, osc_schema, transport
+from ets.panel import lanes, meters, midi, osc_schema, tolerances, transport
 from ets.panel.lanes import (
     LANES, LANE_IDS, LaneKind, LaneSpec, LaneVector, assert_lanes_exhaustive,
     default_lane_vector,
 )
 from ets.panel.meters import MeterState
 from ets.panel.midi import CCMap, LaneTarget
+from ets.panel.tolerances import (
+    TOLERANCES, TOLERANCE_IDS, Tolerances, assert_tolerances_exhaustive,
+)
 from ets.panel.transport import MeterReceiver, OscEmitter
 
 __all__ = [
-    "lanes", "meters", "midi", "osc_schema", "transport",
+    "lanes", "meters", "midi", "osc_schema", "tolerances", "transport",
     "LANES", "LANE_IDS", "LaneKind", "LaneSpec", "LaneVector",
     "assert_lanes_exhaustive", "default_lane_vector",
+    "TOLERANCES", "TOLERANCE_IDS", "Tolerances", "assert_tolerances_exhaustive",
     "MeterState", "CCMap", "LaneTarget", "MeterReceiver", "OscEmitter",
     "Panel",
 ]

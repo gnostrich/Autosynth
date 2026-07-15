@@ -405,3 +405,73 @@ revised F (R1/R2) is a NEW pre-registered entry, never an edit to this one.
 
 - null: a NO-OP scramble gives separation ~0.5 (chance); a member whose F is
   invariant to its disarrangement sits at chance and fails the 0.90 threshold.
+
+---
+
+## Directive-v1 FEATURE 1 — Latency profile table + Layer-0 statistic declarations  (status: REGISTERED)
+- prereg_commit: this commit (registers the table + declarations BEFORE the
+  measurement run); registry_ids: [latency-desktop-2026-07-15,
+  feature1-engine-panel-2026-07-15]
+
+### Latency profile table (connector "Real-time typing": L pre-registered per hardware profile)
+- DERIVATION (buffer math, never taste — ets/engine/latency.py):
+      L = ceil( max(T_prod) / T_bar ) + 1
+  where T_bar = S_phase·tatum_len/sr (the world's bar duration) and T_prod is
+  the measured wall time to PRODUCE one bar (frontier settle + temperature
+  sample + fiber threading + per-bar render + meter emit) on the RUNNING host.
+  The +1 is the double-buffer term (one bar consumed while the next is
+  produced). If mean(T_prod) >= T_bar, no finite L exists: WALL, halt and
+  report (no silent quality fork; enforced in derive_L and by the live loop's
+  underrun halt). The audio device's blocksize/sr latency is additive after
+  the tape and does not enter L.
+- PROFILES (declared device parameters):
+    desktop     : sr=44100, blocksize=2048 (46.4 ms device buffer), n_warmup=8
+    headless-ci : sr=44100, blocksize=2048 (no device on this host), n_warmup=4
+  n_warmup = bars measured at startup before playback begins (max over them
+  bounds the first-bar transient + jitter); registered here, not tunable live.
+- PROCEDURE (per profile, per host): scripts/measure_latency_profile.py --world
+  <corpus world> --bars 16 → registers {t_write, t_render, t_prod, derivation}
+  in REGISTRY. The engine additionally re-derives L at every startup from its
+  own n_warmup measured bars with the same formula and logs the derivation
+  (surfaced to the panel via /ets/welcome). Reference numbers for this build
+  box: REGISTRY id latency-desktop-2026-07-15 (committed after the run;
+  commit-before-run discipline: this entry precedes it).
+- kill condition: derive_L raises (mean T_prod >= T_bar) on the target host ⇒
+  the profile is NOT viable; report the wall, do not ship a degraded frontier.
+
+### Layer-0 statistic declarations (load-bearing definitions the σ_φ instrument measures)
+- φ_density is the bar's SCHEDULED MASS (loudness-quotiented), not the filled-
+  slot count: the connector names "filled-slot count / scheduled mass"; the
+  mass is the smooth statistic a Doob tilt can act on through the O-block (a
+  count is a step function with zero gradient a.e.). Declared, not tuned.
+- φ_novelty recency kernel: r(Δ) = 1/Δ (Δ = bars since the unit's last
+  COMMITTED use; 0 if never used) — the scale-free choice; any exponential
+  kernel would introduce a timescale constant. σ_φ then supplies the natural
+  units, so no scale reaches λ.
+- Degenerate directions: if the calibration measures σ_φi = 0 (φ_i constant
+  under the untilted equilibrium writer), the exponential tilt of a constant
+  statistic is the IDENTITY for every finite λ (it normalizes away); the map
+  reports the lane as degenerate and applies the identity — a theorem, not a
+  fallback. Known v0 instance: φ_gauge (the writer's gauge frame is frozen at
+  identity; no live gauge block exists) — surfaced as a wall in the session
+  report, not patched.
+
+### CI laws landed with this feature (standing checks, run every merge)
+- H-6 exhaustiveness: exactly six lanes + LEASH + COMMA + the jack set; a 7th
+  lane or 3rd tolerance fails construction; OSC message space closed at both
+  ends; tolerances consumed by NOTHING (tests/harness/test_h6_panel_exhaustive.py).
+- H-8 determinism: same (world sha256, LAMBDA, knob trajectory, seed) ⇒
+  bit-identical offline render; every tuple element shown to matter
+  (tests/harness/test_h8_determinism.py).
+- C-1 knob→render bypass: same settled schedule + different u ⇒ bit-identical
+  audio (structural + end-to-end via the σ=0-degenerate gauge lane;
+  tests/harness/test_c1_render_u_blind.py).
+- C-3 tilt-only entry: panel imports no writer/engine; writer imports no
+  panel/OSC/Qt; TiltTerms constructed ONLY by tilt.layer0/untilted inside the
+  engine; writer control parameter is exactly `tilt`
+  (tests/harness/test_h6_panel_exhaustive.py; runtime tooth in
+  tests/harness/test_i1_i9_engine.py).
+- C-2 (gauge invariance of every φ) + the registered corpus σ_φ calibration
+  are OWNED BY the concurrent calibration feature (ets.calibration); this
+  feature consumes its artifact via the documented loader and refuses to
+  invent scales (WorldNotCalibrated on lean-without-σ).

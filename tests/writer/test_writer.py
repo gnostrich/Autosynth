@@ -142,15 +142,36 @@ def test_no_static_keymap_unit_follows_settled_column(world):
     assert min(ub) >= 1000 * (M - 1), "role routing did not follow the settled column"
 
 
-# --- single control jack (I-1 partial): tilt is the only entry, u=0 here -----
+# --- single control jack (I-1): the Layer-0 TiltTerms is the only entry ------
 
-def test_nonzero_tilt_raises_not_faked(world):
-    with pytest.raises(NotImplementedError):
-        W.generate_batch(world, seconds=2.0, u=np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
-    # u=0 (explicit) is accepted and equals the default None path.
-    a = W.generate_batch(world, seconds=2.0, u=np.zeros(5))
-    b = W.generate_batch(world, seconds=2.0, u=None)
-    assert np.allclose(a["settle"].O, b["settle"].O)
+def test_control_enters_only_as_tilt_terms(world):
+    """A raw array is NOT a control: the settlement accepts control only as the
+    Layer-0 TiltTerms type (I-1/C-3 typing tooth), and the explicit untilted
+    TiltTerms is bit-identical to the tilt=None reduced form."""
+    with pytest.raises(TypeError):
+        W.generate_batch(world, seconds=2.0,
+                         tilt=np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
+    a = W.generate_batch(world, seconds=2.0, tilt=W.untilted(world.M))
+    b = W.generate_batch(world, seconds=2.0, tilt=None)
+    assert np.array_equal(a["settle"].O, b["settle"].O)
+
+
+def test_tilt_moves_the_settled_field_in_the_leaned_direction(world):
+    """The Doob tilt acts: a positive REGION lean on anchor k raises anchor k's
+    settled bar occupancy (φ_region[k]); a positive DENSITY lean raises total
+    scheduled mass (φ_density). FDT sign sanity of the Layer-0 map."""
+    M = world.M
+    base = W.generate_batch(world, seconds=3.0)["settle"].O
+    lam = np.zeros(M); lam[0] = 2.0
+    t_region = W.TiltTerms(lam_region=lam, lam_density=0.0, lam_cont=0.0,
+                           lam_gauge=0.0, lam_novelty=0.0, T_s=1.0)
+    O_r = W.generate_batch(world, seconds=3.0, tilt=t_region)["settle"].O
+    assert O_r[0].sum() > base[0].sum(), "region lean did not raise its anchor"
+
+    t_dense = W.TiltTerms(lam_region=np.zeros(M), lam_density=2.0, lam_cont=0.0,
+                          lam_gauge=0.0, lam_novelty=0.0, T_s=1.0)
+    O_d = W.generate_batch(world, seconds=3.0, tilt=t_dense)["settle"].O
+    assert O_d.sum() > base.sum(), "density lean did not raise scheduled mass"
 
 
 # --- clamp interface (I-7 feature side) -------------------------------------

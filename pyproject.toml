@@ -9,9 +9,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
-# sounddevice: desktop audio-out for the panel/engine deployment (and the
-# tools/audio_check.py preflight). Deliberately NOT a core dependency — the
-# build/CI box is headless and the base package must not require PortAudio.
+# 'panel' = the desktop runtime extra (panel + engine live mode + the
+# tools/audio_check.py preflight). sounddevice is imported LAZILY by the engine
+# (live mode only) so offline/CI hosts without PortAudio run the full suite
+# without it (I-13-clean native stack). Deliberately NOT a core dependency.
 panel = ["PySide6-Essentials>=6.6", "python-osc>=1.8", "sounddevice>=0.4"]
 
 [tool.pytest.ini_options]

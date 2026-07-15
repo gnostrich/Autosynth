@@ -27,12 +27,17 @@ from ..functional import anchors as an
 from ..geometry import roles
 from .tape import OutputGrid, ClampSet, TapeNode, S_PHASE
 from .settle import settle_tape, SettleResult
-from .realize import build_index, realize, RealizationIndex
+from .realize import build_index, realize, RealizationIndex, FiberThreader
+from .tilt import (TiltTerms, SigmaPhi, layer0, untilted, WorldNotCalibrated)
+from .stream import StreamWriter, StreamHalt, BarResult
+from . import phi
 
 __all__ = [
     "OutputGrid", "ClampSet", "TapeNode", "S_PHASE",
     "settle_tape", "SettleResult",
-    "build_index", "realize", "RealizationIndex",
+    "build_index", "realize", "RealizationIndex", "FiberThreader",
+    "TiltTerms", "SigmaPhi", "layer0", "untilted", "WorldNotCalibrated",
+    "StreamWriter", "StreamHalt", "BarResult", "phi",
     "World", "build_world_from_tracks", "generate_batch",
 ]
 
@@ -86,18 +91,23 @@ def build_world_from_tracks(tracks, sigma: Optional[float] = None,
                  sr=int(tracks[0].sr))
 
 
-def generate_batch(world: World, seconds: float, u: Optional[np.ndarray] = None,
+def generate_batch(world: World, seconds: float,
+                   tilt: Optional[TiltTerms] = None,
                    clamps: Optional[ClampSet] = None,
                    max_iter: int = 600) -> dict:
-    """Settle a ``seconds``-long output tape in batch (u=0) and realize a Schedule.
+    """Settle a ``seconds``-long output tape in batch and realize a Schedule.
 
     Returns a dict with the ``schedule`` (render input), the ``settle`` result
     (F-descent trace + certificate), the ``tape`` node, and realization ``meta``.
     ``clamps`` is the SINGLE intervention channel (I-7); default = none clamped.
+    ``tilt`` is the SINGLE control jack (I-1): TiltTerms from the Layer-0 map
+    (ets.writer.tilt.layer0); None = the untilted reduced form. Batch mode is
+    the T-degenerate (mode-seeking, deterministic) reduced form of the
+    streaming writer — TEMPERATURE sampling lives in ets.writer.stream.
     """
     grid = OutputGrid.for_seconds(world.sr, world.out_tatum_len, seconds)
     tape = TapeNode(grid=grid, M=world.M, clamps=clamps or ClampSet())
-    res = settle_tape(world.fstate, tape, u=u, max_iter=max_iter)
+    res = settle_tape(world.fstate, tape, tilt=tilt, max_iter=max_iter)
     sched, meta = realize(res.O, tape, world.fstate, world.index)
     return {"schedule": sched, "settle": res, "tape": tape, "realize": meta,
             "grid": grid}

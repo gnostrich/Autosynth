@@ -206,6 +206,21 @@ def phase_displacement_charge(intrinsic_phase, slot_phase, mass) -> float:
     return float(max(0.0, 1.0 - np.abs(z)))
 
 
+def unit_phase_charge_at(intrinsic_phase, slot_phase, section_delta: float = 0.0):
+    """The CONDITIONAL per-unit integrand of T1's phase-displacement charge at a
+    FIXED section gauge phase δ: 1 − cos 2π(x − δ), x = intrinsic − slot.
+
+    ``phase_displacement_charge`` above is the section-quotiented aggregate
+    (δ minimized out in closed form); when the section frame is already pinned
+    (the writer's running frame — identity in v0), each unit's marginal
+    contribution to that SAME charge is this integrand. Single source of truth:
+    the writer's fiber block scores candidate units with this function; no term
+    math is re-derived outside f.py. Accepts scalars or arrays."""
+    x = np.asarray(intrinsic_phase, float) - np.asarray(slot_phase, float) \
+        - float(section_delta)
+    return 1.0 - np.cos(2.0 * np.pi * x)
+
+
 def continuation_reward(pair_is_successor, pair_weight) -> float:
     """T4's unit-successor run-continuation REWARD in [0,1] (spec §5 rev-r1).
 

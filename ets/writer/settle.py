@@ -29,10 +29,19 @@ Sinkhorn/exponentiated-gradient in the corpus solver. T2 is UNBALANCED (no hard
 marginal), so free mirror descent under the Lyapunov guard is the faithful reduced
 update; the guard, not a fixed step, is the whole termination theory.
 
-CONTROL ENTRY (I-1). The ONLY control parameter is ``u`` — the h-transform tilt
-(spec §1, §8). This batch reduced form is defined at u=0. The Layer-0 tilt map
-(connector) is a PARALLEL build; a non-zero ``u`` here raises rather than fake a
-second control path. The single jack exists; its map is deferred, not bypassed.
+CONTROL ENTRY (I-1). The ONLY control parameter is ``tilt`` — the h-transform
+tilt (spec §1, §8) as a ``TiltTerms`` produced by the Layer-0 map
+(ets.writer.tilt.layer0; connector Layer 0). The tilted objective is
+
+    F_u(O) = F_O(O) − T_s · Σ_i λ_i φ_i(O)        (the Doob-conditioned mode)
+
+with exactly the two O-block statistics (φ_region, φ_density) contributing —
+their potential/gradient come from ets.writer.tilt (o_block_potential /
+o_block_gradient), so the tilt's mathematics has ONE home. The Lyapunov
+certificate descends F_u: the tilt is boundary conditioning of the SAME
+functional (connector: the h-transform is induced by clamping the panel's
+boundary measure), not a second objective. ``tilt=None`` is the untilted
+reduced form (identical to the tilt-zero path bit-for-bit).
 """
 from __future__ import annotations
 from dataclasses import dataclass, replace
@@ -42,6 +51,7 @@ import numpy as np
 from ..functional import f as ff
 from ..functional import solver as sv
 from .tape import TapeNode
+from .tilt import TiltTerms, o_block_gradient, o_block_potential
 
 
 @dataclass
@@ -76,30 +86,51 @@ def _F_O(O: np.ndarray, state) -> tuple:
     return t2 + t3, {"T2": t2, "T3": t3, "T4": 0.0, "F_O": t2 + t3}
 
 
-def settle_tape(fstate, tape: TapeNode, u: Optional[np.ndarray] = None,
+def settle_tape(fstate, tape: TapeNode, tilt: Optional[TiltTerms] = None,
                 max_iter: int = 600, eta0: float = 0.25,
                 tol: float = 1e-10, floor: float = 1e-12) -> SettleResult:
-    """Settle the whole tape in batch to an F-descent certificate (u=0).
+    """Settle the tape's free cells to an F_u-descent certificate.
 
     ``fstate``: frozen world FState (anchors D, a, B, theta from step c).
     ``tape``  : the (N+1)-th track-typed node (grid + clamp interface).
-    ``u``     : tilt (single control jack). None / all-zero => the untilted
-                reduced form. A non-zero tilt raises (Layer-0 map is parallel).
+    ``tilt``  : the h-transform tilt (ets.writer.tilt.TiltTerms) — the SINGLE
+                control jack (I-1). None == the untilted reduced form; the
+                descent quantity becomes the tilted F_u (see module docstring).
     """
-    if u is not None and np.any(np.asarray(u, float) != 0.0):
-        raise NotImplementedError(
-            "non-zero tilt u requires the Layer-0 tilt map (connector), a parallel "
-            "build; this batch reduced form is defined at u=0. The single control "
-            "jack exists here; its map is deferred, not bypassed (I-1).")
+    if tilt is not None and not isinstance(tilt, TiltTerms):
+        raise TypeError(
+            "control reaches the settlement only as TiltTerms produced by the "
+            "Layer-0 map (ets.writer.tilt.layer0) — the single tilt jack (I-1). "
+            f"got {type(tilt).__name__}")
 
     M = int(tape.M)
     S_out = int(tape.grid.n_slots)
     if fstate.a.shape[0] != M:
         raise ValueError(f"tape M={M} != world anchor count {fstate.a.shape[0]}")
+    if tilt is not None and tilt.lam_region.shape[0] != M:
+        raise ValueError(
+            f"tilt has {tilt.lam_region.shape[0]} region components but the "
+            f"world has {M} anchors (σ_φ must be re-run on anchor spawn/prune)")
 
     # tiled anchor field on the output grid (theta WITHOUT a; term_T2 applies a).
     theta_out = np.ascontiguousarray(fstate.theta[:, tape.grid.phase_row()], float)
     state = _tape_state(fstate, theta_out)
+
+    # the tilt's O-block contribution (exact Layer-0 mathematics; zero when
+    # untilted, and the untilted TiltTerms path is bit-identical to tilt=None).
+    if tilt is None or tilt.is_untilted:
+        g_tilt = 0.0
+        def _F_u(O):
+            return _F_O(O, state)
+    else:
+        g_tilt = o_block_gradient(tilt, M, S_out)
+        def _F_u(O):
+            base, terms = _F_O(O, state)
+            pot = o_block_potential(O, tilt)
+            terms = dict(terms)
+            terms["tilt_potential"] = pot
+            terms["F_u"] = base + pot
+            return base + pot, terms
 
     # boundary conditions (clamped cells) — same TYPE as settled cells (I-7).
     mask, vals = tape.clamps.as_mask_values(M, S_out)
@@ -111,20 +142,20 @@ def settle_tape(fstate, tape: TapeNode, u: Optional[np.ndarray] = None,
     if mask.any():
         O[:, mask] = np.maximum(vals[:, mask], 0.0)
 
-    F_cur, _ = _F_O(O, state)
+    F_cur, _ = _F_u(O)
     trace = [float(F_cur)]
     eta = float(eta0)
     n_iter = 0
     converged = False
 
     for n_iter in range(1, max_iter + 1):
-        g = sv._dF_dO(O, state)                       # dF/dO of T2+T3+T4 (LAMBDA live)
+        g = sv._dF_dO(O, state) + g_tilt              # dF_u/dO (LAMBDA live)
         step = np.clip(-eta * g, -50.0, 50.0)         # mirror step, exp-safe
         O_cand = np.maximum(O * np.exp(step), floor)
         if mask.any():                                # re-impose clamped cells
             O_cand[:, mask] = np.maximum(vals[:, mask], 0.0)
 
-        F_cand, _ = _F_O(O_cand, state)
+        F_cand, _ = _F_u(O_cand)
         if F_cand <= F_cur + 1e-12:                   # Lyapunov accept guard
             rel = abs(F_cur - F_cand) / (abs(F_cur) + 1e-12)
             O, F_cur = O_cand, F_cand
@@ -139,7 +170,7 @@ def settle_tape(fstate, tape: TapeNode, u: Optional[np.ndarray] = None,
                 converged = True
                 break
 
-    _, terms = _F_O(O, state)
+    _, terms = _F_u(O)
     tr = np.asarray(trace)
     monotone = bool(np.all(np.diff(tr) <= 1e-9))
     return SettleResult(O=O, trace=[float(x) for x in trace], terms_final=terms,
