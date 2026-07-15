@@ -8,6 +8,7 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{graphicx}
+\usepackage{float}   % [H] specifier to pin a float exactly where it appears
 \usepackage{xcolor}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
@@ -98,6 +99,7 @@ map); \code{REGISTRY.jsonl} (build history, honest numbers). Where those and thi
 paper disagree, they win. Every figure below is traced to a committed source or
 results artifact.
 
+\clearpage
 \section{Architecture overview}
 
 ETS is a pipeline from real audio to a committed output tape. Each stage has a
@@ -115,7 +117,7 @@ mastering stage downstream.
 \definecolor{trkC}{RGB}{206,86,46}
 \definecolor{anchorc}{RGB}{133,79,11}
 
-\begin{figure}[t!]
+\begin{figure}[H]
 \centering
 \resizebox{0.92\linewidth}{!}{%
 \begin{tikzpicture}[
