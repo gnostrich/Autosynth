@@ -394,6 +394,58 @@ def _check_i11() -> None:
     assert not np.allclose(a1, a_unit, atol=1e-9), \
         "mass coverage is vacuous: distinct masses did not change the render"
 
+    # (D) MASS FAITHFULNESS / LINEARITY (retro-audit guard amendment): render is
+    # exactly HOMOGENEOUS in each placement's mass — scaling one placement's mass
+    # by c scales exactly that placement's contribution by c, for c large AND for
+    # c small enough that any threshold-in-render would zero it. This closes the
+    # demonstrated hole: a silent `if mass < t: continue` in render() survived
+    # every prior tooth (determinism, order-independence, neutralize-bite are all
+    # threshold-blind). Faithful application has no threshold; linearity proves it.
+    j = 3                                    # an arbitrary placement under test
+    solo = placements[j:j + 1].copy()
+    a_solo, _ = render(Schedule(sr=44100, slot_boundaries=bounds,
+                                placements=solo, sections=sections), bank)
+    for c in (2.0, 1e-9):
+        scaled = placements.copy()
+        scaled["mass"] = placements["mass"]  # copy() of structured arr shares nothing
+        scaled["mass"][j] = placements["mass"][j] * c
+        a_c, _ = render(Schedule(sr=44100, slot_boundaries=bounds,
+                                 placements=scaled, sections=sections), bank)
+        # a_c - a1 must equal (c-1) * (j's solo contribution), machine precision.
+        # rtol=0: the comparison must stay absolute, or a dropped tiny-c
+        # contribution (~1e-9) hides inside the default relative tolerance.
+        expect = (c - 1.0) * a_solo
+        assert np.allclose(a_c - a1, expect, rtol=0, atol=1e-12 * max(1.0, abs(c))), (
+            f"I-11 mass linearity violated at c={c}: render is not a pure "
+            f"application of the settled mass (threshold or nonlinearity present)")
+    # ...and the linearity tooth BITES: a thresholding render (drop mass < 0.5)
+    # violates it at small c, exactly the mutant that survived the older teeth.
+    def _thresholding(sched_):
+        n = int(sched_.slot_boundaries[-1])
+        out = np.zeros(n)
+        for row in sched_.placements:
+            if float(row["mass"]) < 0.5:
+                continue                     # the silent-truncation failure mode
+            s = int(row["out_slot"])
+            a = int(sched_.slot_boundaries[s]); b = int(sched_.slot_boundaries[s + 1])
+            out[a:b] += (bank.get(int(row["src_track"]), int(row["src_unit"])).audio
+                         * float(row["mass"]) * 0.7)
+        return out
+    t_base = _thresholding(sched)
+    tiny = placements.copy(); tiny["mass"][j] = placements["mass"][j] * 1e-9
+    t_tiny = _thresholding(Schedule(sr=44100, slot_boundaries=bounds,
+                                    placements=tiny, sections=sections))
+    # linear expectation for the mutant, built from ITS OWN solo contribution:
+    t_solo = np.zeros(int(bounds[-1]))
+    slot_j = int(placements["out_slot"][j])
+    aa = int(bounds[slot_j]); bb = int(bounds[slot_j + 1])
+    t_solo[aa:bb] = (bank.get(0, int(placements["src_unit"][j])).audio
+                     * float(placements["mass"][j]) * 0.7)
+    t_expect = (1e-9 - 1.0) * t_solo
+    assert not np.allclose(t_tiny - t_base, t_expect, rtol=0, atol=1e-12), (
+        "I-11 mass-linearity bite is vacuous: the thresholding mutant was not "
+        "distinguished")
+
     # bite: a SELECTING reference (keep only the first placement seen per slot,
     # drop the rest) genuinely depends on order, so it FAILS allclose under the
     # same permutation. This proves the order-independence tooth is non-vacuous.
