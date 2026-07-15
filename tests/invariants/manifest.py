@@ -939,9 +939,17 @@ def _check_i14() -> None:
     #     whole dotted-path COMPONENTS (so "annotations" does not accidentally
     #     match "ot"); the entire F path lives under ets.functional, training
     #     under ets.training.
-    meter_mods = ["ets.meters", "ets.meters.holonomy", "ets.meters.drift_cv",
+    # ets.meters.drift_cv was DELETED outright (directive-v1 Feature 2 Stage
+    # 1, operator amendment stage1-delete-conflated-jack): the conflated jack
+    # carried zero bits the slide/loop pair below does not already carry, on
+    # every producible trace (REGISTRY conflation-regression-stage1-
+    # 2026-07-15). ets.meters.contract is the typed consumer registry added
+    # in the same stage; it is meters-side (reads only slide/loop readings)
+    # and is swept here too.
+    meter_mods = ["ets.meters", "ets.meters.holonomy",
                   "ets.meters.gauge_slide", "ets.meters.gauge_loop",
-                  "ets.meters.phrase", "ets.meters.novelty"]
+                  "ets.meters.phrase", "ets.meters.novelty",
+                  "ets.meters.contract"]
     forbidden_pkg = {"functional", "training"}
 
     def _leaks(imports):

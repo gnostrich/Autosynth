@@ -2,6 +2,20 @@
 (directive amendment stage1-delete-conflated-jack; ONE-SHOT, read-only
 w.r.t. all engine code).
 
+FROZEN as of the Stage-1 deletion commit (directive-v1 Feature 2 Stage 1):
+this script calls the production ``gauge_trace()`` LIVE (by design, see
+below), and that function no longer computes or exports the
+``conflated_drift_*_running`` fields this script reads at lines ~198-208
+(the conflated jack was DELETED outright, evidence-clean, per the analysis
+this very script's output fed — REGISTRY conflation-regression-
+stage1-2026-07-15). Re-running this script against the post-deletion tree
+will KeyError. This is not a bug to patch: per REGISTRY discipline
+(instruments are never edited-in-place to match new code; a new question is
+a new pre-registered run), this file is retained UNMODIFIED as the exact
+record of the procedure that produced analysis/traces/*.gauge_trace.json —
+those frozen output files, and analysis/conflation_regression.json/.py which
+only read them back, are unaffected by this note or by the deletion.
+
 DECLARED (the faithful move, stated once): Stage 0 merged the trace
 MACHINERY but banked NO production trace over the corpus, so this driver
 GENERATES the traces using the registered instrument AS-IS — zero engine

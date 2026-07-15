@@ -53,12 +53,16 @@ def test_outbound_space_is_closed():
 
 
 def test_inbound_addresses_are_display_only_jacks():
-    # welcome/clock are control-plane display; drift (deprecated, conflated),
-    # the slide/loop pairs (Stage-0 shadow feed), eoc and novelty_sat are the
-    # meter jacks. All inbound is display-typed (I-5).
+    # welcome/clock are control-plane display; the slide/loop pairs (Stage-0
+    # shadow feed), eoc and novelty_sat are the meter jacks. All inbound is
+    # display-typed (I-5). The prior conflated drift jack was DELETED
+    # outright (directive-v1 Feature 2 Stage 1) and must never reappear.
+    # the closed set below is exhaustive: its absence from this set already
+    # proves the deleted conflated jack's address is gone (H-5b additionally
+    # sweeps for the literal string/symbol tree-wide).
     assert set(S.INBOUND_ADDRESSES) == {
         "/ets/welcome", "/ets/clock",
-        "/ets/meter/drift", "/ets/meter/slide", "/ets/meter/loop",
+        "/ets/meter/slide", "/ets/meter/loop",
         "/ets/meter/eoc", "/ets/meter/novelty_sat"}
 
 
@@ -70,12 +74,15 @@ def test_schema_addresses_are_pinned():
     assert S.ADDR_HELLO == "/ets/hello"
     assert S.ADDR_WELCOME == "/ets/welcome"
     assert S.ADDR_CLOCK == "/ets/clock"
-    assert S.ADDR_METER_DRIFT == "/ets/meter/drift"
     assert S.ADDR_METER_SLIDE == "/ets/meter/slide"
     assert S.ADDR_METER_LOOP == "/ets/meter/loop"
     assert S.ADDR_METER_EOC == "/ets/meter/eoc"
     assert S.ADDR_METER_NOVELTY_SAT == "/ets/meter/novelty_sat"
-    assert S.DRIFT_COMPONENTS == ("key", "phase_feel", "timbre")
+    assert S.GAUGE_COMPONENTS == ("key", "phase_feel", "timbre")
+    # the deleted conflated drift jack's address/schema symbols must not exist.
+    assert not hasattr(S, "ADDR_METER_DRIFT")
+    assert not hasattr(S, "encode_drift")
+    assert not hasattr(S, "DRIFT_COMPONENTS")
 
 
 def test_tolerances_roundtrip_including_inf():

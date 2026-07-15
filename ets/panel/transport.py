@@ -62,12 +62,6 @@ class OscEmitter:
 # lane / emitter / outbound socket. python-osc calls a mapped handler as
 # handler(address, fixed_args_tuple, *osc_values); `fixed[0]` is the MeterState.
 
-def _on_drift(_addr: str, fixed, *args) -> None:
-    meter_state = fixed[0]
-    key, phase_feel, timbre = args
-    meter_state.set_drift(key, phase_feel, timbre)
-
-
 def _on_eoc(_addr: str, fixed, *args) -> None:
     meter_state = fixed[0]
     (gate,) = args
@@ -108,7 +102,6 @@ def build_meter_dispatcher(meter_state: MeterState) -> _dispatcher.Dispatcher:
     """A dispatcher whose handlers write ONLY into `meter_state` — every
     inbound address of the closed message space, display-typed, no exceptions."""
     d = _dispatcher.Dispatcher()
-    d.map(S.ADDR_METER_DRIFT, _on_drift, meter_state)
     d.map(S.ADDR_METER_SLIDE, _on_slide, meter_state)
     d.map(S.ADDR_METER_LOOP, _on_loop, meter_state)
     d.map(S.ADDR_METER_EOC, _on_eoc, meter_state)

@@ -1,10 +1,16 @@
-"""Tests for the §9 meter jacks: drift CV, phrase EOC, novelty saturation, and
-the traffic loop-defect holonomy primitive.
+"""Tests for the §9 meter jacks: the slide/loop gauge-drift pair's shared
+``signed_increment`` primitive, phrase EOC, novelty saturation, and the
+traffic loop-defect holonomy primitive.
 
 Each meter is checked for (i) correct behaviour, (ii) GAUGE INVARIANCE to a
 global gauge action (the property that makes it a legal §9 jack), and (iii) that
 it is a pure read-only function (no F dependency — the structural side is the
 I-14 manifest check; here we assert the value-only contract behaviourally).
+
+(directive-v1 Feature 2 Stage 1: the prior conflated DRIFT CV jack and its
+``circular_holonomy`` primitive were DELETED outright — see
+tests/meters/test_gauge_split.py for the slide[g]/loop[g] pair's own coverage,
+and tests/meters/test_contract.py for the typed ending-veto predicate.)
 """
 from __future__ import annotations
 import numpy as np
@@ -12,50 +18,6 @@ import pytest
 
 from ets import meters as M
 from ets.meters import holonomy as H
-
-
-# --------------------------------------------------------------------------
-# DRIFT CV  (accumulated holonomy of the running gauge frame)
-# --------------------------------------------------------------------------
-
-def test_drift_accumulates_signed_winding():
-    running, total = H.circular_holonomy([0, 1, 3, 2, 5, 7, 7, 9], 12)
-    assert running[0] == 0.0
-    assert np.allclose(running, [0, 1, 3, 2, 5, 7, 7, 9])
-    assert total == 9.0
-
-
-def test_drift_circular_wrap_is_signed_minimal():
-    # 11 -> 0 is +1 (not -11); 0 -> 11 is -1 (not +11).
-    assert H.circular_holonomy([11, 0], 12)[1] == 1.0
-    assert H.circular_holonomy([0, 11], 12)[1] == -1.0
-
-
-def test_drift_gauge_invariance_global_reference_shift_exact():
-    # A global gauge action re-references the whole frame by a constant; the
-    # accumulated holonomy is EXACTLY unchanged (reads only differences).
-    rng = np.random.default_rng(1)
-    for _ in range(20):
-        traj = rng.integers(0, 12, size=16)
-        c = int(rng.integers(0, 12))
-        r0, t0 = H.circular_holonomy(traj, 12)
-        r1, t1 = H.circular_holonomy((traj + c) % 12, 12)
-        assert np.max(np.abs(r0 - r1)) == 0.0
-        assert t0 == t1
-
-
-def test_drift_cv_bank_key_and_phase_live_timbre_walled():
-    transpose = [0, 2, 4, 3, 5]
-    phase = [0, 1, 2, 1, 0]
-    d = M.drift_cv(transpose, phase, phase_modulus=8)
-    assert d.key.total == 5.0            # net +5 semitone winding
-    assert d.phase.total == 0.0          # returns to phase 0 -> zero net drift
-    # timbre jack is absent on a v0 world (no running timbre-basis frame): WALL.
-    assert d.timbre is None
-    assert d.as_dict()["timbre_drift_total"] is None
-    # ...but the machinery works when a timbre-basis angle IS supplied.
-    dt = M.timbre_drift([0.0, 0.5, 1.0, 0.5])
-    assert dt is not None and abs(dt.total - 0.5) < 1e-12
 
 
 # --------------------------------------------------------------------------

@@ -39,7 +39,8 @@ def test_emitter_output_is_function_of_lane_vector_only():
     # a flood of arbitrary meter values into a MeterState changes nothing upstream
     ms = MeterState()
     for k in range(50):
-        ms.set_drift(k, -k, 0.5 * k)
+        ms.set_slide(k, -k, 0.5 * k)
+        ms.set_loop(-k, k, 0.25 * k)
         ms.set_eoc(k % 2)
         ms.set_novelty_saturation((k % 7) / 7.0)
     emitter.emit(u)                  # re-emit the SAME u
@@ -55,7 +56,9 @@ def test_meter_receiver_updates_display_and_emits_nothing():
     try:
         from pythonosc import udp_client
         client = udp_client.SimpleUDPClient("127.0.0.1", rx.bound_port)
-        client.send_message(S.ADDR_METER_DRIFT, S.encode_drift(0.4, -0.1, 0.9))
+        client.send_message(S.ADDR_METER_SLIDE, S.encode_slide(0.4, -0.1, 0.9))
+        assert rx.handle_once(timeout=2.0)
+        client.send_message(S.ADDR_METER_LOOP, S.encode_loop(-0.2, 0.3, -0.5))
         assert rx.handle_once(timeout=2.0)
         client.send_message(S.ADDR_METER_EOC, S.encode_eoc(1))
         assert rx.handle_once(timeout=2.0)
@@ -64,9 +67,12 @@ def test_meter_receiver_updates_display_and_emits_nothing():
     finally:
         rx.stop()
     # OSC floats ride as float32 — compare with tolerance.
-    assert ms.drift["key"] == pytest.approx(0.4, abs=1e-6)
-    assert ms.drift["phase_feel"] == pytest.approx(-0.1, abs=1e-6)
-    assert ms.drift["timbre"] == pytest.approx(0.9, abs=1e-6)
+    assert ms.slide["key"] == pytest.approx(0.4, abs=1e-6)
+    assert ms.slide["phase_feel"] == pytest.approx(-0.1, abs=1e-6)
+    assert ms.slide["timbre"] == pytest.approx(0.9, abs=1e-6)
+    assert ms.loop["key"] == pytest.approx(-0.2, abs=1e-6)
+    assert ms.loop["phase_feel"] == pytest.approx(0.3, abs=1e-6)
+    assert ms.loop["timbre"] == pytest.approx(-0.5, abs=1e-6)
     assert ms.eoc_gate == 1
     assert ms.novelty_saturation == pytest.approx(0.75, abs=1e-6)
 
@@ -101,7 +107,8 @@ def test_panel_receiving_meters_never_emits():
 
     # now flood meters and refresh the display many times
     for k in range(100):
-        panel.meter_state.set_drift(k, -2 * k, 0.3 * k)
+        panel.meter_state.set_slide(k, -2 * k, 0.3 * k)
+        panel.meter_state.set_loop(-k, 2 * k, -0.3 * k)
         panel.meter_state.set_eoc(k % 2)
         panel.meter_state.set_novelty_saturation((k % 5) / 5.0)
         panel.refresh_meters()
@@ -134,7 +141,8 @@ def _identifiers(fn) -> set:
 
 
 def test_meter_handlers_touch_no_lane_or_emitter():
-    for fn in (T._on_drift, T._on_eoc, T._on_novelty_sat, T.build_meter_dispatcher):
+    for fn in (T._on_slide, T._on_loop, T._on_eoc, T._on_novelty_sat,
+              T.build_meter_dispatcher):
         used = _identifiers(fn) & _LANE_TOKENS
         assert not used, (
             f"meter handler {fn.__name__} references lane/emit identifiers "
@@ -153,7 +161,7 @@ def test_structural_scanner_bites_on_a_leaking_handler():
     """A mutant meter handler that writes a lane from a meter value MUST be
     flagged — proving the structural check is non-vacuous."""
     src = (
-        "def _on_drift(meter_state, _addr, *args):\n"
+        "def _on_slide(meter_state, _addr, *args):\n"
         "    key, phase_feel, timbre = args\n"
         "    meter_state.u_density = key   # LEAK: meter → lane\n"
     )

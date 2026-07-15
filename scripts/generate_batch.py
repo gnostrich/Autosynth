@@ -91,22 +91,26 @@ def bar_frame_and_mass(sched, s_phase):
 
 
 def gauge_trace(sched, O, s_phase):
-    """STAGE-0 shadow drift-meter split (directive-v1 feature 2): the per-bar
-    trace dict for the sidecar. READ-ONLY (I-5/I-14): computed from quantities
-    the machine already produced; nothing feeds back. Zero behavior change —
-    the audio path never sees this (H-3 test: meters computed vs stubbed =>
-    bit-identical audio)."""
-    from ets.meters import drift_cv, gauge_slide, loop_g
+    """Gauge-drift meter sidecar (directive-v1 feature 2): the per-bar trace
+    dict. READ-ONLY (I-5/I-14): computed from quantities the machine already
+    produced; nothing feeds back. Zero behavior change — the audio path never
+    sees this (H-3 test: meters computed vs stubbed => bit-identical audio).
+
+    Stage 1 (operator amendment stage1-delete-conflated-jack) DELETED the
+    prior conflated drift jack outright: it carried zero bits the slide/loop
+    pair below does not already carry, on every producible trace (REGISTRY
+    conflation-regression-stage1-2026-07-15). This sidecar reports slide/loop
+    only."""
+    from ets.meters import gauge_slide, loop_g
 
     S = int(s_phase)
     transpose, phase, mass = bar_frame_and_mass(sched, S)
     n_bars = len(transpose)
-    conflated = drift_cv(transpose, phase, phase_modulus=S)   # existing jack
     slide = gauge_slide(transpose, phase, phase_modulus=S, mass=mass)
     lg = loop_g(np.asarray(O)[:, :n_bars * S], S)             # committed bars
     return {
-        "instrument": "gauge drift-meter split, STAGE 0 shadow "
-                      "(directive-v1 feature 2)",
+        "instrument": "gauge drift meter pair (slide/loop), directive-v1 "
+                      "feature 2",
         "registry_id": "meter-split-gauge-slide-loop-2026-07-15",
         "shadow": True,
         "reads": {
@@ -140,10 +144,7 @@ def gauge_trace(sched, O, s_phase):
             "slide_key_disp": slide.key.per_bar.tolist(),
             "slide_phase_charge": slide.phase.per_bar.tolist(),
             "loop_g": lg.tolist(),
-            "conflated_drift_key_running": conflated.key.running.tolist(),
-            "conflated_drift_phase_running": conflated.phase.running.tolist(),
         },
-        "conflated_totals": conflated.as_dict(),
     }
 
 

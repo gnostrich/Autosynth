@@ -74,9 +74,9 @@ def test_h6_panel_exposes_exactly_the_declared_controls():
         "region", "density", "continuity", "gauge", "novelty", "temperature"}
     assert len(panel.lane_control_ids) == 6
     assert set(panel.tolerance_control_ids) == {"leash", "comma"}
-    # jack set: deprecated conflated drift + slide/loop pairs + eoc + novelty.
+    # jack set: slide/loop pairs + eoc + novelty. (The prior conflated drift
+    # jack was DELETED outright, directive-v1 Feature 2 Stage 1.)
     assert set(panel._jacks) == {
-        "drift_key", "drift_phase_feel", "drift_timbre",
         "slide_key", "slide_phase_feel", "slide_timbre",
         "loop_key", "loop_phase_feel", "loop_timbre",
         "eoc", "novelty_sat"}
@@ -155,9 +155,11 @@ def test_h6_engine_binds_exactly_the_outbound_space_and_emits_inbound_only():
     assert mapped == {"ADDR_LANES", "ADDR_TOLERANCES", "ADDR_HELLO"}, \
         f"engine binds a non-closed inbound set: {mapped}"
     sent = _send_addr_names(src)
-    allowed = {"ADDR_WELCOME", "ADDR_CLOCK", "ADDR_METER_DRIFT",
+    allowed = {"ADDR_WELCOME", "ADDR_CLOCK",
                "ADDR_METER_EOC", "ADDR_METER_NOVELTY_SAT"}
     assert sent <= allowed, f"engine emits outside the inbound space: {sent}"
+    # the deleted conflated drift jack must never reappear on the wire.
+    assert "ADDR_METER_DRIFT" not in sent
     # slide/loop emitters are DELIBERATELY absent (Stage-0 meters own them;
     # this engine must not fabricate their values).
     assert "ADDR_METER_SLIDE" not in sent and "ADDR_METER_LOOP" not in sent
