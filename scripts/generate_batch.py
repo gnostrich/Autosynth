@@ -154,6 +154,13 @@ def main():
     ap.add_argument("--sigma", type=float, default=None,
                     help="frozen corpus affinity scale; default = this set's median")
     ap.add_argument("--max-iter", type=int, default=800)
+    ap.add_argument("--master", action="store_true",
+                    help="apply the EXTERNAL output-mastering layer "
+                         "(ets.render.master; compressor->R128->limiter) after "
+                         "the pure render. Off by default: pure output is "
+                         "byte-identical, determinism preserved. Opt-in only.")
+    ap.add_argument("--master-lufs", type=float, default=-14.0,
+                    help="target integrated loudness when --master is set")
     args = ap.parse_args()
 
     import soundfile as sf
@@ -193,8 +200,15 @@ def main():
     print(f"      source bank: {len(bank)} units from tracks {used}")
     audio, prov = render(sched, bank)
     prov.assert_complete(audio)                       # I-12: every sample traced
-    peak = float(np.max(np.abs(audio))) + 1e-12
-    audio_n = 0.97 * audio / peak                     # peak-normalize for listening
+    if args.master:
+        # EXTERNAL output-mastering layer (opt-in, downstream of the pure render;
+        # never touches the schedule/tape/synth). Pure render above is unchanged.
+        from ets.render.master import master as _master
+        audio_n = _master(audio, int(sched.sr), target_lufs=args.master_lufs)
+        print(f"      mastered (external layer): target {args.master_lufs} LUFS")
+    else:
+        peak = float(np.max(np.abs(audio))) + 1e-12
+        audio_n = 0.97 * audio / peak                 # peak-normalize for listening
 
     print(f"[5/5] writing {out_path} ...")
     sf.write(out_path, audio_n.astype(np.float32), int(sched.sr), format="FLAC")

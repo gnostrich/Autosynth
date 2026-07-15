@@ -14,6 +14,11 @@ dev = ["pytest>=7"]
 # (live mode only) so offline/CI hosts without PortAudio run the full suite
 # without it (I-13-clean native stack). Deliberately NOT a core dependency.
 panel = ["PySide6-Essentials>=6.6", "python-osc>=1.8", "sounddevice>=0.4"]
+# 'mastering' = the EXTERNAL output-mastering layer (ets.render.master). pyloudnorm
+# is imported LAZILY and only when --master is requested, so core/CI run without
+# it. This layer is downstream of the pure render and never touches the intrinsic
+# object (registry: output-master-external).
+mastering = ["pyloudnorm>=0.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
