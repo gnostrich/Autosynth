@@ -100,8 +100,8 @@ def _on_clock(_addr: str, fixed, *args) -> None:
 
 def _on_welcome(_addr: str, fixed, *args) -> None:
     meter_state = fixed[0]
-    K, world_hash, L, bar_seconds, sr = args
-    meter_state.set_welcome(K, world_hash, L, bar_seconds, sr)
+    K, world_hash, L, bar_seconds, sr, disarmed = args
+    meter_state.set_welcome(K, world_hash, L, bar_seconds, sr, disarmed)
 
 
 def build_meter_dispatcher(meter_state: MeterState) -> _dispatcher.Dispatcher:

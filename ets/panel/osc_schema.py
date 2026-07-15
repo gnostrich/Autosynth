@@ -38,10 +38,14 @@ replies. These feed the panel's DISPLAY only; nothing derived from them is
 ever emitted (I-5):
 
   /ets/welcome            K:int32, world_hash:str, L:int32,
-                          bar_seconds:float32, sr:int32
+                          bar_seconds:float32, sr:int32, disarmed:str
                           (handshake reply: anchor count sizes the REGION
                           strips; L is the DECLARED control latency in bars —
-                          plugin-latency semantics, surfaced, never hidden)
+                          plugin-latency semantics, surfaced, never hidden;
+                          `disarmed` is a comma-joined list of lanes whose
+                          tilt scale the registered σ_φ instrument could not
+                          identify on this world — those lanes still transmit
+                          u but apply NO tilt, and the panel shows the state)
   /ets/clock              bar:int32, seconds:float32   (master-clock display)
   /ets/meter/drift        key:float32, phase_feel:float32, timbre:float32
                           (accumulated holonomy per gauge component — §9.
@@ -155,8 +159,9 @@ def encode_hello(meters_port: int) -> List[int]:
 
 
 def encode_welcome(K: int, world_hash: str, L: int, bar_seconds: float,
-                   sr: int) -> List:
-    return [int(K), str(world_hash), int(L), float(bar_seconds), int(sr)]
+                   sr: int, disarmed: str = "") -> List:
+    return [int(K), str(world_hash), int(L), float(bar_seconds), int(sr),
+            str(disarmed)]
 
 
 def encode_clock(bar: int, seconds: float) -> List:

@@ -78,11 +78,14 @@ def test_two_process_handshake_meters_and_persistence(live):
         client.send_message(S.ADDR_HELLO, S.encode_hello(meters_port))
         assert _recv_until(server, lambda: got["welcome"] is not None), \
             "no /ets/welcome handshake reply"
-        K, whash, L, bar_s, sr = got["welcome"]
+        K, whash, L, bar_s, sr, disarmed = got["welcome"]
         assert K == live["engine"].world.M
         assert whash == live["world_hash"]
         assert L >= 1 and sr == 44100 and bar_s > 0
         assert L == live["result"].get("L", L)
+        # the synthetic world's inline σ has all lanes identifiable ⇒ none
+        # disarmed (the registered corpus artifact would list density,gauge).
+        assert disarmed == ""
 
         # lanes + tolerances ride the wire and land in the inbox/log.
         u = default_lane_vector(K)

@@ -50,13 +50,21 @@ class SigmaPhi:
     """The registered σ_φ calibration numbers for ONE frozen world.
 
     region is per-anchor (the REGION lane is a vector over anchors); the other
-    four are scalars. `meta` carries the calibration provenance (instrument id,
-    n_bars, seed, world hash) and is never read by the map itself."""
+    four are scalars. `identifiable[lane]` = False marks a lane whose scale the
+    registered instrument could NOT identify on this world (e.g. σ_density
+    under a MAP-settling untilted writer, where the observable has zero
+    untilted fluctuation): such a lane is DISARMED — λ is UNDEFINED, not zero
+    and not huge — and the map applies no tilt while the panel still transmits
+    u (honest state, surfaced by engine log + /ets/welcome). This is distinct
+    from an identifiable σ=0 (a statistic PROVEN constant over the candidate
+    set, e.g. φ_gauge on a frozen-frame world), whose identity tilt is exact.
+    `meta` carries calibration provenance and is never read by the map."""
     region: np.ndarray            # (M,) fluctuation of φ_region per anchor
     density: float
     cont: float
     gauge: float
     novelty: float
+    identifiable: Mapping = field(default_factory=dict)   # lane -> bool (default True)
     meta: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -69,16 +77,21 @@ class SigmaPhi:
                 "sigma_phi must be finite and >= 0 (a negative or NaN "
                 "fluctuation is a broken calibration, not a scale)")
 
+    def is_identifiable(self, lane: str) -> bool:
+        return bool(self.identifiable.get(lane, True))
+
     @classmethod
     def from_mapping(cls, m: Mapping) -> "SigmaPhi":
-        """Build from the calibration artifact's mapping (the ets.calibration
-        loader's output): keys = the five φ ids; region is a per-anchor list."""
+        """Build from a mapping artifact (embedded world sigma / --sigma-phi
+        JSON): keys = the five φ ids; region is a per-anchor list; optional
+        'identifiable' dict of lane -> bool."""
         missing = [k for k in PHI_IDS if k not in m]
         if missing:
             raise ValueError(f"sigma_phi artifact missing observables: {missing}")
         return cls(region=np.asarray(m["region"], float),
                    density=float(m["density"]), cont=float(m["cont"]),
                    gauge=float(m["gauge"]), novelty=float(m["novelty"]),
+                   identifiable=dict(m.get("identifiable", {})),
                    meta=dict(m.get("meta", {})))
 
 
@@ -93,7 +106,9 @@ class TiltTerms:
     lam_gauge: float
     lam_novelty: float
     T_s: float
-    degenerate: Tuple[str, ...] = ()   # lanes whose φ was σ=0-degenerate
+    degenerate: Tuple[str, ...] = ()   # lanes whose φ was σ=0-degenerate (exact identity)
+    disarmed: Tuple[str, ...] = ()     # lanes the instrument could not identify
+                                       # (λ undefined; NO tilt applied; honest state)
 
     def __post_init__(self):
         object.__setattr__(self, "lam_region",
@@ -128,7 +143,16 @@ class WorldNotCalibrated(RuntimeError):
     report; do not guess."""
 
 
-def _lam(u: float, sigma: float, lane: str, degenerate: list) -> float:
+def _lam(u: float, sigma: float, lane: str, identifiable: bool,
+         degenerate: list, disarmed: list) -> float:
+    if not identifiable:
+        # the registered instrument could NOT identify this lane's scale on
+        # this world/writer: λ is UNDEFINED (≠ 0-as-value, ≠ huge). The lane is
+        # DISARMED: u still transmits, no tilt is applied, and the state is
+        # surfaced (engine log + /ets/welcome). Never invent a scale.
+        if u != 0.0:
+            disarmed.append(lane)
+        return 0.0
     if sigma == 0.0:
         if u != 0.0:
             degenerate.append(lane)
@@ -162,17 +186,25 @@ def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
             f"region lean has {r.shape[0]} anchors but calibration has "
             f"{sr.shape[0]} — σ_φ must be re-run on anchor spawn/prune")
     degenerate: list = []
+    disarmed: list = []
+    reg_ok = sigma.is_identifiable("region")
     lam_region = np.zeros_like(r)
     for k in range(r.shape[0]):
-        lam_region[k] = _lam(float(r[k]), float(sr[k]), f"region[{k}]", degenerate)
+        lam_region[k] = _lam(float(r[k]), float(sr[k]), f"region[{k}]", reg_ok,
+                             degenerate, disarmed)
     terms = TiltTerms(
         lam_region=lam_region,
-        lam_density=_lam(float(u.u_density), sigma.density, "density", degenerate),
-        lam_cont=_lam(float(u.u_continuity), sigma.cont, "cont", degenerate),
-        lam_gauge=_lam(float(u.u_gauge), sigma.gauge, "gauge", degenerate),
-        lam_novelty=_lam(float(u.u_novelty), sigma.novelty, "novelty", degenerate),
+        lam_density=_lam(float(u.u_density), sigma.density, "density",
+                         sigma.is_identifiable("density"), degenerate, disarmed),
+        lam_cont=_lam(float(u.u_continuity), sigma.cont, "cont",
+                      sigma.is_identifiable("cont"), degenerate, disarmed),
+        lam_gauge=_lam(float(u.u_gauge), sigma.gauge, "gauge",
+                       sigma.is_identifiable("gauge"), degenerate, disarmed),
+        lam_novelty=_lam(float(u.u_novelty), sigma.novelty, "novelty",
+                         sigma.is_identifiable("novelty"), degenerate, disarmed),
         T_s=float(u.T_s),
         degenerate=tuple(degenerate),
+        disarmed=tuple(disarmed),
     )
     return terms
 

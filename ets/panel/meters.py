@@ -55,6 +55,7 @@ class MeterState:
     engine_L: Optional[int] = None
     engine_bar_seconds: float = math.nan
     engine_sr: Optional[int] = None
+    engine_disarmed: str = ""         # lanes with no identified tilt scale
 
     # --- inbound updates (the ONLY mutators; each writes display state only) --
     def set_drift(self, key: float, phase_feel: float, timbre: float) -> None:
@@ -83,9 +84,10 @@ class MeterState:
         self.clock_seconds = float(seconds)
 
     def set_welcome(self, K: int, world_hash: str, L: int,
-                    bar_seconds: float, sr: int) -> None:
+                    bar_seconds: float, sr: int, disarmed: str = "") -> None:
         self.engine_K = int(K)
         self.engine_world_hash = str(world_hash)
         self.engine_L = int(L)
         self.engine_bar_seconds = float(bar_seconds)
         self.engine_sr = int(sr)
+        self.engine_disarmed = str(disarmed)

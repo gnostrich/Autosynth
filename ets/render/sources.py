@@ -54,11 +54,20 @@ class SourceUnitBank:
         return len(self._units)
 
 
-def load_source_units(track, audio: np.ndarray) -> SourceUnitBank:
+def load_source_units(track, audio: np.ndarray,
+                      storage_dtype=np.float64) -> SourceUnitBank:
     """Materialize every unit of ``track`` from its source ``audio``.
 
     Deterministic: STFT -> partition-of-unity bands -> slice each band on the
     unit's provenance span. No decision is taken; this is pure reconstruction.
+
+    ``storage_dtype`` is a DECLARED storage-precision option for the bank
+    (default float64 = exact reconstruction, unchanged for every existing
+    caller). The live engine passes float32 to hold a full corpus in memory
+    (unit audio at ~1e-7 relative precision; the reconstruction itself and all
+    render arithmetic stay float64). Deterministic either way; the choice is
+    logged by the engine and documented in LAUNCH.md — a capacity decision,
+    never a per-input quality fork.
     """
     sr = int(track.sr)
     y = np.asarray(audio, dtype=np.float64)
@@ -74,7 +83,7 @@ def load_source_units(track, audio: np.ndarray) -> SourceUnitBank:
         band = int(row["band"])
         a = int(row["src_start"])
         b = int(row["src_end"])
-        seg = np.ascontiguousarray(bands[band][a:b], dtype=np.float64)
+        seg = np.ascontiguousarray(bands[band][a:b], dtype=storage_dtype)
         bank.add(SourceUnit(track_id=track.track_id, unit_id=uid, band=band,
                             src_start=a, src_end=b, audio=seg, sr=sr))
     return bank

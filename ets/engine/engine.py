@@ -55,10 +55,10 @@ log = logging.getLogger("ets.engine")
 def resolve_sigma(wf: WorldFile, cli_path: Optional[str] = None
                   ) -> Optional[SigmaPhi]:
     """Documented precedence: --sigma-phi PATH > world-file-embedded > the
-    registered corpus artifact (ets/calibration/sigma_phi.json via the
-    ets.calibration loader). Returns None if none exists — the engine then
-    runs UNTILTED ONLY and any nonzero lean raises WorldNotCalibrated (loud;
-    λ is never invented)."""
+    REGISTERED corpus artifact (ets.calibration.load_sigma_phi — the σ_φ
+    calibration instrument, a concurrent feature). Returns None if none
+    exists — the engine then runs UNTILTED ONLY and any nonzero lean raises
+    WorldNotCalibrated (loud; λ is never invented)."""
     if cli_path:
         with open(cli_path) as fh:
             m = json.load(fh)
@@ -68,20 +68,61 @@ def resolve_sigma(wf: WorldFile, cli_path: Optional[str] = None
         log.info("sigma_phi: embedded in world file")
         return SigmaPhi.from_mapping(wf.sigma_phi)
     try:
-        from ets import calibration as _cal
+        from ets.calibration import load_sigma_phi, world_content_hash
     except ImportError:
         log.warning("sigma_phi: NO calibration found (ets.calibration absent) "
                     "— UNCALIBRATED world: direction lanes will refuse nonzero "
                     "leans (WorldNotCalibrated); T_s and u=0 remain available")
         return None
-    loader = getattr(_cal, "load_sigma_phi", None)
-    m = loader() if loader is not None else None
-    if m is None:
+    cal = load_sigma_phi()
+    if cal is None:
         log.warning("sigma_phi: ets.calibration present but returned no "
                     "artifact — running UNCALIBRATED (see above)")
         return None
-    log.info("sigma_phi: loaded from registered artifact (ets.calibration)")
-    return SigmaPhi.from_mapping(m)
+    # STALENESS GUARD: the instrument is bound to ONE frozen world; a hash
+    # mismatch means anchors changed since calibration (spawn/prune) and the
+    # instrument must be re-run — refuse, never proceed on a stale scale.
+    expected = world_content_hash(wf.world.fstate)
+    if cal.world_hash != expected:
+        raise RuntimeError(
+            f"STALE CALIBRATION: registered σ_φ artifact was measured on world "
+            f"{cal.world_hash[:12]} but this world file's content hash is "
+            f"{expected[:12]}. Re-run the calibration instrument at "
+            "world-freeze (σ_φ is re-run on any anchor spawn/prune); the "
+            "engine will not lean on a stale scale.")
+    # map the instrument's lane-keyed record onto the tilt map's SigmaPhi.
+    # identifiable=False lanes (measured zero untilted fluctuation under the
+    # registered MAP-settling writer: density, gauge) are DISARMED — λ is
+    # undefined there and no tilt is applied (see ets.writer.tilt).
+    sig = SigmaPhi(
+        region=np.asarray(cal.sigma["region"], float),
+        density=float(cal.sigma.get("density", 0.0) or 0.0),
+        cont=float(cal.sigma["continuity"]),
+        gauge=float(cal.sigma.get("gauge", 0.0) or 0.0),
+        novelty=float(cal.sigma["novelty"]),
+        identifiable={
+            "region": bool(cal.identifiable.get("region", True)),
+            "density": bool(cal.identifiable.get("density", False)),
+            "cont": bool(cal.identifiable.get("continuity", True)),
+            "gauge": bool(cal.identifiable.get("gauge", False)),
+            "novelty": bool(cal.identifiable.get("novelty", True)),
+        },
+        meta={"source": "ets.calibration registered artifact",
+              "world_hash": cal.world_hash,
+              "lane_phi": dict(getattr(cal, "lane_phi", {}) or {})})
+    dis = sorted(k for k, v in sig.identifiable.items() if not v)
+    log.info("sigma_phi: registered artifact loaded (world %s); disarmed "
+             "lanes (unidentifiable scale): %s", cal.world_hash[:12],
+             ", ".join(dis) if dis else "none")
+    return sig
+
+
+def disarmed_lanes(sigma: Optional[SigmaPhi]) -> list:
+    """Lane ids whose tilt scale the registered instrument could not identify
+    (surfaced on /ets/welcome and in the log; the panel shows them)."""
+    if sigma is None:
+        return ["region", "density", "cont", "gauge", "novelty"]
+    return sorted(k for k, v in dict(sigma.identifiable).items() if not v)
 
 
 # --------------------------------------------------------------------------
@@ -91,7 +132,13 @@ def resolve_sigma(wf: WorldFile, cli_path: Optional[str] = None
 def build_bank(wf: WorldFile, track_ids: Optional[set] = None) -> SourceUnitBank:
     """Materialize source-unit audio. 'embedded' worlds carry their bank;
     'corpus' worlds re-derive units deterministically from the source files
-    (the same G0-style band reconstruction as ingestion — no choices)."""
+    (the same G0-style band reconstruction as ingestion — no choices).
+
+    Corpus banks are stored float32 (declared capacity decision, logged here
+    and documented in LAUNCH.md): the full 20-track band decomposition at
+    float64 (~17 GB) exceeds ordinary desktop memory; float32 (~8.5 GB) holds
+    unit audio at ~1e-7 relative precision while ALL render arithmetic stays
+    float64. Deterministic either way; never a per-input fork."""
     src = wf.sources
     if src["kind"] == "embedded":
         return src["bank"]
@@ -100,13 +147,14 @@ def build_bank(wf: WorldFile, track_ids: Optional[set] = None) -> SourceUnitBank
     by_id = {t.track_id: t for t in world.tracks}
     wanted = set(by_id) if track_ids is None else set(track_ids)
     bank = SourceUnitBank(sr=int(world.sr))
+    log.info("bank: corpus storage precision float32 (declared; see LAUNCH.md)")
     for tid in sorted(wanted):
         track = by_id[tid]
         path = src["paths"][tid] if isinstance(src["paths"], dict) else \
             src["paths"][int(tid)]
         log.info("bank: materializing track %d from %s", tid, path)
         y, _ = librosa.load(path, sr=track.sr, mono=True)
-        tb = load_source_units(track, y)
+        tb = load_source_units(track, y, storage_dtype=np.float32)
         for key in list(tb._units.keys()):
             bank.add(tb._units[key])
     return bank
@@ -204,6 +252,12 @@ class Engine:
         if tilt.degenerate:
             log.warning("degenerate lanes (σ_φ=0 ⇒ identity tilt, exact): %s",
                         ", ".join(tilt.degenerate))
+        if tilt.disarmed:
+            log.warning("DISARMED lane leaned: %s — uncalibrated scale "
+                        "(instrument measured zero untilted fluctuation under "
+                        "the MAP writer); u transmitted, NO tilt applied. "
+                        "Unblocking: registered σ_φ re-run under the T_s>0 "
+                        "sampling writer.", ", ".join(tilt.disarmed))
         return tilt
 
     # ------------------------------------------------------------------
@@ -330,6 +384,8 @@ class Engine:
         played_bars = 0
         start_t = None
 
+        dis = ",".join(disarmed_lanes(self.sigma))
+
         def answer_hello():
             got = inbox.hello()
             if got is not None and inbox.hello_event.is_set():
@@ -337,7 +393,7 @@ class Engine:
                 host, port = got
                 meters.retarget(host, port)
                 meters.welcome(world.M, self.wf.world_hash, L, bar_seconds,
-                               int(world.sr))
+                               int(world.sr), disarmed=dis)
 
         try:
             start_t = time.monotonic()

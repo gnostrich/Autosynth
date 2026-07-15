@@ -156,11 +156,13 @@ class MeterEmitter:
         self._client = udp_client.SimpleUDPClient(host, int(port))
 
     def welcome(self, K: int, world_hash: str, L: int, bar_seconds: float,
-                sr: int) -> None:
+                sr: int, disarmed: str = "") -> None:
         self._client.send_message(
-            S.ADDR_WELCOME, S.encode_welcome(K, world_hash, L, bar_seconds, sr))
-        log.info("WELCOME -> %s:%d  (K=%d, L=%d bars, bar=%.3fs, world %s)",
-                 self.host, self.port, K, L, bar_seconds, world_hash[:8])
+            S.ADDR_WELCOME,
+            S.encode_welcome(K, world_hash, L, bar_seconds, sr, disarmed))
+        log.info("WELCOME -> %s:%d  (K=%d, L=%d bars, bar=%.3fs, world %s, "
+                 "disarmed=%s)", self.host, self.port, K, L, bar_seconds,
+                 world_hash[:8], disarmed or "none")
 
     def clock(self, bar: int, seconds: float) -> None:
         self._client.send_message(S.ADDR_CLOCK, S.encode_clock(bar, seconds))

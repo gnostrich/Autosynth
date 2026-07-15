@@ -444,8 +444,10 @@ class Panel(QWidget):
             self._clock.setText(f"CLOCK bar {ms.clock_bar}  "
                                 f"({ms.clock_seconds:.1f}s)")
         if ms.engine_K is not None:
+            dis = (f"  DISARMED: {ms.engine_disarmed} (uncalibrated scale — "
+                   "u transmits, no tilt)" if ms.engine_disarmed else "")
             self._link.setText(
                 f"engine: connected  K={ms.engine_K}  L={ms.engine_L} bars  "
-                f"world {ms.engine_world_hash[:8]}")
+                f"world {ms.engine_world_hash[:8]}{dis}")
             if ms.engine_K != self.u.n_anchors:
                 self.set_anchor_count(ms.engine_K)
