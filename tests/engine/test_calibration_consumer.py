@@ -81,17 +81,19 @@ def test_resolve_sigma_accepts_the_real_registered_artifact():
     artifact stores region identifiability per-anchor (an (M,) bool array);
     resolve_sigma must aggregate it (all-components rule), not bool()-coerce
     an array. Runs against the actual committed artifact, not a synthetic."""
+    import os
     import numpy as np
+    import pytest
     from ets.calibration import load_sigma_phi
     from ets.engine.engine import resolve_sigma
+    from ets.engine.worldfile import load_world
 
-    class _WF:  # minimal worldfile stub: no embedded sigma, hash matches
-        sigma_phi = None
-
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    wf_path = os.path.join(root, "corpus.etsworld")
+    if not os.path.exists(wf_path):
+        pytest.skip("corpus.etsworld not built in this checkout (build_worldfile.py)")
     cal = load_sigma_phi()
-    wf = _WF()
-    wf.world_content_hash = cal.world_hash
-    sig = resolve_sigma(wf, None)
+    sig = resolve_sigma(load_world(wf_path), None)  # the exact live-CLI path
     assert isinstance(sig.identifiable["region"], bool)
     assert sig.identifiable["region"] == bool(np.all(cal.identifiable["region"]))
     # the two measured-unidentifiable lanes stay disarmed with the real artifact
