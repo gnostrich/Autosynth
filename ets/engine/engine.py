@@ -33,6 +33,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+import os
 import numpy as np
 
 from ets.engine.latency import PROFILES, LatencyProfile, derive_L
@@ -149,21 +150,49 @@ def build_bank(wf: WorldFile, track_ids: Optional[set] = None) -> SourceUnitBank
     src = wf.sources
     if src["kind"] == "embedded":
         return src["bank"]
-    import librosa                                  # corpus worlds only
+    from ets.render import bank_cache as bc
     world = wf.world
     by_id = {t.track_id: t for t in world.tracks}
     wanted = set(by_id) if track_ids is None else set(track_ids)
+    # Storage precision: float32 default. ETS_BANK_DTYPE=float16 halves memory
+    # (~1e-3 rel precision) so the full bank fits a smaller machine — a DECLARED
+    # capacity option (LAUNCH.md), never a per-input fork; render math stays f64.
+    dtype = np.dtype(os.environ.get("ETS_BANK_DTYPE", "float32"))
+    use_cache = os.environ.get("ETS_BANK_NOCACHE") != "1"
+    cache_dir = bc.default_cache_dir()
     bank = SourceUnitBank(sr=int(world.sr))
-    log.info("bank: corpus storage precision float32 (declared; see LAUNCH.md)")
+    log.info("bank: storage %s, disk-cache %s", dtype.name,
+             "on" if use_cache else "off")
+    librosa = None
     for tid in sorted(wanted):
         track = by_id[tid]
         path = src["paths"][tid] if isinstance(src["paths"], dict) else \
             src["paths"][int(tid)]
+        try:
+            src_size = os.path.getsize(path)
+        except OSError:
+            src_size = -1
+        key = bc.track_key(track, dtype, src_size)
+        units = bc.load_track_units(cache_dir, tid, dtype, key) if use_cache else None
+        if units is not None:
+            log.info("bank: track %d from cache (%d units)", tid, len(units))
+            for u in units:
+                bank.add(u)
+            continue
+        if librosa is None:
+            import librosa as _lb           # corpus worlds only; import once
+            librosa = _lb
         log.info("bank: materializing track %d from %s", tid, path)
         y, _ = librosa.load(path, sr=track.sr, mono=True)
-        tb = load_source_units(track, y, storage_dtype=np.float32)
-        for key in list(tb._units.keys()):
-            bank.add(tb._units[key])
+        tb = load_source_units(track, y, storage_dtype=dtype)
+        us = [tb._units[k] for k in tb._units]
+        for u in us:
+            bank.add(u)
+        if use_cache:
+            try:
+                bc.save_track_units(us, cache_dir, tid, dtype, key, int(track.sr))
+            except Exception as e:           # cache is best-effort, never fatal
+                log.warning("bank: cache write failed track %d: %s", tid, e)
     return bank
 
 
