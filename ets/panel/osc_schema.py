@@ -47,17 +47,17 @@ ever emitted (I-5):
                           identify on this world — those lanes still transmit
                           u but apply NO tilt, and the panel shows the state)
   /ets/clock              bar:int32, seconds:float32   (master-clock display)
-  /ets/meter/drift        key:float32, phase_feel:float32, timbre:float32
-                          (accumulated holonomy per gauge component — §9.
-                          DEPRECATED as a pair-conflating readout: it sums the
-                          slide and loop parts of drift; retained for
-                          compatibility, displayed as deprecated.)
   /ets/meter/slide        key:float32, phase_feel:float32, timbre:float32
   /ets/meter/loop         key:float32, phase_feel:float32, timbre:float32
-                          (the slide/loop jack PAIRS that split the conflated
-                          drift readout — values produced by the Stage-0
-                          meters; until that feed exists the panel displays
-                          '—'. NaN on the wire = no reading.)
+                          (the slide/loop jack PAIRS — directive-v1 Feature 2;
+                          values produced by the Stage-0 meters; until that
+                          feed exists the panel displays '—'. NaN on the wire
+                          = no reading. The prior conflated DRIFT jack that
+                          summed these two parts into one number was DELETED
+                          outright in Stage 1 — code, panel element, OSC
+                          address — per merged evidence that it carried zero
+                          bits the pair does not already carry
+                          (REGISTRY conflation-regression-stage1-2026-07-15).)
   /ets/meter/eoc          gate:int32          (phrase end-of-chain gate; 0/1)
   /ets/meter/novelty_sat  saturation:float32  (novelty saturation CV; ~[0,1])
 
@@ -83,7 +83,6 @@ ADDR_TOLERANCES = "/ets/tolerances"       # OUTBOUND, declared tolerances (no co
 ADDR_HELLO = "/ets/hello"                 # OUTBOUND, handshake
 ADDR_WELCOME = "/ets/welcome"             # INBOUND, handshake reply
 ADDR_CLOCK = "/ets/clock"                 # INBOUND, master-clock display
-ADDR_METER_DRIFT = "/ets/meter/drift"     # INBOUND (deprecated: conflates slide+loop)
 ADDR_METER_SLIDE = "/ets/meter/slide"     # INBOUND (Stage-0 shadow feed)
 ADDR_METER_LOOP = "/ets/meter/loop"       # INBOUND (Stage-0 shadow feed)
 ADDR_METER_EOC = "/ets/meter/eoc"         # INBOUND
@@ -92,12 +91,11 @@ ADDR_METER_NOVELTY_SAT = "/ets/meter/novelty_sat"  # INBOUND
 OUTBOUND_ADDRESSES: Tuple[str, ...] = (ADDR_LANES, ADDR_TOLERANCES, ADDR_HELLO)
 INBOUND_ADDRESSES: Tuple[str, ...] = (
     ADDR_WELCOME, ADDR_CLOCK,
-    ADDR_METER_DRIFT, ADDR_METER_SLIDE, ADDR_METER_LOOP,
+    ADDR_METER_SLIDE, ADDR_METER_LOOP,
     ADDR_METER_EOC, ADDR_METER_NOVELTY_SAT)
 
-# Drift gauge components, in wire order (spec §9); the slide/loop pairs split
-# the SAME components.
-DRIFT_COMPONENTS: Tuple[str, ...] = ("key", "phase_feel", "timbre")
+# Gauge components, in wire order (spec §9); shared by the slide/loop pairs.
+GAUGE_COMPONENTS: Tuple[str, ...] = ("key", "phase_feel", "timbre")
 
 
 def encode_lanes(u: LaneVector) -> List:
@@ -168,14 +166,14 @@ def encode_clock(bar: int, seconds: float) -> List:
     return [int(bar), float(seconds)]
 
 
-def encode_drift(key: float, phase_feel: float, timbre: float) -> List[float]:
+def _encode_gauge_triple(key: float, phase_feel: float, timbre: float) -> List[float]:
     return [float(key), float(phase_feel), float(timbre)]
 
 
-# slide/loop pairs use the same 3-component wire shape as drift; NaN = "no
-# reading yet" (the Stage-0 shadow feed may be absent; the panel shows '—').
-encode_slide = encode_drift
-encode_loop = encode_drift
+# slide/loop pairs share the same 3-component wire shape; NaN = "no reading
+# yet" (the Stage-0 shadow feed may be absent; the panel shows '—').
+encode_slide = _encode_gauge_triple
+encode_loop = _encode_gauge_triple
 
 
 def encode_eoc(gate: int) -> List[int]:

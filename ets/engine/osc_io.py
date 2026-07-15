@@ -167,10 +167,6 @@ class MeterEmitter:
     def clock(self, bar: int, seconds: float) -> None:
         self._client.send_message(S.ADDR_CLOCK, S.encode_clock(bar, seconds))
 
-    def drift(self, key: float, phase_feel: float, timbre: float) -> None:
-        self._client.send_message(S.ADDR_METER_DRIFT,
-                                  S.encode_drift(key, phase_feel, timbre))
-
     def eoc(self, gate: int) -> None:
         self._client.send_message(S.ADDR_METER_EOC, S.encode_eoc(gate))
 

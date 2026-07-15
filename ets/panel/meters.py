@@ -1,9 +1,14 @@
 """Meter display model (spec §9) — a READ-ONLY inbound sink.
 
-The panel DISPLAYS meter values it receives from the engine (drift CV outs,
-phrase EOC gate, novelty saturation). It must NOT consume them into any control
-computation: meters→planner/feedback is the sanctioned consumer, not the
-panel's lanes (spec §9, I-5).
+The panel DISPLAYS meter values it receives from the engine (the slide/loop
+gauge-drift jack pair, phrase EOC gate, novelty saturation). It must NOT
+consume them into any control computation: meters→planner/feedback is the
+sanctioned consumer, not the panel's lanes (spec §9, I-5).
+
+(The prior conflated DRIFT jack was DELETED outright in directive-v1 Feature 2
+Stage 1 — code, panel element, OSC address, registry field — per merged
+evidence it carried zero bits the slide/loop pair does not already carry;
+REGISTRY conflation-regression-stage1-2026-07-15.)
 
 The guarantee is STRUCTURAL, not just conventional: `MeterState` is a distinct
 object from `LaneVector`. It has no reference to any lane, emitter, or the
@@ -41,8 +46,6 @@ class MeterState:
     is no getter here that a control computation could legitimately call; the
     field names make plain these are outputs of the engine, inputs to the eye.
     """
-    drift: Dict[str, float] = field(default_factory=lambda: {
-        "key": 0.0, "phase_feel": 0.0, "timbre": 0.0})   # DEPRECATED (conflated)
     slide: Dict[str, float] = field(default_factory=_nan_components)
     loop: Dict[str, float] = field(default_factory=_nan_components)
     eoc_gate: int = 0                 # phrase end-of-chain gate (0/1)
@@ -58,11 +61,6 @@ class MeterState:
     engine_disarmed: str = ""         # lanes with no identified tilt scale
 
     # --- inbound updates (the ONLY mutators; each writes display state only) --
-    def set_drift(self, key: float, phase_feel: float, timbre: float) -> None:
-        self.drift = {"key": float(key),
-                      "phase_feel": float(phase_feel),
-                      "timbre": float(timbre)}
-
     def set_slide(self, key: float, phase_feel: float, timbre: float) -> None:
         self.slide = {"key": float(key),
                       "phase_feel": float(phase_feel),

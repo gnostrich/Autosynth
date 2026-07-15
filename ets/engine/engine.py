@@ -372,7 +372,6 @@ class Engine:
             prod_times.append(dt)
             produced.append((r.bar, audio.astype(np.float32)))
             meters.clock(r.bar, r.bar * bar_seconds)
-            meters.drift(0.0, 0.0, float("nan"))   # identity frame; timbre absent
             meters.eoc(0)
             meters.novelty_sat(float(r.phi["novelty"]))
             log.info("bar %d committed: %d placements, settle %d iters, "

@@ -1,8 +1,8 @@
-"""slide[g] — gauge-frame SLIDE meter (directive-v1 feature 2, STAGE 0 shadow).
+"""slide[g] — gauge-frame SLIDE meter (directive-v1 feature 2).
 
-THE SPLIT. The existing DRIFT CV jack (``drift_cv``) reports one conflated
-number per gauge component: the accumulated signed winding of the running
-frame. That winding mixes two physically distinct quantities:
+THE SPLIT. The prior conflated DRIFT CV jack reported one conflated number
+per gauge component: the accumulated signed winding of the running frame.
+That winding mixed two physically distinct quantities:
 
   (1) the frame SLIDING along its gauge orbit (a displacement-from-home of the
       section gauge itself — key modulation, groove shift), and
@@ -14,9 +14,13 @@ gauge fields the machine already produces — at corpus time the per-track
 sections ``FState.transpose`` / ``FState.phase_off``; at the writer the
 realized Schedule's per-section ``Gauge`` (transpose_semitones, phase_shift),
 sampled per bar. The caller passes those already-produced values as plain
-arrays (same contract as ``drift_cv``); this module imports ONLY numpy and its
-sibling ``holonomy`` primitives — never ``ets.functional`` (I-5, I-14; the
-I-14 manifest check enforces this structurally).
+arrays (same contract the prior conflated jack used); this module imports
+ONLY numpy and its sibling ``holonomy`` primitives — never ``ets.functional``
+(I-5, I-14; the I-14 manifest check enforces this structurally). Stage 1
+(operator amendment stage1-delete-conflated-jack) DELETED the conflated jack
+outright — code, panel element, OSC address, registry field — per merged
+evidence it carried zero bits this pair does not already carry
+(REGISTRY conflation-regression-stage1-2026-07-15).
 
 PER BAR: compose the frame's increments (the discrete connection 1-form,
 gauge-invariant by construction: a global re-referencing v -> v + c cancels in
@@ -132,7 +136,7 @@ def slide_phase(phase: Sequence[float], phase_modulus: float,
 class GaugeSlide:
     """The slide[g] jack bank: one jack per live v0 gauge component. The
     timbre-basis component is absent-by-construction on any v0 world (the
-    same WALL recorded in ``drift_cv``; nothing is fabricated here)."""
+    same WALL the prior conflated jack recorded; nothing is fabricated here)."""
     key: SlideReadout
     phase: SlideReadout
 

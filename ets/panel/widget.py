@@ -1,7 +1,8 @@
 """Native PySide6 panel widget (spec §8, §12) — the six lanes (strips + XY
 vector pad for REGION), the two declared tolerance knobs (LEASH/COMMA), meter
-jacks (incl. the slide/loop pairs and the deprecated conflated drift jack),
-clock display, MIDI CC learn. Headless-testable under QT_QPA_PLATFORM=offscreen.
+jacks (the slide/loop pairs; the prior conflated drift jack was DELETED
+outright in directive-v1 Feature 2 Stage 1), clock display, MIDI CC learn.
+Headless-testable under QT_QPA_PLATFORM=offscreen.
 
 Native Qt only. No web/browser tech (I-13). The widget renders exactly the six
 lanes from `ets.panel.lanes.LANES` (its construction asserts exhaustiveness)
@@ -315,16 +316,15 @@ class Panel(QWidget):
         clock_row.addWidget(self._link)
         root.addLayout(clock_row)
 
-        # Meter jacks (read-only). The conflated drift jack is RETAINED but
-        # marked DEPRECATED (it sums what the slide/loop pairs split); the
-        # slide/loop pairs show '—' until the Stage-0 shadow feed arrives.
+        # Meter jacks (read-only). The slide/loop pairs show '—' until the
+        # Stage-0 shadow feed arrives. (The prior conflated DRIFT jack was
+        # DELETED outright in directive-v1 Feature 2 Stage 1 — code, panel
+        # element, OSC address — per merged evidence it carried zero bits the
+        # slide/loop pair does not already carry; REGISTRY
+        # conflation-regression-stage1-2026-07-15.)
         meters_box = QGroupBox("METER JACKS (read-only)", self)
         mlay = QGridLayout(meters_box)
         self._jacks = {
-            "drift_key": _MeterJack("DRIFT key [deprecated: conflated]", self),
-            "drift_phase_feel": _MeterJack(
-                "DRIFT phase/feel [deprecated: conflated]", self),
-            "drift_timbre": _MeterJack("DRIFT timbre [deprecated: conflated]", self),
             "slide_key": _MeterJack("SLIDE key", self),
             "slide_phase_feel": _MeterJack("SLIDE phase/feel", self),
             "slide_timbre": _MeterJack("SLIDE timbre", self),
@@ -432,8 +432,7 @@ class Panel(QWidget):
         the emitter. (The welcome-driven anchor-count resize below sizes the
         region lane's SUPPORT — world structure — never a lean value.)"""
         ms = self.meter_state
-        for prefix, comp in (("drift", ms.drift), ("slide", ms.slide),
-                             ("loop", ms.loop)):
+        for prefix, comp in (("slide", ms.slide), ("loop", ms.loop)):
             self._jacks[f"{prefix}_key"].refresh(fmt_reading(comp["key"]))
             self._jacks[f"{prefix}_phase_feel"].refresh(
                 fmt_reading(comp["phase_feel"]))
