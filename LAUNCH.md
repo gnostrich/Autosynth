@@ -114,6 +114,15 @@ sidecar records the full determinism tuple (world sha256, LAMBDA, knob
 trajectory sha256, seed, audio sha256): same tuple ⇒ bit-identical audio
 (CI: tests/harness/test_h8_determinism.py).
 
+**Optional output master (for comfortable listening).** The raw render preserves
+the synth's full dynamics, which can be very wide. To master it — a standard,
+EXTERNAL compressor → EBU R128 loudness → limiter chain that never touches the
+synth — either add `pip install 'ets[mastering]'` then run any render through
+`python scripts/master.py in.flac out.flac [--lufs -14]`, or (batch renders)
+pass `--master` to `generate_batch`. It is opt-in: without it the pure,
+deterministic render is unchanged. This layer is downstream mastering only, not
+part of the instrument (registry: output-master-external).
+
 ## 6. Declared limitations (honest state, with unblocking conditions)
 
 - DENSITY and GAUGE-STIFFNESS lanes are DISARMED under the current registered
