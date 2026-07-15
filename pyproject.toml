@@ -20,6 +20,15 @@ panel = ["PySide6-Essentials>=6.6", "python-osc>=1.8", "sounddevice>=0.4"]
 # object (registry: output-master-external).
 mastering = ["pyloudnorm>=0.1"]
 
+# The installable runtime package is `ets` (+ its subpackages) ONLY. Without
+# this, setuptools flat-layout auto-discovery (>=61) sees the repo's other
+# top-level dirs — legacy/, analysis/, litepaper/, corpus/, samples/, cache/ —
+# and aborts with "Multiple top-level packages discovered". Those are data,
+# docs, and frozen snapshots, not code to install. tests/ and scripts/ are run
+# by path (pytest testpaths / direct invocation), not installed.
+[tool.setuptools.packages.find]
+include = ["ets*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
