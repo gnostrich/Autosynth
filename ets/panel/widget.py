@@ -52,8 +52,57 @@ def _from_slider(lane_id: str, pos: int) -> float:
     return float(s.lo + (pos / _SLIDER_STEPS) * (s.hi - s.lo))
 
 
+class _ScrollSlider(QSlider):
+    """A vertical slider driven by HOVER + SCROLL, not click-drag (macOS
+    trackpad idiom, operator request). Contract:
+
+    * WHEEL over the widget (two-finger trackpad scroll or mouse wheel) nudges
+      the value RELATIVELY — no need to click first; hovering is enough.
+    * click / drag do NOT move the value (no accidental fling, no click-to-jump).
+    * hovering alone does NOT move the value (no absolute "value follows the
+      cursor" — the position only changes on an explicit scroll gesture).
+
+    Everything else (range, setValue/value, valueChanged, blockSignals) is the
+    stock QSlider API, so the surrounding panel code is unchanged."""
+
+    # scroll sensitivity: a standard wheel notch is 120 units in angleDelta;
+    # one notch moves ~2% of the range. Trackpad pixelDelta is finer-grained and
+    # scaled to match. Derived from _SLIDER_STEPS, not hand-tuned per feel.
+    _STEP_PER_NOTCH = max(1, _SLIDER_STEPS // 50)
+
+    def __init__(self, *a, **k) -> None:
+        super().__init__(*a, **k)
+        self.setFocusPolicy(Qt.WheelFocus)   # wheel works on hover, no click needed
+        self._accum = 0.0
+
+    def wheelEvent(self, ev) -> None:
+        # prefer high-resolution trackpad pixelDelta; fall back to angleDelta.
+        pd = ev.pixelDelta().y()
+        if pd != 0:
+            step = pd / 8.0 * (self._STEP_PER_NOTCH / 15.0)
+        else:
+            step = (ev.angleDelta().y() / 120.0) * self._STEP_PER_NOTCH
+        self._accum += step
+        whole = int(self._accum)
+        if whole:
+            self._accum -= whole
+            self.setValue(int(min(self.maximum(),
+                                  max(self.minimum(), self.value() + whole))))
+        ev.accept()
+
+    # click / drag are inert: value changes only via wheel.
+    def mousePressEvent(self, ev) -> None:
+        ev.ignore()
+
+    def mouseMoveEvent(self, ev) -> None:
+        ev.ignore()
+
+    def mouseReleaseEvent(self, ev) -> None:
+        ev.ignore()
+
+
 class _LaneStrip(QWidget):
-    """A single scalar-lane channel strip (label + vertical slider)."""
+    """A single scalar-lane channel strip (label + hover-scroll slider)."""
 
     changed = Signal(str, float)   # (lane_id, value)
 
@@ -62,7 +111,7 @@ class _LaneStrip(QWidget):
         self.lane_id = lane_id
         s = spec(lane_id)
         lay = QVBoxLayout(self)
-        self._slider = QSlider(Qt.Vertical, self)
+        self._slider = _ScrollSlider(Qt.Vertical, self)
         self._slider.setRange(0, _SLIDER_STEPS)
         self._slider.setValue(_to_slider(lane_id, s.default))
         self._slider.valueChanged.connect(self._on_move)
@@ -90,13 +139,13 @@ class _RegionStrips(QGroupBox):
     def __init__(self, parent=None) -> None:
         super().__init__(spec("region").title, parent)
         self._row = QHBoxLayout(self)
-        self._strips: list[QSlider] = []
+        self._strips: list[_ScrollSlider] = []
 
     def set_anchor_count(self, K: int) -> None:
         K = int(K)
         while len(self._strips) < K:
             i = len(self._strips)
-            sl = QSlider(Qt.Vertical, self)
+            sl = _ScrollSlider(Qt.Vertical, self)
             sl.setRange(0, _SLIDER_STEPS)
             sl.setValue(_to_slider("region", 0.0))
             sl.valueChanged.connect(lambda pos, idx=i:
@@ -122,9 +171,10 @@ class _RegionStrips(QGroupBox):
 class _RegionXYPad(QWidget):
     """The XY VECTOR PAD view of the REGION lane (spec §8 lane 1: "growable
     channel strips / XY vector pad"). A UI affordance over the SAME u_region
-    vector — it introduces no lane: dragging sets a lean profile over the K
-    discovered anchors (anchors sit on a circle; the pad position leans toward
-    the nearby anchors, center = no lean), emitted through the one region path.
+    vector — it introduces no lane. Interaction (macOS trackpad idiom): HOVER
+    over the pad to aim toward the nearby anchors (which sit on a circle), then
+    SCROLL to push the lean magnitude that way. Hovering alone changes nothing;
+    click/drag are inert. Emitted through the one region path.
     """
 
     changed = Signal(object)   # full (K,) region lean vector
@@ -132,8 +182,12 @@ class _RegionXYPad(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._K = 0
-        self._pos: Optional[QPointF] = None
+        self._pos: Optional[QPointF] = None   # hover AIM (direction), not a value
+        self._throw = 0.0                     # lean magnitude [0,1], scroll-driven
+        self._accum = 0.0
         self.setMinimumSize(140, 140)
+        self.setMouseTracking(True)           # hover reported without a click
+        self.setFocusPolicy(Qt.WheelFocus)
 
     def set_anchor_count(self, K: int) -> None:
         self._K = int(K)
@@ -145,38 +199,46 @@ class _RegionXYPad(QWidget):
         ang = 2.0 * math.pi * i / max(1, self._K)
         return cx + r * math.cos(ang), cy + r * math.sin(ang)
 
-    def _vector_at(self, x: float, y: float) -> np.ndarray:
-        """Pad position -> region lean vector: lean magnitude = radial throw
-        (0 at center .. lane max at rim), distributed over anchors by inverse
-        distance (a vector-mixer crossfade, the Doepfer A-144 idiom)."""
+    def _vector(self) -> np.ndarray:
+        """Region lean vector from the current AIM (hover direction) and THROW
+        (scroll magnitude): anchors weighted by inverse distance to the aim
+        point (vector-mixer crossfade, Doepfer A-144 idiom), magnitude = lane
+        max * throw. Aim absent -> center -> even lean."""
         s = spec("region")
         K = self._K
         u = np.zeros(K, dtype=np.float32)
         if K == 0:
             return u
-        cx, cy = self.width() / 2.0, self.height() / 2.0
-        rmax = 0.42 * min(self.width(), self.height())
-        throw = min(1.0, math.hypot(x - cx, y - cy) / max(rmax, 1e-9))
+        if self._pos is None:
+            x, y = self.width() / 2.0, self.height() / 2.0
+        else:
+            x, y = self._pos.x(), self._pos.y()
         w = np.zeros(K)
         for i in range(K):
             ax, ay = self._anchor_xy(i)
             w[i] = 1.0 / (math.hypot(x - ax, y - ay) + 1e-6)
         w = w / w.sum()
-        u[:] = (s.hi * throw) * w
+        u[:] = (s.hi * self._throw) * w
         return u
 
-    def mousePressEvent(self, ev) -> None:
-        self._drag(ev)
-
+    # HOVER = aim only (which anchors to lean toward). It does NOT change the
+    # value — no absolute "value follows the cursor".
     def mouseMoveEvent(self, ev) -> None:
-        if ev.buttons() & Qt.LeftButton:
-            self._drag(ev)
-
-    def _drag(self, ev) -> None:
-        p = ev.position()
-        self._pos = p
-        self.changed.emit(self._vector_at(p.x(), p.y()))
+        self._pos = ev.position()
         self.update()
+
+    # click/drag inert (parity with the sliders — no accidental fling).
+    def mousePressEvent(self, ev) -> None:
+        ev.ignore()
+
+    # SCROLL sets the lean magnitude toward the current aim, and emits.
+    def wheelEvent(self, ev) -> None:
+        pd = ev.pixelDelta().y()
+        step = (pd / 400.0) if pd != 0 else (ev.angleDelta().y() / 120.0) * 0.04
+        self._throw = float(min(1.0, max(0.0, self._throw + step)))
+        self.changed.emit(self._vector())
+        self.update()
+        ev.accept()
 
     def paintEvent(self, _ev) -> None:
         qp = QPainter(self)
@@ -186,9 +248,16 @@ class _RegionXYPad(QWidget):
             ax, ay = self._anchor_xy(i)
             qp.drawEllipse(QPointF(ax, ay), 3, 3)
             qp.drawText(int(ax) + 5, int(ay), str(i))
+        # aim (hover) marker + throw magnitude ring from centre.
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+        if self._throw > 0:
+            rmax = 0.42 * min(self.width(), self.height())
+            qp.setPen(QPen(Qt.blue, 1))
+            qp.drawEllipse(QPointF(cx, cy), rmax * self._throw, rmax * self._throw)
         if self._pos is not None:
             qp.setPen(QPen(Qt.black, 2))
             qp.drawEllipse(self._pos, 5, 5)
+            qp.drawText(6, self.height() - 6, f"throw {self._throw:.2f} (scroll)")
         qp.end()
 
 
