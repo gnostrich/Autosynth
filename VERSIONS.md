@@ -20,19 +20,43 @@ folders + a ledger, never divergent branches.
    create a new architecture version, and it does NOT delete or overwrite any
    sibling instantiation.
 
+An instantiation takes one of **two shapes**:
+
 ```
-<architecture-version>/                 e.g. the v1 architecture
-  <shared architecture code/tests>
+<architecture-version> (repo root = v1 architecture + its FOUNDING instantiation):
+  ets/  scripts/  tests/                         shared architecture code
+  corpus.etsworld, ets/functional/f.py:LAMBDA,   psytech trained model,
+    ets/calibration/sigma_phi.json, corpus/        EMBEDDED in place (shape 1)
   instantiations/
-    <corpus-a>/   world + LAMBDA + sigma_phi + exam receipts   (trained model A)
-    <corpus-b>/   world + LAMBDA + sigma_phi + exam receipts   (trained model B)
-    ...
+    psytech/       README pointer -> the embedded root tree (see asymmetry note)
+    futuregarage/  FULL FORK: own ets/ + world + LAMBDA + sigma_phi + receipts
+                     (shape 2 — a self-contained trained model in a subfolder)
+    <corpus-c>/    ...
 ```
 
-- A **corpus retrain** ⇒ new `instantiations/<corpus>/` under the SAME
+- **Shape 1 (embedded-founding):** the first instantiation grew up in the root
+  tree with the architecture itself. There is exactly one of these: `psytech`.
+- **Shape 2 (subfolder):** every later instantiation lands in its own
+  `instantiations/<corpus>/` — thin (shared code) or a full fork (own code copy),
+  per the isolation chosen at the time. `futuregarage` is a full fork.
+
+- A **corpus retrain** ⇒ new `instantiations/<corpus>/` (shape 2) under the SAME
   architecture version. Siblings untouched.
 - An **architecture / implementation change** ⇒ new architecture-version folder.
   Prior architecture version untouched.
+
+### Asymmetry note (logged, on purpose)
+
+`psytech` is **not** physically inside `instantiations/psytech/` — it is embedded
+at the repo root, with only a pointer README in the subfolder. This is deliberate:
+it is the **founding** instantiation, fused with the protected v1 tree. Moving it
+would re-pickle `corpus.etsworld` (**changing v1's H-8 determinism hash**), break
+~9 harness/test assertions, and break `pyproject.toml`'s root `ets` discovery —
+i.e. it would mutate "what worked." So psytech is **grandfathered in place**.
+**Go-forward rule:** every instantiation after psytech uses shape 2 (its own
+`instantiations/<corpus>/`) from the start, and any *new architecture version*
+created by forking starts clean with this folder structure — the asymmetry is a
+one-time artifact of the founding model, not the pattern.
 
 The current tree (`ets/`, its single embedded instantiation — the psytech
 world/`LAMBDA`/calibration — and `tests/`, `scripts/`, etc.) is the **v1
@@ -77,7 +101,7 @@ permissions, so this committed file is the authoritative marker.)
 
 | Instantiation | Architecture | Corpus | Location | Gate |
 |---|---|---|---|---|
-| **psytech** | v1 | first corpus (jungle/psy/house, embedded) | repo root (`ets/`, `corpus.etsworld`) | separation PASS (rev-r1) |
+| **psytech** | v1 | first corpus (jungle/psy/house) | repo root (embedded); pointer at `instantiations/psytech/` | separation PASS (rev-r1) |
 | **futuregarage** | v1 (**full fork**) | deep/atmospheric halftime, 25 tracks | `instantiations/futuregarage/` | separation PASS, held-out min sep 0.98 |
 
 Isolation note: the user chose **full-fork** isolation for `futuregarage` — a

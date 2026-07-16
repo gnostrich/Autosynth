@@ -11,3 +11,6 @@
 {"head": "59e2791", "path": "instantiations/nidhogg/README.md", "tool": "Write", "ts": "2026-07-16T06:38:58+00:00"}
 {"head": "59e2791", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T06:39:24+00:00"}
 {"head":"e11d28c","note":"RENAME: instantiation codenames -> genre names. 'jörmungandr'->'psytech' (v1 root instantiation), 'nidhogg'->'futuregarage' (fork). Folder instantiations/nidhogg -> instantiations/futuregarage; world file re-saved with corrected corpus paths (fstate content-hash unchanged 863316226e18, sigma_phi.json binding intact). Earlier ledger paths naming 'nidhogg' are historical and left as-is.","tool":"note","ts":"2026-07-16T07:10:00+00:00"}
+{"head": "147a787", "path": "instantiations/psytech/README.md", "tool": "Write", "ts": "2026-07-16T07:18:33+00:00"}
+{"head": "147a787", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T07:18:48+00:00"}
+{"head": "147a787", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T07:18:58+00:00"}
