@@ -34,7 +34,7 @@ folders + a ledger, never divergent branches.
 - An **architecture / implementation change** ⇒ new architecture-version folder.
   Prior architecture version untouched.
 
-The current tree (`ets/`, its single embedded instantiation — the Jörmungandr
+The current tree (`ets/`, its single embedded instantiation — the psytech
 world/`LAMBDA`/calibration — and `tests/`, `scripts/`, etc.) is the **v1
 architecture with its first instantiation**. Future instantiations do not edit
 `ets/functional/f.py`'s `LAMBDA`, the v1 world, or the v1 calibration in place;
@@ -68,7 +68,7 @@ to the coarse table below.
 | Architecture version | Marker (commit) | Local tag | State |
 |---|---|---|---|
 | **v0-validated** | `6eabf6d` | `v0-validated-revr1` | racer-C rev-r1 pass (min held-out sep 0.95); snapshot `legacy/v0-validated/` |
-| **v1-stable** | `05a4468` | `v1-stable` | Live synth (engine+panel/OSC), rev-r1 F on unit-resolved fiber, first instantiation = Jörmungandr world/LAMBDA/calibration, drift split, mastering layer, bank cache + float16, 14/15 invariants, 232 tests green |
+| **v1-stable** | `05a4468` | `v1-stable` | Live synth (engine+panel/OSC), rev-r1 F on unit-resolved fiber, first instantiation = psytech world/LAMBDA/calibration, drift split, mastering layer, bank cache + float16, 14/15 invariants, 232 tests green |
 
 (Annotated git tags are created, but remote tag push is blocked by app
 permissions, so this committed file is the authoritative marker.)
@@ -77,13 +77,13 @@ permissions, so this committed file is the authoritative marker.)
 
 | Instantiation | Architecture | Corpus | Location | Gate |
 |---|---|---|---|---|
-| **jörmungandr** | v1 | first corpus (jungle/psy/house, embedded) | repo root (`ets/`, `corpus.etsworld`) | separation PASS (rev-r1) |
-| **nidhogg** | v1 (**full fork**) | deep/atmospheric halftime, 25 tracks | `instantiations/nidhogg/` | separation PASS, held-out min sep 0.98 |
+| **psytech** | v1 | first corpus (jungle/psy/house, embedded) | repo root (`ets/`, `corpus.etsworld`) | separation PASS (rev-r1) |
+| **futuregarage** | v1 (**full fork**) | deep/atmospheric halftime, 25 tracks | `instantiations/futuregarage/` | separation PASS, held-out min sep 0.98 |
 
-Isolation note: the user chose **full-fork** isolation for `nidhogg` — a
+Isolation note: the user chose **full-fork** isolation for `futuregarage` — a
 self-contained copy of the v1 implementation lives under
-`instantiations/nidhogg/` so v1's code is **byte-unchanged** (verified: no v1
-file staged across any nidhogg commit). Each instantiation re-earns its world +
+`instantiations/futuregarage/` so v1's code is **byte-unchanged** (verified: no v1
+file staged across any futuregarage commit). Each instantiation re-earns its world +
 LAMBDA + σ_φ + separation exam on its own corpus; nothing transfers. `cache/`
 (ingest + bank) is git-ignored and rebuilt on demand; the corpus + world file are
-committed for reproducibility. See `instantiations/nidhogg/{README,MANIFEST}.json`.
+committed for reproducibility. See `instantiations/futuregarage/{README,MANIFEST}.json`.
