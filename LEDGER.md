@@ -197,3 +197,11 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `52341ca`
 - `Write` architecture-v4/PREREG-feature3.md (2026-07-16T14:57:40+00:00)
 - `Edit` VERSIONS.md (2026-07-16T14:58:00+00:00)
+
+### at `d9d4c95`
+- `Write` architecture-v4/ets/instrument/__init__.py (2026-07-16T15:06:16+00:00)
+- `Write` architecture-v4/ets/instrument/model.py (2026-07-16T15:06:56+00:00)
+- `Write` architecture-v4/ets/instrument/tap.py (2026-07-16T15:07:27+00:00)
+- `Write` architecture-v4/ets/instrument/transport.py (2026-07-16T15:07:40+00:00)
+- `Write` architecture-v4/ets/instrument/cue.py (2026-07-16T15:08:08+00:00)
+- `Edit` architecture-v4/ets/panel/widget.py (2026-07-16T15:08:19+00:00)

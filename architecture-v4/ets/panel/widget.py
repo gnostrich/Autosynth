@@ -547,6 +547,19 @@ class Panel(QWidget):
             self.u.u_region[anchor] = value
         self._push()
 
+    def tap_region_anchor(self, anchor: int, value: float) -> None:
+        """Set one anchor's region lean and push it — the PUBLIC entry the
+        instrument-half pad tap/hold (ets.instrument.tap) drives. It is exactly
+        the existing region path: it writes u_region and emits on the ONE
+        outbound /ets/lanes channel via the same `_push`. It opens no second
+        channel — a pad gesture reaches the engine ONLY as a spike on this
+        region-tilt lane (PREREG-feature3 §hard lines; connector C-3)."""
+        if 0 <= anchor < self.u.n_anchors:
+            self.u.u_region[anchor] = float(value)
+            if anchor < self._region.anchor_count:
+                self._region.set_anchor(anchor, float(value))
+        self._push()
+
     def _on_region_vector(self, vec) -> None:
         """The XY pad view sets the whole region lean at once (same lane)."""
         vec = np.asarray(vec, dtype=np.float32).reshape(-1)
