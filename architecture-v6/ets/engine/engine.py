@@ -343,6 +343,23 @@ def bar_role_activity(rows, bank, B) -> np.ndarray:
     return (v / peak) if peak > 0.0 else v
 
 
+def _playback_soft_limit(y: np.ndarray, thr: float = 0.6, ceil: float = 0.92) -> np.ndarray:
+    """LIVE-only playback safety limiter (I-11 playback stage, OUTSIDE the trained
+    object — never applied to render_offline). Transparent below `thr` (byte-identical
+    there); a soft-knee tanh above so decisive steering cannot blow the live output
+    past `ceil`. This is why offline renders stay byte-identical: it lives only in the
+    live produce loop, not in render_offline."""
+    y = np.asarray(y, dtype=np.float32)
+    a = np.abs(y)
+    over = a > thr
+    if not np.any(over):
+        return y
+    out = y.copy()
+    s = np.sign(y[over])
+    out[over] = (s * (thr + (ceil - thr) * np.tanh((a[over] - thr) / (ceil - thr)))).astype(np.float32)
+    return out
+
+
 def nowplaying_activity(rows) -> List[Tuple[int, float]]:
     """READ-ONLY reduction over a produced bar's provenance rows.
 
@@ -505,6 +522,7 @@ class Engine:
             r = self.writer.write_bar(tilt=tilt)
             sched = bar_schedule(world, r.rows, s_phase)
             audio, _prov = render_schedule(sched, bank)
+            audio = _playback_soft_limit(audio)   # LIVE-only playback safety (I-11)
             dt = time.perf_counter() - t0
             prod_times.append(dt)
             produced.append((r.bar, audio.astype(np.float32)))

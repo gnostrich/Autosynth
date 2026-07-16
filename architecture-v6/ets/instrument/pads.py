@@ -206,6 +206,16 @@ class RegionTapPads(QWidget):
             qp.setPen(QPen(Qt.black, 1))
             qp.drawRect(int(x) + 2, 2, int(w) - 4, self.height() - 4)
             qp.drawText(int(x) + 6, 16, str(i))
+            # DIRECT gesture feedback: the pad you are holding gets a bold ring +
+            # brighter fill + a STEER label, so "what I'm doing" is unmistakable.
+            if i == self._pressed:
+                hot = QColor(70, 110, 240)
+                hot.setAlphaF(min(1.0, 0.45 + 0.55 * lvl))
+                qp.fillRect(int(x) + 2, 2, int(w) - 4, self.height() - 4, hot)
+                qp.setPen(QPen(QColor(255, 210, 60), 4))
+                qp.drawRect(int(x) + 3, 3, int(w) - 6, self.height() - 6)
+                qp.setPen(QPen(QColor(255, 235, 130), 1))
+                qp.drawText(int(x) + 6, self.height() - 8, "STEER")
         qp.end()
 
 
