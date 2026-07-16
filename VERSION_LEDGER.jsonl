@@ -8,3 +8,5 @@
 {"head": "53c4e0b", "note": "PIVOT: user chose full-fork isolation for the nidhogg instantiation (no edits to v1 code). The three ets/functional/f.py edits logged above were REVERTED (git checkout) — v1 f.py is byte-pristine. New instantiation is a self-contained copy under instantiations/nidhogg/.", "tool": "note", "ts": "2026-07-16T06:30:00+00:00"}
 {"head": "712f106", "path": "instantiations/nidhogg/ets/functional/f.py", "tool": "Edit", "ts": "2026-07-16T06:24:03+00:00"}
 {"head": "712f106", "path": "instantiations/nidhogg/scripts/render_journeys.py", "tool": "Write", "ts": "2026-07-16T06:26:44+00:00"}
+{"head": "59e2791", "path": "instantiations/nidhogg/README.md", "tool": "Write", "ts": "2026-07-16T06:38:58+00:00"}
+{"head": "59e2791", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T06:39:24+00:00"}

@@ -72,3 +72,18 @@ to the coarse table below.
 
 (Annotated git tags are created, but remote tag push is blocked by app
 permissions, so this committed file is the authoritative marker.)
+
+## Instantiations
+
+| Instantiation | Architecture | Corpus | Location | Gate |
+|---|---|---|---|---|
+| **jörmungandr** | v1 | first corpus (jungle/psy/house, embedded) | repo root (`ets/`, `corpus.etsworld`) | separation PASS (rev-r1) |
+| **nidhogg** | v1 (**full fork**) | deep/atmospheric halftime, 25 tracks | `instantiations/nidhogg/` | separation PASS, held-out min sep 0.98 |
+
+Isolation note: the user chose **full-fork** isolation for `nidhogg` — a
+self-contained copy of the v1 implementation lives under
+`instantiations/nidhogg/` so v1's code is **byte-unchanged** (verified: no v1
+file staged across any nidhogg commit). Each instantiation re-earns its world +
+LAMBDA + σ_φ + separation exam on its own corpus; nothing transfers. `cache/`
+(ingest + bank) is git-ignored and rebuilt on demand; the corpus + world file are
+committed for reproducibility. See `instantiations/nidhogg/{README,MANIFEST}.json`.
