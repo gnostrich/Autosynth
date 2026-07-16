@@ -350,14 +350,20 @@ def _playback_soft_limit(y: np.ndarray, thr: float = 0.6, ceil: float = 0.92) ->
     past `ceil`. This is why offline renders stay byte-identical: it lives only in the
     live produce loop, not in render_offline."""
     y = np.asarray(y, dtype=np.float32)
+    # 1) kill any non-finite garbage FIRST (a divergence blow-up is NaN/inf, which a
+    #    plain `> thr` comparison silently passes through) — NaN→0, ±inf→±ceil.
+    if not np.all(np.isfinite(y)):
+        y = np.nan_to_num(y, nan=0.0, posinf=ceil, neginf=-ceil).astype(np.float32)
+    # 2) soft-knee tanh above the threshold (transparent below it).
     a = np.abs(y)
     over = a > thr
-    if not np.any(over):
-        return y
-    out = y.copy()
-    s = np.sign(y[over])
-    out[over] = (s * (thr + (ceil - thr) * np.tanh((a[over] - thr) / (ceil - thr)))).astype(np.float32)
-    return out
+    if np.any(over):
+        out = y.copy()
+        s = np.sign(y[over])
+        out[over] = (s * (thr + (ceil - thr) * np.tanh((a[over] - thr) / (ceil - thr)))).astype(np.float32)
+        y = out
+    # 3) hard safety ceiling — nothing leaves above `ceil`, ever.
+    return np.clip(y, -ceil, ceil).astype(np.float32)
 
 
 def nowplaying_activity(rows) -> List[Tuple[int, float]]:
