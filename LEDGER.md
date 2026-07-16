@@ -247,3 +247,11 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` architecture-v5/tests/v5/test_v5d_clamp.py (2026-07-16T15:59:03+00:00)
 - `Write` architecture-v5/tests/v5/test_v5e_slew.py (2026-07-16T15:59:21+00:00)
 - `Write` architecture-v5/tests/v5/test_v5f_door.py (2026-07-16T15:59:51+00:00)
+
+### at `d3d6e85`
+- `Write` VERSION_SCHEME.md (2026-07-16T16:15:36+00:00)
+- `Write` release-manifest.json (2026-07-16T16:17:05+00:00)
+- `Edit` VERSION_SCHEME.md (2026-07-16T16:18:50+00:00)
+- `Edit` VERSION_SCHEME.md (2026-07-16T16:18:55+00:00)
+- `Write` RUN_LOCAL.md (2026-07-16T16:19:37+00:00)
+- `Edit` VERSIONS.md (2026-07-16T16:19:52+00:00)

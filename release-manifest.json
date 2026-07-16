@@ -1,0 +1,29 @@
+{
+  "_comment": "The active ETS release — a pinned tuple across the three version axes (see VERSION_SCHEME.md). This file is the single source of truth for 'what am I running'.",
+  "release": "engine-v1 · ui-v4 · psytech",
+  "engine": {
+    "id": "engine-v1",
+    "location": "repo root (ets/, corpus.etsworld, ets/calibration/)",
+    "status": "active",
+    "verified_by": "scripts/verify_version.py against verification/canonical_manifest.json"
+  },
+  "ui": {
+    "id": "ui-v4",
+    "location": "architecture-v5/",
+    "title": "interaction fixes (hover-scroll, pad pick-and-place, slew + safe clamp)",
+    "status": "merged",
+    "auditor": "PASS (2026-07-16)",
+    "runs_on": "engine-v1",
+    "outboard_byte_identical": true
+  },
+  "instance": {
+    "id": "psytech",
+    "location": "repo root (embedded founding) + pointer instantiations/psytech/",
+    "status": "active"
+  },
+  "also_available": {
+    "instances": ["futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"],
+    "ui_history": ["ui-v1 (founding panel)", "ui-v2 (architecture-v2, knob naming)", "ui-v3 (architecture-v4, instrument surface)"],
+    "sealed": ["engine-v2-x (_sealed/architecture-v3-sampler-FAILED, failed sampler)"]
+  }
+}

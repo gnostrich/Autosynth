@@ -87,6 +87,12 @@ timestamp, tool, path, git HEAD). It is the running provenance of how each
 architecture version and instantiation came to be — the fine-grained companion
 to the coarse table below.
 
+> **The authoritative version scheme is now `VERSION_SCHEME.md`** (formal three-axis
+> component versioning: `engine-vN` · `ui-vN` · `instance`), and the active release is
+> pinned in `release-manifest.json` (currently **`engine-v1 · ui-v4 · psytech`**). The
+> section below is retained as background; the mapping table there ⇄ the new IDs lives
+> in `VERSION_SCHEME.md`.
+
 ## Taxonomy — two lines (read this first)
 
 Versioning runs on **two independent lines** so a UX change never risks the music
