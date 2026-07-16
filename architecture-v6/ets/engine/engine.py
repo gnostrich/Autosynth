@@ -316,6 +316,45 @@ def role_unit_counts(world) -> np.ndarray:
     return counts
 
 
+def role_unit_pool(world, top_n: int = 24) -> Dict[int, list]:
+    """READ-ONLY static per-ROLE unit POOL for the pad drill-in (spec §8 region
+    lane; the classical-sampler drill).
+
+    SOFT, NON-EXCLUSIVE by construction: this world cannot hard-partition units to
+    roles (one anchor tends to win every band's argmax), so role i's pool is
+    simply the units RANKED by their anchor-profile weight on anchor i — the value
+    B[i, band] — with OVERLAP ALLOWED and a manageable `top_n` kept. Forcing a
+    unit onto exactly one role would be a fabricated partition; it is deliberately
+    not done.
+
+    A unit's ANCHOR-PROFILE is B[:, band] — the length-M column of the frozen
+    anchor band-profile matrix world.fstate.B (M = n_anchors), where the unit's
+    band comes from its track's provenance_index. Each pool entry is
+    (unit_id, track_id, band, profile=B[:, band]).
+
+    Pure reduction over the frozen world (world.fstate.B + track.provenance_index);
+    it calls NOTHING downstream (no settlement, writer, render, F, or provenance
+    generation) and is computed ONCE at startup. Static. Returns
+    {role: [(unit_id, track_id, band, np.ndarray (M,)), ...]}."""
+    B = np.asarray(world.fstate.B, dtype=np.float64)          # (M, n_bands)
+    M, n_bands = B.shape
+    units: List[Tuple[int, int, int]] = []
+    for track in world.tracks:
+        tid = int(track.track_id)
+        prov = track.provenance_index
+        uids = np.asarray(prov["unit_id"], dtype=np.int64).tolist()
+        bands = np.asarray(prov["band"], dtype=np.int64).tolist()
+        for uid, band in zip(uids, bands):
+            if 0 <= band < n_bands:
+                units.append((int(uid), tid, int(band)))
+    pools: Dict[int, list] = {}
+    for i in range(M):
+        ranked = sorted(units, key=lambda u: -float(B[i, u[2]]))[:int(top_n)]
+        pools[i] = [(uid, tid, band, B[:, band].copy())
+                    for (uid, tid, band) in ranked]
+    return pools
+
+
 def bar_role_activity(rows, bank, B) -> np.ndarray:
     """READ-ONLY per-ROLE activity for a produced bar.
 
@@ -343,18 +382,27 @@ def bar_role_activity(rows, bank, B) -> np.ndarray:
     return (v / peak) if peak > 0.0 else v
 
 
-def _playback_soft_limit(y: np.ndarray, thr: float = 0.6, ceil: float = 0.92) -> np.ndarray:
-    """LIVE-only playback safety limiter (I-11 playback stage, OUTSIDE the trained
-    object — never applied to render_offline). Transparent below `thr` (byte-identical
-    there); a soft-knee tanh above so decisive steering cannot blow the live output
-    past `ceil`. This is why offline renders stay byte-identical: it lives only in the
-    live produce loop, not in render_offline."""
+def _playback_soft_limit(y: np.ndarray, thr: float = 0.40, ceil: float = 0.60,
+                         target_rms: float = 0.10) -> np.ndarray:
+    """LIVE-only playback SAFETY (I-11 playback stage, OUTSIDE the trained object —
+    never applied to render_offline, so offline renders stay byte-identical). Guards
+    against the sudden-loud EARDRUM risk in three stages: (1) kill non-finite garbage
+    (a divergence blow-up is NaN/inf, which a plain '>thr' test silently passes);
+    (2) a LOUDNESS CAP that attenuates — never boosts — each bar toward a safe target
+    RMS, so a dense/decisive steer cannot swell the volume; (3) a soft-knee tanh + hard
+    ceiling well below full scale. Conservative by design: it can only make things
+    quieter/safer, never louder."""
     y = np.asarray(y, dtype=np.float32)
-    # 1) kill any non-finite garbage FIRST (a divergence blow-up is NaN/inf, which a
-    #    plain `> thr` comparison silently passes through) — NaN→0, ±inf→±ceil.
+    # 1) non-finite garbage -> tamed.
     if not np.all(np.isfinite(y)):
         y = np.nan_to_num(y, nan=0.0, posinf=ceil, neginf=-ceil).astype(np.float32)
-    # 2) soft-knee tanh above the threshold (transparent below it).
+    # 2) LOUDNESS CAP — the real 'sudden loud' guard: turn DOWN any bar louder than the
+    #    target RMS; never boost a quiet bar (no noise-floor blast). Constant safe level.
+    if y.size:
+        rms = float(np.sqrt(np.mean(y.astype(np.float64) ** 2)))
+        if rms > target_rms:
+            y = (y * (target_rms / rms)).astype(np.float32)
+    # 3) soft-knee tanh above the (low) threshold.
     a = np.abs(y)
     over = a > thr
     if np.any(over):
@@ -569,6 +617,7 @@ class Engine:
         # nothing downstream; audio path untouched.
         track_profiles = track_anchor_profiles(world)
         role_counts = role_unit_counts(world)      # static per-role unit count
+        role_pools = role_unit_pool(world)         # static per-role drill-in pool
 
         def answer_hello():
             got = inbox.hello()
@@ -580,6 +629,9 @@ class Engine:
                                int(world.sr), disarmed=dis)
                 meters.profiles(sorted(track_profiles.items()))
                 meters.rolemeta(enumerate(role_counts.tolist()))
+                # per-ROLE drill-in unit pool (one small datagram per role).
+                for role in sorted(role_pools):
+                    meters.unitpool(role, world.M, role_pools[role])
 
         try:
             start_t = time.monotonic()

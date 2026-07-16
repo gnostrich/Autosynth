@@ -318,3 +318,15 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `45cee6d`
 - `Edit` architecture-v6/ets/engine/engine.py (2026-07-16T18:10:03+00:00)
+
+### at `600a12b`
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-16T18:16:52+00:00)
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-16T18:16:56+00:00)
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-16T18:17:01+00:00)
+- `Edit` architecture-v6/ets/engine/osc_io.py (2026-07-16T18:17:10+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T18:17:20+00:00)
+- `Edit` architecture-v6/ets/instrument/feed.py (2026-07-16T18:17:25+00:00)
+- `Edit` architecture-v6/ets/instrument/feed.py (2026-07-16T18:17:38+00:00)
+- `Edit` architecture-v6/ets/instrument/feed.py (2026-07-16T18:17:46+00:00)
+- `Edit` architecture-v6/ets/instrument/pads.py (2026-07-16T18:17:52+00:00)
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-16T18:20:42+00:00)
