@@ -88,6 +88,10 @@ class RegionTapController:
         self._env: Dict[int, RegionTapEnvelope] = {}
         self.set_anchor_count(int(n_anchors))
 
+    @property
+    def n_anchors(self) -> int:
+        return len(self._env)
+
     def set_anchor_count(self, n: int) -> None:
         n = int(n)
         for i in range(n):

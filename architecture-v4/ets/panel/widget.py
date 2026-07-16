@@ -616,6 +616,27 @@ class Panel(QWidget):
         for i in range(min(self._region.anchor_count, self.u.n_anchors)):
             self._region.set_anchor(i, float(self.u.u_region[i]))
 
+    # --- affordance honesty: disarmed lanes render visibly disabled -----------
+    # Engine-side lane ids (region, density, cont, gauge, novelty) → panel strip
+    # ids (continuity, not cont; region is the strips + XY pad, not a _strips key).
+    _DISARM_MAP = {"density": "density", "cont": "continuity",
+                   "gauge": "gauge", "novelty": "novelty"}
+
+    def apply_disarmed(self, disarmed_ids) -> None:
+        """Render exactly the lanes the registered σ_φ instrument could not scale
+        (from /ets/welcome) as visibly DISABLED — not live sliders. Display only:
+        u still transmits (the engine applies NO tilt on a disarmed lane); this
+        just stops the panel implying a calibrated control exists where none does.
+        The temperature lane carries no φ and is never disarmed."""
+        dis = set(disarmed_ids or ())
+        for eng_id, strip_id in self._DISARM_MAP.items():
+            strip = self._strips.get(strip_id)
+            if strip is not None:
+                strip.setEnabled(eng_id not in dis)
+        region_disarmed = "region" in dis
+        self._region.setEnabled(not region_disarmed)
+        self._xy.setEnabled(not region_disarmed)
+
     # --- meters (display only) ------------------------------------------------
     def refresh_meters(self) -> None:
         """Pull the latest MeterState into the read-only jack widgets. This is a
@@ -641,3 +662,7 @@ class Panel(QWidget):
                 f"world {ms.engine_world_hash[:8]}{dis}")
             if ms.engine_K != self.u.n_anchors:
                 self.set_anchor_count(ms.engine_K)
+            # affordance honesty: reflect the engine's disarmed-lane report on
+            # the strips (comma-joined ids on /ets/welcome; display only).
+            self.apply_disarmed(
+                [s for s in ms.engine_disarmed.split(",") if s])

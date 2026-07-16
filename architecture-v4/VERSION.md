@@ -43,3 +43,42 @@ names (region, density, continuity, gauge, novelty, temperature/T_s, slide, loop
 leash, comma, sigma_phi) are unchanged everywhere non-visual; the six-lane
 exhaustiveness law and the OSC/MIDI schema are untouched. See `LEDGER.md` for the
 per-edit trail and audit status.
+
+---
+
+## v4 — Feature 3: the instrument half (pad grid + tape view + transport + cue)
+
+Per `PREREG-feature3.md`. A READ / TAP / MONITOR layer OUTSIDE the trained object.
+ZERO diffs to F, LAMBDA, world, exam, settlement, writer, render, and
+provenance-generation. Additions:
+
+- New package `ets/instrument/` (SEPARATE from `ets/panel` because C-3 forbids the
+  panel from importing render/engine; the display reads provenance-shaped data):
+  - `model.py` — pure display models (SoundingCell, PadModel, TapeModel,
+    MonitorState); reads provenance/occupancy by COLUMN NAME, imports NOTHING from
+    the trained object.
+  - `pads.py` `tape.py` `app.py` — native-Qt widgets (I-13): TrackPadGrid (F3.1,
+    per source track, lit from provenance), TapeView (F3.3), RegionTapPads (F3.2
+    tap surface), InstrumentWindow.
+  - `tap.py` — RegionTapEnvelope/RegionTapController: pad tap/hold as a
+    transient/held spike on the EXISTING region-tilt lane; drives the panel's new
+    public `tap_region_anchor` (the same `_push`/emitter — no new OSC channel).
+  - `transport.py` — pure playhead (F3.4); no writer handle.
+  - `cue.py` — CueMonitor (F3.5) frontier monitor + provenance-highlight audition;
+    derives from a COPY of produced audio, never touches main-out.
+- `ets/panel/widget.py` (display-only additions): `tap_region_anchor` (public
+  region-lane entry for the tap), `apply_disarmed` + welcome-driven wiring
+  (affordance honesty: disarmed lanes render visibly disabled).
+
+Harness (all bite): `tests/instrument/` F3-A outboard (byte-identical main-out),
+F3-B door (static import graph), F3-C provenance-display fidelity, F3-D transport
+neutrality, F3-E cue neutrality, plus tap/affordance behaviour. 17 tests pass.
+
+Disclosed WALLS (safe subset shipped, not patched):
+1. LIVE cross-process provenance feed — a new inbound OSC address would break the
+   closed message space (H-6); the tape/pad DISPLAY is fed from offline-render
+   provenance / an in-process monitor. Tap/transport/cue paths are live.
+2. Pad TAP keys on ANCHOR (region lane) while material pads key on SOURCE TRACK
+   (provenance); no track→anchor join is fabricated from the trained geometry.
+3. Pad AUDITION is a monitor-side provenance-highlight on summed frontier audio,
+   not true per-source isolation (isolation would require re-render).
