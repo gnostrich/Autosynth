@@ -79,6 +79,14 @@ def main() -> int:
             fh.write(json.dumps(entry, sort_keys=True) + "\n")
     except Exception:
         return 0
+    # regenerate the human both-axes view so LEDGER.md is current at every edit
+    # (documents only; deterministic; never fails the tool call).
+    try:
+        import subprocess
+        subprocess.run(["python3", os.path.join(REPO, "scripts", "build_ledger.py")],
+                       capture_output=True, timeout=10)
+    except Exception:
+        pass
     return 0
 
 
