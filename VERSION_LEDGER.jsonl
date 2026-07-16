@@ -1,0 +1,4 @@
+{"head": "6cd5834", "note": "ledger begins; from here a PostToolUse hook (scripts/ledger_hook.py) appends one entry per Write/Edit/MultiEdit to a tracked file", "path": "VERSION_LEDGER.jsonl", "tool": "genesis", "ts": "2026-07-16T05:50:00+00:00"}
+{"head": "6cd5834", "path": "scripts/ledger_hook.py", "tool": "Write", "ts": "2026-07-16T05:50:00+00:00"}
+{"head": "6cd5834", "path": ".claude/settings.json", "tool": "Edit", "ts": "2026-07-16T05:50:00+00:00"}
+{"head": "6cd5834", "path": "VERSIONS.md", "tool": "Write", "ts": "2026-07-16T05:50:00+00:00"}
