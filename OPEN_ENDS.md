@@ -1,0 +1,62 @@
+# ETS — open-ends register
+
+A living tracker so nothing falls through. Each item: what it is, status, and the
+single next action. Close top-down; don't start a new build while a diagnosis is open.
+
+Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪ background/cleanup
+
+## 1. Grating live audio  🔴  (DIAGNOSE FIRST — LEAD FOUND)
+- Symptom: sound grates / tears in the live app; offline renders sound clean.
+- **VERIFIED LEAD (d) — unlimited live output.** `master.py` (compressor→R128→peak
+  limiter −1 dB) is applied to OFFLINE renders only; the LIVE engine path streams RAW —
+  no limiter, no sub control. Unlimited peaks + sub-bass tear on laptop speakers. This
+  explains offline-clean / live-grates directly.
+- Other candidates (test only if (d) doesn't fully fix it): (a) laptop real-time
+  underrun; (b) fast-pad emit flood; (c) engine divergence/settle-budget.
+- **30-sec confirm (operator):** does it grate when you just let it PLAY without touching
+  any control? If yes → it's output-level (d) [or underrun (a)], not the pad. Also glance
+  at the engine terminal: φ_density/settle spiking → divergence (c); normal → (d)/(a).
+- **Fix for (d):** a live PLAYBACK limiter (+ gentle sub high-pass) — the same
+  "outside the trained object" playback stage as `master()`. Design note: it lives in the
+  render/playback layer (I-11), not the trained object (F/settlement/writer/provenance),
+  so the ARRANGEMENT is provably unchanged — but it touches the engine tree, so it's a
+  **playback-layer revision** (engine-v1 → v1.1 playback), re-bless the verifier. Small.
+
+## 2. Local build currency  🔴  (cheap, do alongside #1)
+- Unknown whether the desktop is running the CURRENT engine-v1 or an older checkout — an
+  old build could explain grating/divergence on its own.
+- **Next action (operator):** confirm `git log -1` on the running checkout matches origin
+  HEAD of the branch; if not, pull and re-run.
+
+## 3. Pad navigation stickiness  🟢  (ready; independent of #1)
+- Bug: `w=1/dist` weighting pins you to the nearest region — can't roam across terrains.
+- Fix designed: soft (Gaussian/softmax) kernel. ui-v5 forked (`architecture-v6/`), prereg
+  written (`PREREG-uiv5-padfeel.md`), builder NOT started (paused for triage).
+- **Next action (me):** spawn builder for the roam fix (+ emit-throttle IF #1 = emit flood).
+
+## 4. MPC pad grid — not wired live  🟡  (decision)
+- The grid exists but is a disconnected display; live light-up needs the engine→UI
+  provenance feed, which is a WALLED item (new OSC address breaks the closed message
+  space H-6). By design the pads are a VIEW + region-bias, NOT a sample-trigger keyboard.
+- **Decision needed:** (a) leave as-is (dot pad is the instrument); (b) build the live
+  provenance feed via a pre-registered H-6 revision (light-up + connected grid); (c) drop
+  the grid. Recommend deciding AFTER #1/#3 so play works first.
+
+## 5. Thin-UI packaging refactor  ⚪  (deferred, disclosed)
+- "Thin ui-vN" is blocked by the shared `ets` namespace (engine+UI same package). Needs a
+  namespace-package refactor. ui-v5 is a full fork for now.
+- **Next action (me, later):** design the namespace split; one-time refactor.
+
+## 6. External smart-EQ / mastering layer  ⚪  (parked)
+- Earlier thread: optional de-tilt "smart EQ" on finished audio; upscale dropped. Never
+  finalized into the mastering path.
+- **Next action:** decide if it belongs in the render/master stage; low priority.
+
+## 7. futuregarage instance  ⚪  (status check)
+- Trained instance exists; the 30-min set was psytech only. Unclear if a futuregarage set
+  is wanted.
+- **Next action (operator):** say whether you want a futuregarage set; else close.
+
+## Recommended order
+1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
+4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
