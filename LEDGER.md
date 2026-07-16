@@ -88,3 +88,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` architecture-v2/ets/panel/widget.py (2026-07-16T08:00:37+00:00)
 - `Edit` architecture-v2/ets/panel/widget.py (2026-07-16T08:00:42+00:00)
 - `Edit` LEDGER_DATA.json (2026-07-16T08:06:02+00:00)
+
+### at `f9418d2`
+- `Write` reports/2026-07-16-steering-divergence-and-silences.md (2026-07-16T08:52:57+00:00)
