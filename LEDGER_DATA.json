@@ -21,6 +21,13 @@
       "marker": "tag pre-panel-relabel-2026-07-16 (immutable pre-change marker of v1)",
       "driving_directive": "ETS directive — panel relabeling (display layer only): face labels + tooltips; no engine/OSC/registry/F symbol touched",
       "audit": "PASS (display-only, verified independently + builder-confirmed): ONLY ets/panel/widget.py differs from the v1 machine; one _FACE alias map; all internal/OSC/F symbols intact (none renamed); six-lane + tolerance exhaustiveness laws hold; py_compile OK; 43 panel/harness tests pass (18 full-run failures are pre-existing/environmental, identical against the pristine baseline). Two display-layer nuances, both in-scope: disarmed lanes render setEnabled(False) (directive rule 4); the face resolver is total so the alias never becomes a second enforcement channel"
+    },
+    {
+      "version": "v3",
+      "location": "architecture-v3/ (full-fork of v2 machine + relabel)",
+      "marker": "tag pre-arch-v3-2026-07-16 (immutable pre-change marker)",
+      "driving_directive": "ETS directive — architecture-v3 temperature-sampler fix (Bugs 1 & 2): one coordinated exam-gated A (sampling-ensemble sigma recalibration) + B (derived-threshold StreamHalt) + C (mirror-geometry temperature sampler). Root cause report: reports/2026-07-16-steering-divergence-and-silences.md",
+      "audit": "PREREG committed (prereg-arch-v3-temperature-sampler-2026-07-16); BUILD PENDING (builder to implement A+B+C; auditor PASS + 6 acceptance criteria before merge)"
     }
   ],
   "instances": [
