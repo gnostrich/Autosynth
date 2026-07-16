@@ -137,3 +137,8 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` scripts/disk_guard.py (2026-07-16T11:41:40+00:00)
 - `Edit` scripts/disk_guard.py (2026-07-16T11:41:49+00:00)
 - `Edit` .claude/settings.json (2026-07-16T11:42:58+00:00)
+
+### at `e56650b`
+- `Edit` architecture-v3/scripts/run_sigma_phi.py (2026-07-16T11:47:40+00:00)
+- `Edit` architecture-v3/tests/calibration/test_sigma_phi.py (2026-07-16T11:48:13+00:00)
+- `Edit` architecture-v3/tests/calibration/test_sigma_phi.py (2026-07-16T11:48:26+00:00)

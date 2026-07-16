@@ -71,7 +71,9 @@ def test_registered_artifact_integration():
     # the agreed contract shape
     assert "region" in cal.sigma and "continuity" in cal.sigma \
         and "novelty" in cal.sigma
-    assert cal.identifiable.get("density") is False
+    # architecture-v3 Fix A: DENSITY arms under the T_s>0 sampling ensemble;
+    # GAUGE stays the sole structural exact-zero (v0 frozen frame).
+    assert cal.identifiable.get("density") is True
     assert cal.identifiable.get("gauge") is False
     assert len(cal.world_hash) >= 12
 
@@ -96,6 +98,7 @@ def test_resolve_sigma_accepts_the_real_registered_artifact():
     sig = resolve_sigma(load_world(wf_path), None)  # the exact live-CLI path
     assert isinstance(sig.identifiable["region"], bool)
     assert sig.identifiable["region"] == bool(np.all(cal.identifiable["region"]))
-    # the two measured-unidentifiable lanes stay disarmed with the real artifact
-    assert sig.identifiable["density"] is False
+    # architecture-v3 Fix A (sampling ensemble): DENSITY arms; GAUGE stays the
+    # sole measured-unidentifiable lane (v0 frozen frame) with the real artifact.
+    assert sig.identifiable["density"] is True
     assert sig.identifiable["gauge"] is False

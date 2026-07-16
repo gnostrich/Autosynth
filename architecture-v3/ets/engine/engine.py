@@ -92,9 +92,14 @@ def resolve_sigma(wf: WorldFile, cli_path: Optional[str] = None
             "world-freeze (σ_φ is re-run on any anchor spawn/prune); the "
             "engine will not lean on a stale scale.")
     # map the instrument's lane-keyed record onto the tilt map's SigmaPhi.
-    # identifiable=False lanes (measured zero untilted fluctuation under the
-    # registered MAP-settling writer: density, gauge) are DISARMED — λ is
-    # undefined there and no tilt is applied (see ets.writer.tilt).
+    # identifiable=False lanes (measured zero untilted fluctuation) are DISARMED
+    # — λ is undefined there and no tilt is applied (see ets.writer.tilt). Under
+    # the architecture-v3 instrument the ensemble is the untilted T_s>0 SAMPLING
+    # writer (Fix A), so DENSITY now carries a measured fluctuation and ARMS; the
+    # only structural exact-zero left is GAUGE (the v0 frame is frozen at the
+    # identity, so no frame move exists to fluctuate). This branch is data-driven
+    # off the artifact's own identifiable flags — it arms/disarms whatever the
+    # registered instrument measured, inventing nothing.
     sig = SigmaPhi(
         region=np.asarray(cal.sigma["region"], float),
         density=float(cal.sigma.get("density", 0.0) or 0.0),

@@ -1,0 +1,5 @@
+Table-6 measurement — CORPUS (psytech, M=5), T_s=1.0, 24 slots x 20000 draws
+  OLD_additive       clip_rate= 36.22%   std_bias=0.4525   mean/mode=1.70
+  NEW_reflect        clip_rate=  0.00%   std_bias=0.5008   mean/mode=2.40
+  REJECTED_logspace  clip_rate=  0.00%   std_bias=343.8347   mean/mode=56.10
+  => clip 36.22% -> 0.00% (shipped reflect); std_bias 0.453 -> 0.501; mean/mode 1.70 -> 2.40 (log-space REJECTED: mean/mode=56.1)

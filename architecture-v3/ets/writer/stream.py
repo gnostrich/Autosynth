@@ -17,21 +17,52 @@ result over. Control latency is therefore exactly the engine's declared L bars
 TEMPERATURE (spec §8 lane 6: "sampling looseness around the settled optimum").
 The settlement measure is p(a) ∝ exp(−F/T_s + Σλφ). The writer first settles
 the frontier's O-block to the tilted mode (certificate), then draws the emitted
-O from the GAUSSIAN (Laplace) approximation of that measure around the mode:
+O from the Laplace approximation of that measure around the mode, in O
+coordinates, REFLECTED into the positive orthant (the constraint set):
 
-    O = O* + ξ,   ξ ~ N(0, T_s · H⁻¹) per slot column,
+    O = |O* + ξ|,   ξ ~ N(0, T_s · H_O⁻¹) per slot column,
 
-with H the EXACT per-slot Hessian of the O-terms (solver._d2F_dO2_slot — the
-same F the settlement descends; the tilt is linear in O and adds no curvature),
-clipped to the positive orthant (the constraint set; same species as the mirror
-floor). Directions of unreliable curvature (eigenvalues below the standard
-numerical-rank tolerance M·eps·λ_max) receive ZERO variance — fluctuation is
-sampled only along directions whose curvature the settled optimum certifies;
-this is conservative (never explosive) and documented. Sampling is exact-to-
-leading-order equilibrium fluctuation, which is what makes the σ_φ calibration
-(FDT units) meaningful: the untilted writer at T_s=1 has genuine thermal motion
-in every non-degenerate φ direction. All draws come from a seeded Generator —
-same (world, tilt trajectory, seed) ⇒ bit-identical tape (H-8).
+with H_O = solver._d2F_dO2_slot(O*) — the EXACT per-slot Hessian of the O-terms
+(the same F the settlement descends; the tilt is linear in O and adds no
+curvature). Directions of unreliable curvature (eigenvalues below the
+numerical-rank tolerance M·eps·λ_max) receive ZERO variance — conservative,
+never explosive. Reflection at 0 keeps O STRICTLY POSITIVE for every draw (|·| >
+0 a.s.): no slot is ever zeroed, no positive-orthant CLIP (max(·,floor)) exists,
+so the seed-dependent dead-slot failure (a negative additive draw floored to
+1e-12) is impossible by construction. z is drawn once per column BEFORE the
+clamp/cold skip, so rng alignment is independent of the clamp pattern and
+temperature; same (world, tilt trajectory, seed) ⇒ bit-identical tape (H-8).
+
+WHY REFLECTION, NOT A LOG/MIRROR DRAW (measured, architecture-v3 finding). The
+Laplace covariance in O-coordinates is the true measure's second-order model on
+the constraint set; the near-boundary mode (per-cell occupancy O*≈0.025 with
+O-space std ≈0.07, i.e. σ/O*≈2.8 on the psytech corpus) makes ~1/3 of a raw
+Gaussian draw negative, which the old max(·,floor) clip turned into dead slots.
+A LOG-space draw O=O*·exp(ξ) is positivity-clean but INVALID at this scale: its
+mean is O*·exp(diag(Σ)/2), and with σ_log≈2.8 that is a ~50× occupancy inflation
+(measured: per-bar density mean 58 vs mode 1.0, region σ up to 413) — it does not
+sample AROUND the mode, it blows the mode up. Reflection is the positive-orthant
+folding of the O-space Gaussian: it preserves the mode scale (density mean ≈2.4×
+mode — the intrinsic near-boundary adjustment, not a blow-up), reproduces the
+calibrated fluctuation the σ_φ instrument expects (region σ≈0.13), and zeroes no
+slot. Bug-1's runaway is driven by the TILTED MODE size (mis-calibrated λ), not
+by the draw — it is handled by the recalibrated σ_φ (bounded λ) and the halt
+below, which is the correct division of labor. See the session report /
+proposed prereg revision (Fix C: reflected O-space Laplace, not log-space).
+
+STREAMHALT ON NON-FINITE / RUNAWAY (spec §7 halt-and-report; never emit garbage
+to the speakers). After the sample, `write_bar` raises ``StreamHalt`` if the
+occupancy is (i) non-finite (any NaN/inf — a free, always-valid check), or
+(ii) a RUNAWAY beyond a FINITE bound DERIVED from the machine's own scales:
+the reflected draw's plausible-max total occupancy Σ_{s,k}(O*_k + z_run·s_k) —
+where O* is the certified settled mode (its mass O*.sum() equals the world total
+anchor mass a.sum() untilted), s_k = sqrt(T_s·[H_O⁻¹]_kk) is role k's O-space
+std, and z_run = sqrt(2 ln N_draws) is the asymptotic expected maximum of
+N_draws = M·S·(corpus bars) standard normals (so per-bar draws sit well under the
+run-scale bound — natural headroom, no hand-set constant). Since |O*+ξ| ≤
+O* + |ξ| ≤ O* + z_run·s componentwise, an occupancy beyond this bound is a draw
+the sampler could not plausibly have produced from the certified mode — a
+runaway; halt and report.
 
 STABILITY / STATE (spec §7, I-8): the working state is (runs in flight,
 last-committed-use recency, previous frame) — bounded by MATERIAL HEARD
@@ -97,6 +128,16 @@ class StreamWriter:
         # heard, ≤ corpus units) + pending (≤ placements of one bar).
         self._n_corpus_units = sum(len(t.units) for t in world.tracks)
         self._n_bands = int(world.fstate.B.shape[1])
+        # Runaway-halt scale (Fix B): the log-space sampler draws M·s_phase
+        # standard normals per bar; over the corpus horizon the number of draws
+        # is N_draws = M·s_phase·(corpus bars). z_run = sqrt(2 ln N_draws) is the
+        # asymptotic expected maximum of that many standard normals — the
+        # plausible-max draw magnitude for the whole run. Checking each bar
+        # against this run-scale magnitude leaves natural headroom (a per-bar max
+        # is ~sqrt(2 ln(M·s_phase)) ≪ z_run) with no hand-set constant.
+        n_corpus_bars = sum(int(t.units["bar"].max()) + 1 for t in world.tracks)
+        n_draws = max(2, self.M * self.s_phase * int(n_corpus_bars))
+        self._z_run = float(np.sqrt(2.0 * np.log(n_draws)))
 
     # -- I-8: the working-state size and its material bound -------------------
     def state_size(self) -> int:
@@ -112,26 +153,40 @@ class StreamWriter:
                           n_slots=self.s_phase, s_phase=self.s_phase)
 
     def _sample_temperature(self, O_star: np.ndarray, state, tilt: TiltTerms,
-                            clamp_mask: np.ndarray) -> np.ndarray:
-        """Laplace draw around the settled mode (module docstring). T_s scales
-        the covariance; clamped columns are boundary conditions and do not
-        fluctuate. Consumes rng even coherently across bars (one draw per free
-        column) so the stream is reproducible."""
+                            clamp_mask: np.ndarray) -> Tuple[np.ndarray, float]:
+        """Reflected O-space Laplace draw around the settled mode (module
+        docstring). Returns (O, occ_bound): the sampled occupancy and the
+        DERIVED plausible-max total occupancy Σ_{s,k}(O*_k + z_run·s_k) the draw
+        could produce this bar (Fix B runaway reference).
+
+        T_s scales the covariance; clamped columns and cold (T_s≤0) columns are
+        boundary conditions and do not fluctuate. z is drawn unconditionally (one
+        M-vector per column, BEFORE the skip) so rng alignment is independent of
+        the clamp pattern and temperature (H-8)."""
         T = float(tilt.T_s)
         O = O_star.copy()
         M, S = O.shape
+        z_run = self._z_run
+        occ_bound = 0.0
         for s in range(S):
             z = self._rng.standard_normal(M)         # drawn unconditionally: keeps
-            if clamp_mask[s] or T <= 0.0:            # rng alignment independent of
-                continue                             # clamp pattern
-            H = sv._d2F_dO2_slot(O_star[:, s], state)
+            o = O_star[:, s]                         # rng alignment independent of
+            if clamp_mask[s] or T <= 0.0:            # clamp pattern / temperature
+                occ_bound += float(o.sum())          # pinned column: no fluctuation
+                continue
+            H = sv._d2F_dO2_slot(o, state)           # H_O = d²F_O/dO² (this slot)
             H = 0.5 * (H + H.T)
             w, V = np.linalg.eigh(H)
             tol = M * np.finfo(float).eps * float(np.max(np.abs(w)))
             var = np.where(w > tol, T / np.maximum(w, tol), 0.0)
-            xi = V @ (np.sqrt(var) * z)
-            O[:, s] = np.maximum(O_star[:, s] + xi, 1e-12)
-        return O
+            xi = V @ (np.sqrt(var) * z)              # O-space perturbation
+            O[:, s] = np.abs(o + xi)                 # reflect at 0: strictly > 0 a.s.
+            # per-role O-space std s_k = sqrt(diag of the covariance T·H_O⁻¹);
+            # plausible-max column mass Σ_k(O*_k + z_run·s_k) (Fix B bound):
+            # |o+xi| ≤ o + |xi| ≤ o + z_run·s_k component-wise.
+            s_k = np.sqrt((V * V) @ var)
+            occ_bound += float(np.sum(o + z_run * s_k))
+        return O, occ_bound
 
     def write_bar(self, tilt: Optional[TiltTerms] = None,
                   clamps: Optional[ClampSet] = None) -> BarResult:
@@ -161,7 +216,29 @@ class StreamWriter:
             self.fstate.theta[:, grid.phase_row()], float)
         state = _tape_state(self.fstate, theta_out)
         clamp_mask, _ = tape.clamps.as_mask_values(self.M, grid.n_slots)
-        O = self._sample_temperature(res.O, state, tilt, clamp_mask)
+        O, occ_bound = self._sample_temperature(res.O, state, tilt, clamp_mask)
+
+        # (2b) HALT-AND-REPORT on non-finite or runaway occupancy (Fix B) —
+        #      BEFORE the fiber block or any commit, so garbage never reaches the
+        #      render/speakers. (i) non-finite is free and always valid; (ii) the
+        #      runaway bound is DERIVED (never hand-set): the certified settled
+        #      mode mass M* = res.O.sum() (untilted == world total mass a.sum())
+        #      times the log-space sampler's plausible-max inflation occ_bound.
+        if not np.all(np.isfinite(O)):
+            raise StreamHalt(
+                f"bar {bar}: non-finite occupancy after temperature sampling "
+                f"(NaN/inf) — halt and report; no non-finite bar is emitted.")
+        occ = float(O.sum())
+        if occ > occ_bound:
+            mode_mass = float(res.O.sum())
+            raise StreamHalt(
+                f"bar {bar}: runaway occupancy O.sum={occ:.3e} exceeds the "
+                f"derived plausible-max {occ_bound:.3e} "
+                f"(= Σ_k(M*_k + z_run·s_k), z_run={self._z_run:.3f}) around the "
+                f"certified settled mode mass M*={mode_mass:.3e} "
+                f"(untilted M*==world total mass a.sum()={float(self.fstate.a.sum()):.3e})"
+                f" — the sampler could not have produced this from the mode; "
+                f"halt and report (spec §7). No runaway bar is emitted.")
 
         # (3) fiber block: the SAME threading mechanism as batch, tilted+seeded.
         self.threader.tilt = tilt

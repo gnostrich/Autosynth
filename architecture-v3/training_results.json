@@ -1,0 +1,65 @@
+{
+  "rev": "r1 (fork C: richer fiber + gauge-aligned groove target)",
+  "world": {
+    "M_star": 5,
+    "sigma": 0.5532324477839268
+  },
+  "fit": {
+    "lambda_T2_T3_T4_T1p": [
+      4.9923137910018385,
+      0.8023184886520748,
+      10.457681912759295,
+      8.758101446990384
+    ],
+    "logistic_loss": 0.09078416446600983,
+    "grad_norm": 0.002439418476089168,
+    "n_pairs": 240,
+    "fit_seeds": [
+      1,
+      2,
+      3
+    ],
+    "note": "T1_gw = reference scale 1 (fixed). phi = [T1_gw, T2, T3, T4_raw=-succ_reward, phase_charge]. T5 not identifiable (0 for every family member at native gauge; R3)."
+  },
+  "separation_heldout": {
+    "grid-shuffle": {
+      "sep_rate": 1.0,
+      "median_margin": 18.785336789769868,
+      "n": 40
+    },
+    "role-permute": {
+      "sep_rate": 0.95,
+      "median_margin": 1.0737616753384005,
+      "n": 40
+    },
+    "phase-rotate": {
+      "sep_rate": 1.0,
+      "median_margin": 6.024770208701991,
+      "n": 40
+    },
+    "cross-track-swap": {
+      "sep_rate": 0.975,
+      "median_margin": 7.331489106096902,
+      "n": 40
+    },
+    "overall_min_sep": 0.95
+  },
+  "heldout_seeds": [
+    4,
+    5
+  ],
+  "sep_min_threshold": 0.9,
+  "t5_feature_max": 0.0,
+  "KILL": false,
+  "killed_members": [],
+  "verdict": "PASS \u2014 real tracks separate from the whole fixed family (min held-out sep >= 0.90). Authoritative LAMBDA emitted; F-1 (frozen-weight discharge) DISCHARGED.",
+  "lambda_emitted": {
+    "T1_gw": 1.0,
+    "T2": 4.9923137910018385,
+    "T3": 0.8023184886520748,
+    "T4": 10.457681912759295,
+    "T1p": 8.758101446990384,
+    "T5": 0.1
+  },
+  "prereg": "PREREG.md 'Training rev-r1 \u2014 real-tracks-are-equilibria separation (fork C)'; registry train-nce-revr1-2026-07-13"
+}

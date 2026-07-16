@@ -1,0 +1,19 @@
+[1/6] loading 20 cached tracks ...
+[2/6] freezing world (the writer's world; seed=0, sigma=median) ...
+      M=5  world_hash=777b2edbd659f71e...  info={'effective_rank': 5.35423786294598, 'n_anchors': 5, 'sigma': 0.5532324477839268, 'role_dist_mean': 0.6097090799944409, 'F_final': 227.2784364996448, 'F_monotone': True}
+[3/6] BEFORE diagnostic: u=0 MAP batch settlement of 500 bars (diagnostic; MAP pathology is length-robust) ...
+      MAP region sigma = [0.03393608125359827, 0.00632681476683843, 0.0, 0.032498035630830584, 0.04674987119234111]
+      MAP density sigma = 0.0 (pinned/disarmed)
+[4/6] AFTER: untilted SAMPLING writer (T_s=1.0) as independent short streams (seed 0..), sized by convergence, cap R=7495 bars ...
+        10 streams / 500 bars, max sigma rel-change=0.0429
+      certificate: converged=True monotone=True; used 17 streams / 850 bars (stream_len=50); size_capped_at_R=False
+[5/6] per-bar observables + fluctuations (sampling ensemble) ...
+      phi_region      sigma=[0.2671858896449582, 0.37957005644657477, 0.32654228774604477, 0.21388287346279955, 0.19451425831418465] identifiable=[True, True, True, True, True]
+      phi_density     sigma=0.2823704440877133 identifiable=True
+      phi_continuity  sigma=4.303151745513734 identifiable=True
+      phi_gauge       sigma=0.0 identifiable=False
+      phi_novelty     sigma=0.24259297627129361 identifiable=True
+[6/6] before/after region sigma: MAP=[0.03393608125359827, 0.00632681476683843, 0.0, 0.032498035630830584, 0.04674987119234111] -> SAMPLING=[0.2671858896449582, 0.37957005644657477, 0.32654228774604477, 0.21388287346279955, 0.19451425831418465]
+      density sigma: MAP=0.0 -> SAMPLING=0.2823704440877133 (armed=True)
+      writing artifact ...
+DONE in 633.4s -> /home/user/Geodesic-Mixing/architecture-v3/ets/calibration/sigma_phi.json

@@ -68,8 +68,15 @@ def test_stream_is_deterministic_given_seed(world, sigma):
 
 def test_layer0_fdt_signs(world, sigma):
     """Leaning a lane moves its own φ upward relative to untilted (the Doob
-    tilt's defining property), for each non-degenerate direction lane."""
-    n = 10
+    tilt's defining property), for each non-degenerate direction lane.
+
+    n=40 bars: the reflected O-space temperature draw (Fix C) carries the honest,
+    larger equilibrium O-fluctuation (validated to reproduce the calibrated
+    σ_φ), which propagates as per-bar noise into the weakly-coupled FIBER
+    observables (cont, novelty). The FDT SIGN is unchanged and holds in
+    expectation; 40 bars gives the mean estimator enough power to resolve it
+    (10 was underpowered under the louder-but-correct sampler)."""
+    n = 40
     base = _run(world, n, untilted(world.M))
 
     def mean_phi(results, key, comp=None):
@@ -183,3 +190,48 @@ def test_i8_guard_bites_on_injected_growth(world):
         w.threader.last_used[(999_000, k)] = 0     # phantom "material"
     with pytest.raises(StreamHalt):
         w.write_bar()
+
+
+# --- Fix B: loud StreamHalt on non-finite / runaway occupancy -----------------
+
+def test_temperature_sample_is_strictly_positive(world):
+    """Fix C: the reflected O-space temperature draw O = |O*+ξ| keeps every
+    occupancy component STRICTLY POSITIVE — no slot is ever zeroed, no floor
+    clip exists — so the seed-dependent dead-slot failure is impossible."""
+    for seed in (11, 23, 37, 53, 67):
+        w = StreamWriter(world, seed=seed)
+        for _ in range(12):
+            r = w.write_bar(tilt=untilted(world.M, T_s=1.0))
+            assert np.all(r.O > 0.0), "a sampled occupancy component hit zero"
+            assert float(r.O.sum(0).min()) > 0.0, "a slot's total mass collapsed"
+
+
+def test_streamhalt_on_non_finite_occupancy(world):
+    """Fix B (i): a non-finite sampled occupancy HALTS loudly (never emitted)."""
+    w = StreamWriter(world, seed=5)
+    orig = w._sample_temperature
+    def nan_inject(O_star, state, tilt, mask):
+        O, b = orig(O_star, state, tilt, mask)
+        O = O.copy(); O[0, 0] = np.nan
+        return O, b
+    w._sample_temperature = nan_inject
+    with pytest.raises(StreamHalt, match="non-finite"):
+        w.write_bar(tilt=untilted(world.M))
+
+
+def test_streamhalt_on_runaway_occupancy(world):
+    """Fix B (ii): an occupancy far beyond the DERIVED plausible-max around the
+    certified mode HALTS loudly. Non-vacuous: the same bar without the injection
+    does not halt."""
+    w = StreamWriter(world, seed=5)
+    orig = w._sample_temperature
+    def runaway(O_star, state, tilt, mask):
+        O, b = orig(O_star, state, tilt, mask)
+        return O * 1e13, b                          # inject a runaway
+    w._sample_temperature = runaway
+    with pytest.raises(StreamHalt, match="runaway"):
+        w.write_bar(tilt=untilted(world.M))
+    # non-vacuity: the un-injected writer writes many bars without halting.
+    w2 = StreamWriter(world, seed=5)
+    for _ in range(12):
+        w2.write_bar(tilt=untilted(world.M))

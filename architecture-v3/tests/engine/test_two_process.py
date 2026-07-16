@@ -84,7 +84,8 @@ def test_two_process_handshake_meters_and_persistence(live):
         assert L >= 1 and sr == 44100 and bar_s > 0
         assert L == live["result"].get("L", L)
         # the synthetic world's inline σ has all lanes identifiable ⇒ none
-        # disarmed (the registered corpus artifact would list density,gauge).
+        # disarmed (the architecture-v3 corpus artifact lists only gauge —
+        # density arms under the T_s>0 sampling ensemble, Fix A).
         assert disarmed == ""
 
         # lanes + tolerances ride the wire and land in the inbox/log.

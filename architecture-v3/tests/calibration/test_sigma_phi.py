@@ -48,14 +48,28 @@ def test_fiber_observables_are_identifiable():
         assert name not in cal.notes
 
 
-def test_pinned_observables_are_honest_zeros_with_notes_no_floor():
+def test_density_arms_under_the_sampling_ensemble():
+    """architecture-v3 Fix A: the ensemble is the untilted T_s>0 SAMPLING writer,
+    under which the O-marginal (density) fluctuates (temperature draws around the
+    bar-periodic mode) — so DENSITY ARMS with its measured, derived scale. Under
+    the prior MAP instrument it was pinned (bar-periodic MAP) and disarmed; that
+    missing-ensemble artifact is what the re-derivation removed. No floor: this is
+    a genuine measured sigma > 0, not a substituted constant."""
     cal = load_sigma_phi()
-    for name in ("density", "gauge"):
-        assert cal.identifiable[name] is False
-        assert cal.sigma[name] == 0.0                  # exactly; no floor
-        assert "NOT IDENTIFIABLE" in cal.notes[name]   # R3-style honesty note
-    # and the derivations are the pre-registered ones:
-    assert "bar-periodic" in cal.notes["density"]
+    assert cal.identifiable["density"] is True
+    assert cal.sigma["density"] > 0.0
+    assert "density" not in cal.notes                  # armed => no honest-zero note
+
+
+def test_gauge_is_the_only_honest_zero_with_note_no_floor():
+    """GAUGE stays a structural exact zero even under the sampling writer: the v0
+    frame is frozen at the identity, so no frame move exists to fluctuate
+    (temperature samples the O-block, not the gauge frame). Honest zero, R3 note,
+    no floor invented."""
+    cal = load_sigma_phi()
+    assert cal.identifiable["gauge"] is False
+    assert cal.sigma["gauge"] == 0.0                   # exactly; no floor
+    assert "NOT IDENTIFIABLE" in cal.notes["gauge"]    # R3-style honesty note
     assert "identity-gauge" in cal.notes["gauge"]
 
 
@@ -79,10 +93,11 @@ def _tampered(tmp_path, mutate):
 
 
 def test_loader_rejects_floored_sigma(tmp_path):
-    # someone "helpfully" floors the non-identifiable density sigma: the flag
-    # (still false) now disagrees with sigma > 0 -> hard error, not acceptance.
+    # someone "helpfully" floors the non-identifiable GAUGE sigma (the sole
+    # structural exact-zero under the v3 sampling instrument): the flag (still
+    # false) now disagrees with sigma > 0 -> hard error, not acceptance.
     def mutate(doc):
-        doc["phi"]["density"]["sigma"] = 1e-6
+        doc["phi"]["gauge"]["sigma"] = 1e-6
     with pytest.raises(ValueError, match="identifiable flag inconsistent"):
         load_sigma_phi(_tampered(tmp_path, mutate))
 
@@ -104,7 +119,7 @@ def test_loader_rejects_missing_observable(tmp_path):
 
 def test_loader_rejects_noteless_non_identifiable(tmp_path):
     def mutate(doc):
-        doc["phi"]["density"].pop("note", None)
+        doc["phi"]["gauge"].pop("note", None)   # gauge is the disarmed lane (v3)
     with pytest.raises(ValueError, match="honesty note"):
         load_sigma_phi(_tampered(tmp_path, mutate))
 
