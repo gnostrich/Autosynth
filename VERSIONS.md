@@ -89,11 +89,19 @@ to the coarse table below.
 
 ## Active version
 
-**v1 is the canonical, active engine** (root tree; psytech founding instantiation).
-It is byte-unchanged and genre-best at u=0 autopilot. `architecture-v3/` is
-**PARKED (TBD)** — retained in-tree for resumption, not promoted. See
+**v1 is the canonical, active engine** (root tree; psytech founding instantiation),
+byte-unchanged. The genre-best psytech deliverable + its exact reproduction recipe
+are committed at **`samples/genre_set/`** (streaming engine + low-temperature steered
+journeys; deterministic seeds). `architecture-v3/` is **ARCHIVED** — its sampler
+changes failed the ear test (see `architecture-v3/ARCHIVED.md`); retained only for
+the correlation-fidelity finding + possible resumption. See
 `reports/2026-07-16-decision-park-v3-sampler.md` for the decision, the
-correlation-vs-marginal-variance finding, and the tier-2 resumption plan.
+correlation-vs-marginal-variance finding, and the resumption plan.
+
+**Version-control note (2026-07-16):** the good genre renders + their journey
+recipes previously lived only in ephemeral scratch and were never committed. That
+gap is now closed — they are under `samples/genre_set/` (recipes + renders). Nothing
+was lost; the code was always in git and v1 was never mutated.
 
 ## Recorded versions
 

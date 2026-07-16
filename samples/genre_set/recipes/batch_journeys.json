@@ -1,0 +1,6 @@
+[
+ {"name":"ets_driving","seed":31,"seconds":170,"knobs":"k_driving.json"},
+ {"name":"ets_spacious","seed":47,"seconds":170,"knobs":"k_spacious.json"},
+ {"name":"ets_shifting","seed":59,"seconds":170,"knobs":"k_shifting.json"},
+ {"name":"ets_deep","seed":71,"seconds":160,"knobs":"k_deep.json"}
+]
