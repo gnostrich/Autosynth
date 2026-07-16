@@ -260,3 +260,14 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` architecture-v6/PREREG-uiv5-padfeel.md (2026-07-16T16:45:31+00:00)
 - `Write` OPEN_ENDS.md (2026-07-16T16:47:00+00:00)
 - `Edit` OPEN_ENDS.md (2026-07-16T16:48:43+00:00)
+
+### at `c604bcd`
+- `Edit` architecture-v6/ets/panel/envelope.py (2026-07-16T17:00:03+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T17:00:20+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T17:00:30+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T17:00:40+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T17:00:54+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T17:01:00+00:00)
+- `Edit` architecture-v6/ets/panel/widget.py (2026-07-16T17:01:04+00:00)
+- `Write` architecture-v6/tests/v5/test_uv5b_emit_throttle.py (2026-07-16T17:01:29+00:00)
+- `Write` architecture-v6/tests/v5/test_uv5c_roam.py (2026-07-16T17:01:54+00:00)

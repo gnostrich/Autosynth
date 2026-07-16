@@ -276,16 +276,21 @@ class _RegionXYPad(QWidget):
     (Kaoss / vector-synth idiom). A UI affordance over the SAME u_region vector;
     it introduces no lane and emits only through the one region path (C-3).
 
-    Interaction model (architecture-v5 B2):
+    Interaction model (architecture-v5 B2, ui-v5 pad-feel):
 
-      * CLICK to ARM — the dot jumps to the cursor and begins following it; the
-        lean emits live (safe: it is clamped to the ring, see below).
+      * CLICK to ARM — the dot jumps to the cursor and begins following it.
       * MOVE to position — the dot tracks the cursor. ANGLE selects which anchors
-        (inverse-distance weighting toward the anchors on the ring); DISTANCE
-        from centre is the lean magnitude. POSITION *is* the value — no momentum,
-        no roll.
+        (a SOFT Gaussian kernel over distance to the ring anchors — see
+        `_vector`); DISTANCE from centre is the lean magnitude. POSITION *is* the
+        value — no momentum, no roll.
       * CLICK to DROP — the dot parks where it is, stops following, stays put.
       * a second CLICK re-arms.
+
+    A gesture updates only the region TARGET (the pad emits `changed` = the new
+    target, which the panel stores). It does NOT push raw values to the engine on
+    every move — the panel's single ~30 Hz timer glides the slewed value toward
+    the target at a controlled rate, so a fast drag is one smooth glide, not a
+    flood of region jumps (ui-v5 BUG-1). "Emit live" is thus emit-on-the-tick.
 
     PASSIVE HOVER IS INERT: while disarmed, moving the cursor over the pad
     changes and emits nothing. (Mouse tracking is enabled only so the dot can
@@ -348,31 +353,55 @@ class _RegionXYPad(QWidget):
             return None
         return int(np.argmax(np.abs(v)))
 
+    def _sigma(self, R: float) -> float:
+        """Kernel width = the ANCHOR-RING SPACING, derived from the ring geometry
+        (not a hand-picked magic number). K anchors sit evenly on the ring, so the
+        spacing between two NEIGHBOURING anchors is the chord 2·R·sin(π/K); that
+        is exactly the width over which a dot should blend from one region to its
+        neighbour. For K=1 (no neighbour) any positive width normalizes to the one
+        anchor, so we floor it at R."""
+        K = self._K
+        sigma = 2.0 * R * math.sin(math.pi / K) if K >= 2 else R
+        return max(sigma, 1e-6)
+
     def _vector(self) -> np.ndarray:
-        """Region lean vector from the DOT POSITION: anchors weighted by inverse
-        distance to the dot (vector-mixer crossfade, Doepfer A-144 idiom);
-        magnitude = SAFE_REGION_MAGNITUDE * (dot distance from centre / ring
-        radius). Dot at centre (or unset) -> zero lean. The scale uses the safe
-        cap, never the raw lane max, so the pad is a clamped control (B3.1)."""
+        """Region lean vector from the DOT POSITION via a SOFT (Gaussian) kernel
+        over distance to each anchor: w[i] = exp(-(d_i/σ)²), normalized, with σ the
+        anchor-ring spacing (see `_sigma`). Unlike the old inverse-distance
+        weighting — which spiked to ~all-mass at an anchor and PINNED the operator
+        to the nearest region — the soft kernel makes a dot placed BETWEEN anchors
+        genuinely blend its neighbours, so sweeping the pad changes the dominant
+        region smoothly and the whole surface is roamable (ui-v5 BUG-2).
+
+        Magnitude = SAFE_REGION_MAGNITUDE * (dot distance from centre / ring
+        radius); the dot at centre (or unset) gives an even/neutral, zero-magnitude
+        lean. The scale uses the safe cap, never the raw lane max, so the pad is a
+        clamped control (B3.1): each normalized weight ≤ 1 and throw ≤ 1, so no
+        component can exceed the cap."""
         K = self._K
         u = np.zeros(K, dtype=np.float32)
         if K == 0 or self._dot is None:
             return u
         cx, cy = self._center()
         x, y = self._dot.x(), self._dot.y()
-        throw = min(1.0, math.hypot(x - cx, y - cy) / max(1e-6, self._ring_radius()))
+        R = self._ring_radius()
+        throw = min(1.0, math.hypot(x - cx, y - cy) / max(1e-6, R))
+        sigma = self._sigma(R)
         w = np.zeros(K)
         for i in range(K):
             ax, ay = self._anchor_xy(i)
-            w[i] = 1.0 / (math.hypot(x - ax, y - ay) + 1e-6)
-        w = w / w.sum()
+            d = math.hypot(x - ax, y - ay)
+            w[i] = math.exp(-((d / sigma) ** 2))
+        s = w.sum()
+        w = (w / s) if s > 0.0 else np.full(K, 1.0 / K)   # degenerate -> even blend
         u[:] = (SAFE_REGION_MAGNITUDE * throw) * w
         return u
 
     # --- interaction: pick-and-place ------------------------------------------
     def mousePressEvent(self, ev) -> None:
-        """CLICK toggles arm/drop. Arm: dot jumps to cursor and follows, emit.
-        Drop: park the dot where it is, stop following, emit the parked value."""
+        """CLICK toggles arm/drop. Arm: dot jumps to cursor and follows. Drop:
+        park the dot where it is, stop following. Both set the region TARGET
+        (`changed`); the timer glides the wire to it (ui-v5 BUG-1)."""
         if self._K <= 0:
             ev.ignore()
             return
@@ -383,8 +412,9 @@ class _RegionXYPad(QWidget):
         ev.accept()
 
     def mouseMoveEvent(self, ev) -> None:
-        """Armed: the dot follows the cursor and emits live. Disarmed: INERT —
-        a passive hover changes and emits nothing (B1/B2)."""
+        """Armed: the dot follows the cursor, updating the region TARGET (the
+        panel slews the wire toward it on its timer — ui-v5 BUG-1). Disarmed:
+        INERT — a passive hover changes and emits nothing (B1/B2)."""
         if not self._armed:
             ev.ignore()
             return
@@ -650,13 +680,20 @@ class Panel(QWidget):
         self._push()
 
     def _on_region_vector(self, vec) -> None:
-        """The XY pad view sets the whole region lean at once (same lane)."""
+        """The XY pad view sets the whole region lean at once (same lane). It
+        updates ONLY the region TARGET (and mirrors it onto the strip sliders,
+        display); it does NOT push to the wire. An armed pad fires this on EVERY
+        mouseMove — pushing here would flood the engine with raw region jumps and
+        the live writer could not settle per bar (the reported grate, ui-v5
+        BUG-1). Instead the single timer (`tick_slew`, ~30 Hz) advances the slew
+        one bounded step toward this target, so a fast drag leaves the panel as
+        ONE smooth glide at a controlled rate, and a drop settles exactly on the
+        final target. No new channel: the wire emit is still `_push`."""
         vec = np.asarray(vec, dtype=np.float32).reshape(-1)
         n = min(self.u.n_anchors, vec.shape[0])
         self.u.u_region[:n] = vec[:n]
         for i in range(min(self._region.anchor_count, n)):
             self._region.set_anchor(i, float(vec[i]))
-        self._push()
 
     def _region_target(self) -> np.ndarray:
         """The clamped region TARGET (safe-envelope wall, B3.1). Reads only the

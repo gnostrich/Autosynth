@@ -40,11 +40,16 @@ import numpy as np
 # with the measured basis above; the pad ring is painted AT this value.
 SAFE_REGION_MAGNITUDE: float = 1.0
 
-# Maximum per-emit change of any region component in the slew follower. At the
-# panel's ~30 Hz emit/tick rate a full-scale (0→cap) move takes ~cap/step ticks
-# (~0.4 s here) — a short constant that removes one-frame jumps without feeling
-# laggy. It is a per-STEP bound, not read from anything downstream.
-SLEW_MAX_STEP: float = 0.08
+# Maximum per-emit change of any region component in the slew follower. The panel
+# emits at its single ~30 Hz timer tick (33 ms), so the wall-clock glide of a
+# target jump of magnitude J is (J/step)·33 ms. With step 0.20 a typical pad
+# arm-teleport / cross-anchor sweep (soft kernel spreads mass, so a single-anchor
+# placement peaks a component at ~0.5–0.9, never the full cap) glides in
+# ~80–150 ms — the ui-v5 feel target (PREREG-uiv5-padfeel BUG-1). A rare full-cap
+# (1.0) jump is ~165 ms and a full-diameter reversal (2.0) ~330 ms — still a
+# smooth monotone ramp, never a per-tick pop. This is the primary FEEL dial for
+# the live-test loop. It is a per-STEP bound, not read from anything downstream.
+SLEW_MAX_STEP: float = 0.20
 
 
 def clamp_region(u_region, cap: float = SAFE_REGION_MAGNITUDE) -> np.ndarray:

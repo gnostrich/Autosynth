@@ -166,3 +166,12 @@
 {"head": "9cd9c33", "path": "architecture-v6/PREREG-uiv5-padfeel.md", "tool": "Write", "ts": "2026-07-16T16:45:31+00:00"}
 {"head": "9cd9c33", "path": "OPEN_ENDS.md", "tool": "Write", "ts": "2026-07-16T16:47:00+00:00"}
 {"head": "9cd9c33", "path": "OPEN_ENDS.md", "tool": "Edit", "ts": "2026-07-16T16:48:43+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/envelope.py", "tool": "Edit", "ts": "2026-07-16T17:00:03+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/widget.py", "tool": "Edit", "ts": "2026-07-16T17:00:20+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/widget.py", "tool": "Edit", "ts": "2026-07-16T17:00:30+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/widget.py", "tool": "Edit", "ts": "2026-07-16T17:00:40+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/widget.py", "tool": "Edit", "ts": "2026-07-16T17:00:54+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/widget.py", "tool": "Edit", "ts": "2026-07-16T17:01:00+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/ets/panel/widget.py", "tool": "Edit", "ts": "2026-07-16T17:01:04+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/tests/v5/test_uv5b_emit_throttle.py", "tool": "Write", "ts": "2026-07-16T17:01:29+00:00"}
+{"head": "c604bcd", "path": "architecture-v6/tests/v5/test_uv5c_roam.py", "tool": "Write", "ts": "2026-07-16T17:01:54+00:00"}
