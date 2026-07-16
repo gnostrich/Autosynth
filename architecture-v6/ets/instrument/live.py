@@ -50,7 +50,8 @@ class LiveInstrument:
                  meters_port: int = 0, n_anchors: int = 0) -> None:
         from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import (
-            QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+            QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+            QVBoxLayout, QWidget,
         )
         from ets.panel.transport import OscEmitter, build_meter_dispatcher
         from ets.panel.widget import Panel
@@ -120,6 +121,15 @@ class LiveInstrument:
         for wdg in (self._play, self._pause, self._stop, self._pos):
             ctl.addWidget(wdg)
         root.addLayout(ctl)
+
+        # wrap all content in a scroll area so nothing is unreachable off-screen
+        # (the role pads, drill view, panel, tape and transport can exceed one
+        # screen); resizable, with a sane default size.
+        self.scroll = QScrollArea()
+        self.scroll.setWidget(self.window)
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setWindowTitle("ETS instrument (live)")
+        self.scroll.resize(600, 900)
 
         # --- gesture wiring: role grid -> panel's EXISTING region path --------
         self.role_pads.tapped.connect(self.steer_anchor)
@@ -254,7 +264,7 @@ def main(argv=None) -> int:
           f"(meters_port={inst.receiver.bound_port})")
     inst.emitter.emit_hello(inst.receiver.bound_port)
 
-    inst.window.show()
+    inst.scroll.show()
     if args.smoke:
         # feed one /ets/roleactivity frame (K=3) through the REAL receiver parse,
         # apply it via a GUI tick, then simulate a role tap + a drill.
