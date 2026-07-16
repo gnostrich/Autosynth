@@ -123,6 +123,8 @@ class RegionTapPads(QWidget):
     drill = Signal(int)      # anchor — tap-HOLD to expand that role into its units
 
     HOLD_MS = 350            # press held this long (without release/move) → drill
+    MIN_PAD_W = 44           # min px per role pad so the last of M pads is never
+                             # clipped and stays a comfortable tap target
 
     def __init__(self, n_anchors: int = 0, parent=None) -> None:
         super().__init__(parent)
@@ -135,13 +137,21 @@ class RegionTapPads(QWidget):
         self._hold.setInterval(self.HOLD_MS)
         self._hold.timeout.connect(self._fire_drill)
         self.setMinimumSize(160, 90)
+        self._apply_min_width()
         self.setToolTip("REGION TAP PADS — one pad per ROLE. Tap = a transient "
                         "spike on the region-tilt lane; tap-HOLD = drill into that "
                         "role's units. The machine still settles.\n\n"
                         "internal: region-tilt lane (u_region[anchor]) spike + drill")
 
+    def _apply_min_width(self) -> None:
+        """Request at least MIN_PAD_W px for EVERY one of the M pads, so all M
+        anchors (0..M-1) render side by side and the last pad can never be cut
+        off. Sizing is keyed to M (`self._K`), not M-1."""
+        self.setMinimumWidth(max(160, self._K * self.MIN_PAD_W))
+
     def set_anchor_count(self, K: int) -> None:
         self._K = int(K)
+        self._apply_min_width()
         self.update()
 
     def set_value(self, anchor: int, value: float) -> None:

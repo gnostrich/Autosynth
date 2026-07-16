@@ -758,6 +758,19 @@ class Panel(QWidget):
         # keep the outbound slew sized to the world support (preserves overlap).
         self._region_slew.reset(clamp_region(self.u.u_region))
 
+    def hide_region_strips(self) -> None:
+        """Hide the redundant REGION vector strips (`_RegionStrips`). DISPLAY-ONLY
+        collapse for the CONNECTED instrument window, where the discrete ROLE pads
+        + the continuous XY vector pad already cover region tilt, so the third
+        (strip) view is redundant surface. The strips widget is NOT deleted: it
+        stays constructed and keeps mirroring region values (`tap_region_anchor` /
+        `set_region_vector` still call `_region.set_anchor`), and it is still the
+        exhaustive region control the §8 tests count — only its VISIBILITY is off.
+        Region tilt continues to flow unchanged through the XY pad + role pads via
+        the SAME `_push`/`/ets/lanes` path; this opens no channel and mutates no
+        lane value."""
+        self._region.setVisible(False)
+
     # --- MIDI CC learn --------------------------------------------------------
     def arm_cc_learn(self, target: LaneTarget) -> None:
         self.cc_map.arm(target)

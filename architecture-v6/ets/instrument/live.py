@@ -35,8 +35,9 @@ from typing import Dict, List, Optional
 
 from ets.instrument.cue import CueMonitor
 from ets.instrument.feed import TelemetryReceiver
+from ets.instrument.library import TrackLibraryBrowser
 from ets.instrument.model import PadModel, TapeModel
-from ets.instrument.pads import RegionTapPads, TrackPadGrid, UnitLayerView
+from ets.instrument.pads import RegionTapPads, UnitLayerView
 from ets.instrument.tape import TapeView
 from ets.instrument.transport import Transport
 
@@ -60,6 +61,12 @@ class LiveInstrument:
         # --- connected control surface (the one outbound boundary channel) ----
         self.emitter = OscEmitter(host=engine_host, port=engine_port)
         self.panel = Panel(emitter=self.emitter, n_anchors=n_anchors)
+        # Collapse the three region surfaces to two in the INSTRUMENT window: the
+        # discrete ROLE pads + the continuous XY vector pad cover region tilt, so
+        # the panel's redundant REGION vector strips are hidden (not deleted — the
+        # strips stay constructed and keep mirroring region values). Region tilt
+        # still flows only through the SAME region-tilt lane / _push path.
+        self.panel.hide_region_strips()
 
         # --- live display state (plain inboxes; GUI timer drains them) --------
         self.pad_model = PadModel()
@@ -113,11 +120,14 @@ class LiveInstrument:
         # control surface (region vector control + tolerances + meters).
         root.addWidget(self.panel)
 
-        # secondary per-track material pads + the output tape, side by side.
+        # secondary SOURCE LIBRARY browser (display-only) + the output tape, side
+        # by side. The library is a list of loaded source tracks — swatch, T-id, a
+        # live now-playing dot, and a per-track show/hide DISPLAY filter — NOT a
+        # tap grid: it owns no emitter and reaches no engine path.
         mid = QHBoxLayout()
-        self.track_pads = TrackPadGrid(self.pad_model, self.window)
+        self.track_library = TrackLibraryBrowser(self.pad_model, self.window)
         self.tape_view = TapeView(self.tape_model, self.window)
-        mid.addWidget(self.track_pads, 1)
+        mid.addWidget(self.track_library, 1)
         mid.addWidget(self.tape_view, 2)
         root.addLayout(mid)
 
@@ -299,7 +309,7 @@ class LiveInstrument:
             self.pad_model.set_activity(npa)
             self._inbox_nowplaying = None
         self.pad_model.decay(0.90)
-        self.track_pads.update()
+        self.track_library.sync()
 
         # drill cell breathing: no PER-UNIT sounding signal is emitted, so we
         # light each pool cell by its SOURCE TRACK's now-playing activity (the
