@@ -66,6 +66,25 @@ stand-in (MVP-C parity + MVP-A/B/D all runnable locally). The operator then depl
 container to their cloud with the provided package. State exactly what remains local at each
 step.
 
+## SCOPE CORRECTION (post-build wall — 2026-07-16, honest amendment)
+
+The original grounding above over-claimed. Traced entry points:
+- **Anchor-fit = `ets.functional.anchors.build_world`** (NOT `ets/training/world.py::build_world`,
+  which is the LAMBDA-free NCE *reference* world). This is the heavy geometry step (GW
+  barycenter) inside `ets.writer.build_world_from_tracks`; it consumes ONLY prototypes
+  (cost + mass + slot_hist + band_profile) → **CS-clean, offloaded to the cloud in MVP-1.**
+- **The NCE `LAMBDA` fit + scramble exam CANNOT cross CS-1.** `ets.training.{nce,scramble,fiber}`
+  consume full `Track` objects — stage-2 recipe data (`provenance.src_start/end`, per-unit
+  phase/slot/bar). Uploading a `Track` = uploading a recipe = FORBIDDEN. Reformulating them
+  prototype-only would change `ets/` training + the learned/exam definition = OUT OF SCOPE.
+  **→ WALL: they stay DEVICE-LOCAL.** Not patched; raw/recipes never uploaded to force it.
+
+**Corrected MVP-1 seam:** the cloud offloads the **anchor-fit geometry**; the local machine
+still runs ingest→prototypes and the NCE LAMBDA fit + exam. This is a real compute win (the
+GW barycenter is the heavy step) but LESS than "all training." Full cloud training of
+LAMBDA+exam is a follow-up requiring a prototype-only reformulation of the exam (its own
+prereg + F/exam review). `build_index` (playback) stays local by design → no cloud decoder.
+
 ## Sequencing & discipline
 
 Build MVP-1 → verify MVP-A/B/C/D → the operator can stop training locally. MVP-2 (cloud
