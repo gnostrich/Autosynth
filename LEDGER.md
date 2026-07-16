@@ -383,3 +383,9 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `f5babb7`
 - `Edit` architecture-v6/tests/instrument/test_f3b_door.py (2026-07-16T20:01:01+00:00)
+
+### at `983f3bf`
+- `Write` release-manifest.json (2026-07-16T20:03:17+00:00)
+- `Edit` VERSION_SCHEME.md (2026-07-16T20:05:52+00:00)
+- `Edit` VERSIONS.md (2026-07-16T20:05:59+00:00)
+- `Edit` VERSIONS.md (2026-07-16T20:06:14+00:00)

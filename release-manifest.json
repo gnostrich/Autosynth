@@ -1,6 +1,6 @@
 {
-  "_comment": "The active ETS release — a pinned tuple across the three version axes (see VERSION_SCHEME.md). This file is the single source of truth for 'what am I running'.",
-  "release": "engine-v1 · ui-v4 · psytech",
+  "_comment": "The active ETS release — a pinned tuple across the version axes (see VERSION_SCHEME.md). This file is the single source of truth for 'what am I running'.",
+  "release": "engine-v1 · ui-v5 · psytech (local) | cloud: anchor-fit offload (cloud-mvp1)",
   "engine": {
     "id": "engine-v1",
     "location": "repo root (ets/, corpus.etsworld, ets/calibration/)",
@@ -8,22 +8,33 @@
     "verified_by": "scripts/verify_version.py against verification/canonical_manifest.json"
   },
   "ui": {
-    "id": "ui-v4",
-    "location": "architecture-v5/",
-    "title": "interaction fixes (hover-scroll, pad pick-and-place, slew + safe clamp)",
+    "id": "ui-v5",
+    "location": "architecture-v6/",
+    "title": "connected playable instrument (role pads + XY + tape + transport), drill-in (unit fine-steer), read-only telemetry light-up, live loudness/eardrum-safety cap, library browser",
     "status": "merged",
-    "auditor": "PASS (2026-07-16)",
+    "auditor": "PASS (substantive) + operator-approved door-test typing refinement (2026-07-16)",
     "runs_on": "engine-v1",
-    "outboard_byte_identical": true
+    "offline_byte_identical": true,
+    "single_region_tilt_authority": true
   },
   "instance": {
     "id": "psytech",
     "location": "repo root (embedded founding) + pointer instantiations/psytech/",
     "status": "active"
   },
+  "deployment": {
+    "id": "cloud-mvp1",
+    "location": "cloud/",
+    "title": "hosted anchor-fit training service (offloads the GW-barycenter geometry off the local machine)",
+    "status": "merged",
+    "auditor": "PASS-WITH-NOTES (2026-07-16)",
+    "boundary": "only stage-3 gauge-invariant cost matrices + masses cross device->cloud (CS-1..CS-5, verified biting); raw audio + stage-2 recipes never uploaded; no cloud decoder; world returns with device-verifiable receipts",
+    "wall": "NCE LAMBDA fit + scramble exam stay DEVICE-LOCAL (they consume stage-2 recipe data -> cannot cross CS-1); full cloud training is a follow-up needing a prototype-only exam reformulation",
+    "deploy": "deploy-ready (cloud/service/Dockerfile); verified locally as the cloud stand-in; real provisioning is the operator's cloud-account step"
+  },
   "also_available": {
     "instances": ["futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"],
-    "ui_history": ["ui-v1 (founding panel)", "ui-v2 (architecture-v2, knob naming)", "ui-v3 (architecture-v4, instrument surface)"],
+    "ui_history": ["ui-v1 (founding panel)", "ui-v2 (architecture-v2, knob naming)", "ui-v3 (architecture-v4, instrument surface)", "ui-v4 (architecture-v5, interaction fixes)"],
     "sealed": ["engine-v2-x (_sealed/architecture-v3-sampler-FAILED, failed sampler)"]
   }
 }

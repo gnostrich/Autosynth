@@ -56,9 +56,20 @@ psytech trained model. That string is the whole answer to "what am I running."
 | `ui-v1` | engine-v1 root tree (founding panel: `ets/panel/`) | embedded/founding |
 | `ui-v2` | `architecture-v2/` | knob renaming (display-only) |
 | `ui-v3` | `architecture-v4/` | instrument surface (pads/tape/cue) |
-| `ui-v4` | `architecture-v5/` | interaction fixes (hover/pad/slew) — **ACTIVE** (auditor PASS 2026-07-16) |
+| `ui-v4` | `architecture-v5/` | interaction fixes (hover/pad/slew) — superseded by ui-v5 |
+| `ui-v5` | `architecture-v6/` | connected playable instrument (role pads + XY + tape + transport), drill-in (unit fine-steer), read-only telemetry light-up, live loudness/eardrum-safety cap, library browser — **ACTIVE** (auditor PASS + operator-approved door-test typing refinement, 2026-07-16) |
 | `instance:psytech` | repo root (embedded founding) + pointer `instantiations/psytech/` | **ACTIVE** |
 | `instance:futuregarage` | `instantiations/futuregarage/` (full fork) | trained, on `engine-v1` |
 
 (Note the old `architecture-v3` number is the sealed `engine-v2-x`; there is no
-`architecture-v3` in the active tree. The UI line is now clean: `ui-v1..v4`.)
+`architecture-v3` in the active tree. The UI line is now clean: `ui-v1..v5`.)
+
+## Deployment axis (added 2026-07-16)
+
+Cloud/topology work is a fourth, orthogonal axis: it changes *where compute runs*,
+not the sound (engine) or the surface (ui). It is named `cloud-mvpN` and pinned in
+`release-manifest.json` under `deployment`.
+
+| Deployment ID | Physical location | Status |
+|---|---|---|
+| `cloud-mvp1` | `cloud/` | **MERGED** (auditor PASS-WITH-NOTES 2026-07-16). Hosted anchor-fit training service (offloads the GW-barycenter geometry). Only stage-3 gauge-invariant cost matrices + masses cross device→cloud (CS-1..CS-5 verified biting); raw audio + recipes never uploaded; no cloud decoder; world returns with device-verifiable receipts. WALL: NCE LAMBDA fit + scramble exam stay device-local (they consume stage-2 recipe data). Deploy-ready (`cloud/service/Dockerfile`); verified locally as the cloud stand-in. |

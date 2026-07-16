@@ -88,8 +88,9 @@ architecture version and instantiation came to be — the fine-grained companion
 to the coarse table below.
 
 > **The authoritative version scheme is now `VERSION_SCHEME.md`** (formal three-axis
-> component versioning: `engine-vN` · `ui-vN` · `instance`), and the active release is
-> pinned in `release-manifest.json` (currently **`engine-v1 · ui-v4 · psytech`**). The
+> component versioning: `engine-vN` · `ui-vN` · `instance`, plus a `deployment` axis),
+> and the active release is pinned in `release-manifest.json` (currently
+> **`engine-v1 · ui-v5 · psytech`**, with `cloud-mvp1` on the deployment axis). The
 > section below is retained as background; the mapping table there ⇄ the new IDs lives
 > in `VERSION_SCHEME.md`.
 
@@ -114,8 +115,9 @@ and a failed engine experiment never pollutes the interface:
 | Engine | **v1** | repo root (`ets/`, `corpus.etsworld`, calibration) | **ACTIVE / canonical / verified** |
 | Engine | v3-sampler | `_sealed/architecture-v3-sampler-FAILED/` | **SEALED (failed ear test).** Did NOT advance the engine line; retained for the coherence-metric finding only. See its `ARCHIVED.md` + `reports/2026-07-16-decision-park-v3-sampler.md`. |
 | UX/FE | **v2** (knob naming) | `architecture-v2/` | **KEPT / active UX layer** (display-only over v1) |
-| UX/FE | **v5** (interaction bugfixes) | `architecture-v5/` | **IN PROGRESS** — hover-scroll everywhere (no hover-move), XY pad position-based pick-and-place (click→move→click-drop) with visual indexing, and UX-layer anti-divergence (safe-envelope clamp + slew-limited emits). Engine status quo. Fork of v4; pre-change tag `pre-hoverfix-v5-base`. Measured: offline path does NOT reproduce the reported divergence (live-path transient suspected). See `architecture-v5/PREREG-v5-interaction.md`. |
-| UX/FE | **v4** (Feature 3: instrument half) | `architecture-v4/` | **COMPLETE / MERGED** — pad grid + tape view + tap/hold (region-tilt only) + transport + cue. Read/tap/monitor layer, **zero engine diffs** (fork of v2; pre-change tag `pre-feature3-v4-base`). ets-auditor **PASS** (no second path into settlement/F/render/provenance; F3-A outboard byte-identical, bites); 17 instrument + 43 panel/h6 tests green. 3 walls reported honestly (live x-process provenance feed; track↔anchor join; true pad-isolation audition). Numbered v4 because v3 is the sealed/burned number. See `architecture-v4/PREREG-feature3.md`. |
+| UX/FE | **v5** (= `ui-v5`, `architecture-v6/`) | `architecture-v6/` | **ACTIVE / MERGED** — connected playable instrument: role pads (tap→precision region-tilt) + XY pad (pick-and-place) + tape + transport, drill-in (unit-tap → fine-steer toward that unit's anchor-profile), read-only OSC telemetry light-up, live loudness/eardrum-safety cap (attenuate-only RMS cap + soft-knee + hard ceiling, LIVE-ONLY; offline byte-identical), library browser (display-only). Single region-tilt authority (f3b door test bites). Auditor **PASS** + operator-approved door-test typing refinement. Engine status quo (engine-v1). |
+| UX/FE | v4 (interaction bugfixes) | `architecture-v5/` | **SUPERSEDED by ui-v5.** hover-scroll everywhere (no hover-move), XY pad position-based pick-and-place, UX-layer anti-divergence (safe-envelope clamp + slew-limited emits). Fork of v3 (`architecture-v4`). Retained as immutable history. See `architecture-v5/PREREG-v5-interaction.md`. |
+| UX/FE | v3 (Feature 3: instrument half) | `architecture-v4/` | **COMPLETE / superseded.** pad grid + tape view + tap/hold (region-tilt only) + transport + cue. Read/tap/monitor layer, **zero engine diffs**. ets-auditor **PASS**; 17 instrument + 43 panel/h6 tests green. See `architecture-v4/PREREG-feature3.md`. |
 
 The genre-best psytech deliverable + its exact reproduction recipe are committed at
 **`samples/genre_set/`** (streaming engine + low-temperature steered journeys;

@@ -267,3 +267,7 @@
 {"head": "b2c2d32", "path": "cloud/tests/test_mvp_a_raw_never_uploaded.py", "tool": "Edit", "ts": "2026-07-16T19:48:14+00:00"}
 {"head": "b2c2d32", "path": "cloud/PREREG-cloud-mvp1.md", "tool": "Edit", "ts": "2026-07-16T19:57:28+00:00"}
 {"head": "f5babb7", "path": "architecture-v6/tests/instrument/test_f3b_door.py", "tool": "Edit", "ts": "2026-07-16T20:01:01+00:00"}
+{"head": "983f3bf", "path": "release-manifest.json", "tool": "Write", "ts": "2026-07-16T20:03:17+00:00"}
+{"head": "983f3bf", "path": "VERSION_SCHEME.md", "tool": "Edit", "ts": "2026-07-16T20:05:52+00:00"}
+{"head": "983f3bf", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T20:05:59+00:00"}
+{"head": "983f3bf", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T20:06:14+00:00"}
