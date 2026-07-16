@@ -63,16 +63,47 @@ def test_the_scanner_bites_on_a_rogue_import():
     assert _bad_imports(_imports(clean)) == set()
 
 
+# Control-mutating panel/engine entries. If ANY instrument module *calls* one of
+# these, a gesture could drive settlement / F / writer / render / provenance-
+# generation directly — forbidden. The ONLY sanctioned gesture→engine CONTROL
+# path is the region tap (tap_region_anchor → the existing /ets/lanes emitter).
+#
+# Deliberately ABSENT (each categorically NOT a control entry):
+#  - plain `emit`         : Qt Signal.emit(), the pad widgets' own gesture bus,
+#                           unrelated to the OSC emitter.
+#  - `emit_hello`/`hello` : a READ-ONLY telemetry-SUBSCRIPTION handshake, NOT a
+#    control entry. `osc_schema.encode_hello(meters_port)` returns
+#    `[int(meters_port)]` — it carries ONLY the instrument's telemetry-receiver
+#    PORT, nothing else. The engine consumes /ets/hello solely to
+#    `meters.retarget(host, port)`, i.e. to choose WHERE it SENDS read-only
+#    telemetry (meters / welcome / roleactivity). It never reaches the
+#    writer / settlement / F / render / provenance path (see engine.answer_hello:
+#    it only retargets + re-emits telemetry; the audio/control path is untouched).
+#    So typing it as "control" was a mis-classification; it is correctly ALLOWED.
+FORBIDDEN_CALLS = {"_push", "_on_region", "_on_scalar", "_on_region_vector",
+                   "_on_tolerance", "emit_tolerances",
+                   "settle", "write_bar", "put_lanes"}
+
+
+def _control_calls(src: str) -> set:
+    """Attribute names in `src` that hit a forbidden control-mutating entry.
+    (Shared by the real scan and its self-bite so both use ONE definition.)"""
+    return {n.attr for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Attribute) and n.attr in FORBIDDEN_CALLS}
+
+
 def test_the_only_engine_bound_gesture_is_the_region_tap():
-    """The single panel entry the instrument calls to drive the engine is
-    `tap_region_anchor` (the existing region-tilt lane). It must NOT name any
-    other control-mutating panel entry (settle/emit/_push/_on_*)."""
-    # NOTE: plain `emit` is deliberately absent — Qt Signal.emit() is the pad
-    # widgets' own gesture bus, unrelated to the OSC emitter. We flag the panel's
-    # control-mutating internals + the OSC emitter's tolerance send instead.
-    forbidden_calls = {"_push", "_on_region", "_on_scalar", "_on_region_vector",
-                       "_on_tolerance", "emit_tolerances", "emit_hello",
-                       "settle", "write_bar", "put_lanes"}
+    """The single panel entry the instrument calls to DRIVE (control-mutate) the
+    engine is `tap_region_anchor` (the existing region-tilt lane). It must NOT
+    name any other control-mutating panel/engine entry (settle / write_bar /
+    put_lanes / _push / _on_region* / _on_scalar / emit_tolerances).
+
+    The instrument's `emit_hello` is NOT a control path: it is a read-only
+    telemetry-subscription handshake carrying only the receiver port
+    (osc_schema.encode_hello → `[int(meters_port)]`); the engine uses it only to
+    retarget where it SENDS telemetry, never to mutate the trained object. So the
+    test's INTENT is unchanged — the sole gesture→engine CONTROL path is the
+    region tap — while the read-only subscription handshake is correctly allowed."""
     called = set()
     tap_seen = False
     for p, src in _sources():
@@ -80,12 +111,21 @@ def test_the_only_engine_bound_gesture_is_the_region_tap():
             if isinstance(n, ast.Attribute):
                 if n.attr == "tap_region_anchor":
                     tap_seen = True
-                if n.attr in forbidden_calls:
+                if n.attr in FORBIDDEN_CALLS:
                     called.add((p.name, n.attr))
     assert tap_seen, "the region tap entry (tap_region_anchor) is never used"
     assert not called, (
         f"instrument calls a non-sanctioned control entry: {called} — the only "
         "gesture→engine path is the region tap (PREREG-feature3 hard lines)")
+
+    # SELF-BITE — the door must STILL fire on a genuine control-mutating entry.
+    # A would-be instrument module that pushes lanes / settles a bar IS flagged.
+    rogue = "panel.put_lanes(lanes)\nself.writer.settle(bar)\ne.write_bar(b)\n"
+    assert _control_calls(rogue) == {"put_lanes", "settle", "write_bar"}, \
+        "the control-entry scanner went blind — it no longer bites control"
+    # and the sanctioned read-only telemetry-subscription handshake is NOT flagged.
+    assert _control_calls("inst.emitter.emit_hello(port)\n") == set(), \
+        "emit_hello is a read-only telemetry subscription, not a control entry"
 
 
 def test_region_tap_reaches_the_engine_only_via_the_existing_emitter():

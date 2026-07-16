@@ -380,3 +380,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` cloud/tests/test_mvp_d_no_decoder.py (2026-07-16T19:47:46+00:00)
 - `Edit` cloud/tests/test_mvp_a_raw_never_uploaded.py (2026-07-16T19:48:14+00:00)
 - `Edit` cloud/PREREG-cloud-mvp1.md (2026-07-16T19:57:28+00:00)
+
+### at `f5babb7`
+- `Edit` architecture-v6/tests/instrument/test_f3b_door.py (2026-07-16T20:01:01+00:00)

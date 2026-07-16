@@ -266,3 +266,4 @@
 {"head": "b2c2d32", "path": "cloud/tests/test_mvp_d_no_decoder.py", "tool": "Write", "ts": "2026-07-16T19:47:46+00:00"}
 {"head": "b2c2d32", "path": "cloud/tests/test_mvp_a_raw_never_uploaded.py", "tool": "Edit", "ts": "2026-07-16T19:48:14+00:00"}
 {"head": "b2c2d32", "path": "cloud/PREREG-cloud-mvp1.md", "tool": "Edit", "ts": "2026-07-16T19:57:28+00:00"}
+{"head": "f5babb7", "path": "architecture-v6/tests/instrument/test_f3b_door.py", "tool": "Edit", "ts": "2026-07-16T20:01:01+00:00"}
