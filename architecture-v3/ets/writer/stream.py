@@ -15,40 +15,51 @@ result over. Control latency is therefore exactly the engine's declared L bars
 (connector: Real-time typing).
 
 TEMPERATURE (spec §8 lane 6: "sampling looseness around the settled optimum").
-The settlement measure is p(a) ∝ exp(−F/T_s + Σλφ). The writer first settles
-the frontier's O-block to the tilted mode (certificate), then draws the emitted
-O from the Laplace approximation of that measure around the mode, in O
-coordinates, REFLECTED into the positive orthant (the constraint set):
+The settlement measure is p(O) ∝ exp(−F_col/T_s) per slot column, F_col = the
+O-marginal terms (T2 mass-conservation + T3 masking) that provably factor
+through the occupancy (spec §5 rev-r1). The writer first settles the frontier's
+O-block to the tilted mode O* (certificate), then draws the emitted O by
+sampling THAT SAME measure directly — not a Gaussian model of it — via the exact
+1D conditional slices through the settled mode:
 
-    O = |O* + ξ|,   ξ ~ N(0, T_s · H_O⁻¹) per slot column,
+    for each role k:  g_k(x) = F_col(O* with O*_k := x) / T_s ,   x > 0
+                      O_k ~  p_k(x) ∝ exp(−g_k(x))  by inverse-CDF on a grid,
 
-with H_O = solver._d2F_dO2_slot(O*) — the EXACT per-slot Hessian of the O-terms
-(the same F the settlement descends; the tilt is linear in O and adds no
-curvature). Directions of unreliable curvature (eigenvalues below the
-numerical-rank tolerance M·eps·λ_max) receive ZERO variance — conservative,
-never explosive. Reflection at 0 keeps O STRICTLY POSITIVE for every draw (|·| >
-0 a.s.): no slot is ever zeroed, no positive-orthant CLIP (max(·,floor)) exists,
-so the seed-dependent dead-slot failure (a negative additive draw floored to
-1e-12) is impossible by construction. z is drawn once per column BEFORE the
-clamp/cold skip, so rng alignment is independent of the clamp pattern and
-temperature; same (world, tilt trajectory, seed) ⇒ bit-identical tape (H-8).
+with the grid spanning the plausible reach [~0, O*_k + z_run·s_k] and s_k =
+sqrt(T_s·[H_O⁻¹]_kk) the per-role O-space Laplace std (H_O =
+solver._d2F_dO2_slot(O*), the EXACT per-slot Hessian — the same F the settlement
+descends). Directions of unreliable curvature (eigenvalues below the
+numerical-rank tolerance M·eps·λ_max) get ZERO variance (s_k=0) and pin to the
+mode. The grid support is STRICTLY POSITIVE (x_0>0), so every draw is strictly
+positive: no slot is ever zeroed, no positive-orthant CLIP (max(·,floor)) and no
+floor-fill exists — the seed-dependent dead-slot failure is impossible by
+construction. z ~ N(0,1)^M is drawn once per column BEFORE the clamp/cold skip
+and mapped u=Φ(z) → inverse-CDF, so rng alignment is independent of the clamp
+pattern and temperature; same (world, tilt trajectory, seed) ⇒ bit-identical
+tape (H-8). T_s divides F_col in the exponent, so it scales the looseness around
+the mode exactly (T_s→0 concentrates the measure onto the mode — cold = the
+settled optimum).
 
-WHY REFLECTION, NOT A LOG/MIRROR DRAW (measured, architecture-v3 finding). The
-Laplace covariance in O-coordinates is the true measure's second-order model on
-the constraint set; the near-boundary mode (per-cell occupancy O*≈0.025 with
-O-space std ≈0.07, i.e. σ/O*≈2.8 on the psytech corpus) makes ~1/3 of a raw
-Gaussian draw negative, which the old max(·,floor) clip turned into dead slots.
-A LOG-space draw O=O*·exp(ξ) is positivity-clean but INVALID at this scale: its
-mean is O*·exp(diag(Σ)/2), and with σ_log≈2.8 that is a ~50× occupancy inflation
-(measured: per-bar density mean 58 vs mode 1.0, region σ up to 413) — it does not
-sample AROUND the mode, it blows the mode up. Reflection is the positive-orthant
-folding of the O-space Gaussian: it preserves the mode scale (density mean ≈2.4×
-mode — the intrinsic near-boundary adjustment, not a blow-up), reproduces the
-calibrated fluctuation the σ_φ instrument expects (region σ≈0.13), and zeroes no
-slot. Bug-1's runaway is driven by the TILTED MODE size (mis-calibrated λ), not
-by the draw — it is handled by the recalibrated σ_φ (bounded λ) and the halt
-below, which is the correct division of labor. See the session report /
-proposed prereg revision (Fix C: reflected O-space Laplace, not log-space).
+WHY THE EXACT CONDITIONAL SLICE, NOT A GAUSSIAN MODEL (measured, architecture-v3
+finding; Table-6 harness on the psytech corpus, T_s=1). The measure is
+near-boundary (per-role O*≈0.025, s_k≈0.07) and NON-Gaussian there: its true
+per-role Gibbs std (≈0.090, reference log-space Metropolis) is ~1.27× WIDER than
+the Laplace marginal s_k (≈0.071) — the boundary + gKL curvature give a heavier
+positive tail than the quadratic model. So any Gaussian-model draw mis-matches
+the true fluctuation the σ_φ instrument is calibrated to: the additive Gaussian
+CLIPPED to the floor (std_bias 0.45, 36% clip → dead slots), its REFLECTION
+O=|O*+ξ| (std_bias 0.50, folds the fold-mass so it is too WIDE), and the log
+draw O=O*·exp(ξ) (std_bias 344, a ~50× mean blow-up) all fail. The O-terms
+Hessian has ZERO T3 diagonal (H_kk = L2/O*_k, pure T2; T3 restricted to one axis
+is affine), so the 1D conditional slice through the mode along role k IS the
+exact per-role Gibbs marginal up to a linear tilt — sampling it by inverse-CDF
+reproduces the true std (std_bias 0.09, at the reference sampler's own noise
+floor) while staying strictly positive and mode-centred. The plausible reach is
+tied to the SAME z_run the runaway halt uses (below): the sampler draws the true
+measure RESTRICTED to the set the halt certifies as non-runaway, so a draw can
+never exceed the runaway bound — one scale governs both, no second channel. See
+the session report / proposed prereg revision (Fix C: exact 1D-conditional
+inverse-CDF draw, superseding the reflected O-space Laplace).
 
 STREAMHALT ON NON-FINITE / RUNAWAY (spec §7 halt-and-report; never emit garbage
 to the speakers). After the sample, `write_bar` raises ``StreamHalt`` if the
@@ -71,17 +82,72 @@ asserts the per-bar frontier F-descent certificate and the state bound every
 bar; violation raises ``StreamHalt`` (halt-and-report, no recovery mode).
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..functional import f as ff
 from ..functional import solver as sv
 from . import phi as PHI
 from .realize import FiberThreader, RealizationIndex
 from .settle import settle_tape, _tape_state
 from .tape import ClampSet, OutputGrid, TapeNode
 from .tilt import TiltTerms, untilted
+
+
+_SQRT2 = math.sqrt(2.0)
+_GRID_N = 129            # inverse-CDF grid resolution for the 1D conditional slice
+
+
+def _normal_cdf(z: np.ndarray) -> np.ndarray:
+    """Standard-normal CDF Φ, dependency-free (stdlib erf; the engine core has no
+    scipy). Maps the per-column N(0,1) draw to uniforms for inverse-CDF sampling
+    without perturbing the rng-draw discipline (H-8)."""
+    z = np.asarray(z, float)
+    return 0.5 * (1.0 + np.array([math.erf(float(v) / _SQRT2) for v in z.ravel()])
+                  ).reshape(z.shape)
+
+
+def sample_conditional_column(o: np.ndarray, slot_state, T: float,
+                              s_lap: np.ndarray, reach: float,
+                              z: np.ndarray, n: int = _GRID_N) -> np.ndarray:
+    """ONE deterministic, strictly-positive draw from the exact per-role 1D
+    conditional slices of the per-slot Gibbs measure exp(−F_col/T) through the
+    settled mode ``o`` (module docstring). This is the SINGLE sampler both the
+    streaming writer and the Table-6 measurement invoke (apples-to-apples).
+
+    For role k with per-role Laplace std s_lap[k]>0, build the potential
+    g_k(x) = F_col(o with o_k:=x)/T on a positive grid [x0, o_k + reach·s_lap_k]
+    — F_col via f.py's OWN terms (single source of truth, no re-derivation) — and
+    inverse-CDF map u_k=Φ(z_k) → O_k. The grid starts strictly above 0 so the
+    draw is strictly positive (no clamp, no floor-fill). Roles on a zero-variance
+    direction (s_lap[k]=0) pin to the mode. z is the per-column N(0,1) vector."""
+    M = o.shape[0]
+    out = np.array(o, float)
+    u = _normal_cdf(z)
+    Ocol = np.array(o, float)
+    for k in range(M):
+        sk = float(s_lap[k])
+        if sk <= 0.0:                      # unreliable-curvature axis: pin to mode
+            continue
+        xmax = float(o[k]) + reach * sk
+        x = np.linspace(0.0, xmax, n)
+        x[0] = xmax / (n * 50.0)           # strictly-positive support ⇒ draw > 0
+        g = np.empty(n)
+        col = Ocol.reshape(-1, 1)
+        for i in range(n):
+            col[k, 0] = x[i]
+            g[i] = (ff.term_T2(col, slot_state) + ff.term_T3(col, slot_state)) / T
+        col[k, 0] = o[k]
+        g -= g.min()                       # stabilise exp; max exponent = 0
+        p = np.exp(-g) * np.gradient(x)    # trapezoidal measure weights
+        cdf = np.cumsum(p)
+        cdf /= cdf[-1]
+        uk = min(max(float(u[k]), 1e-12), 1.0 - 1e-12)
+        out[k] = float(np.interp(uk, cdf, x))
+    return out
 
 
 class StreamHalt(RuntimeError):
@@ -154,15 +220,16 @@ class StreamWriter:
 
     def _sample_temperature(self, O_star: np.ndarray, state, tilt: TiltTerms,
                             clamp_mask: np.ndarray) -> Tuple[np.ndarray, float]:
-        """Reflected O-space Laplace draw around the settled mode (module
-        docstring). Returns (O, occ_bound): the sampled occupancy and the
-        DERIVED plausible-max total occupancy Σ_{s,k}(O*_k + z_run·s_k) the draw
-        could produce this bar (Fix B runaway reference).
+        """Exact 1D-conditional inverse-CDF draw around the settled mode (module
+        docstring). Returns (O, occ_bound): the sampled occupancy and the DERIVED
+        plausible-max total occupancy Σ_{s,k}(O*_k + z_run·s_k) — the SAME z_run
+        reach the sampler grid uses, so occ ≤ occ_bound by construction and the
+        Fix-B runaway arm fires only on a genuine mis-produced occupancy.
 
-        T_s scales the covariance; clamped columns and cold (T_s≤0) columns are
-        boundary conditions and do not fluctuate. z is drawn unconditionally (one
-        M-vector per column, BEFORE the skip) so rng alignment is independent of
-        the clamp pattern and temperature (H-8)."""
+        T_s scales the looseness (F_col/T_s in the exponent); clamped columns and
+        cold (T_s≤0) columns are boundary conditions and do not fluctuate. z is
+        drawn unconditionally (one M-vector per column, BEFORE the skip) so rng
+        alignment is independent of the clamp pattern and temperature (H-8)."""
         T = float(tilt.T_s)
         O = O_star.copy()
         M, S = O.shape
@@ -179,12 +246,13 @@ class StreamWriter:
             w, V = np.linalg.eigh(H)
             tol = M * np.finfo(float).eps * float(np.max(np.abs(w)))
             var = np.where(w > tol, T / np.maximum(w, tol), 0.0)
-            xi = V @ (np.sqrt(var) * z)              # O-space perturbation
-            O[:, s] = np.abs(o + xi)                 # reflect at 0: strictly > 0 a.s.
-            # per-role O-space std s_k = sqrt(diag of the covariance T·H_O⁻¹);
-            # plausible-max column mass Σ_k(O*_k + z_run·s_k) (Fix B bound):
-            # |o+xi| ≤ o + |xi| ≤ o + z_run·s_k component-wise.
+            # per-role O-space Laplace std s_k = sqrt(diag of the covariance
+            # T·H_O⁻¹): sets BOTH the sampler grid reach (o_k + z_run·s_k) and the
+            # Fix-B plausible-max bound Σ_k(o_k + z_run·s_k). One scale, no second
+            # channel; the draw lives on [~0, o_k + z_run·s_k] ⇒ occ ≤ occ_bound.
             s_k = np.sqrt((V * V) @ var)
+            slot_state = replace(state, theta=state.theta[:, s:s + 1])
+            O[:, s] = sample_conditional_column(o, slot_state, T, s_k, z_run, z)
             occ_bound += float(np.sum(o + z_run * s_k))
         return O, occ_bound
 

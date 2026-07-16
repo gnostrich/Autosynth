@@ -80,3 +80,7 @@
 {"head": "e56650b", "path": "architecture-v3/scripts/run_sigma_phi.py", "tool": "Edit", "ts": "2026-07-16T11:47:40+00:00"}
 {"head": "e56650b", "path": "architecture-v3/tests/calibration/test_sigma_phi.py", "tool": "Edit", "ts": "2026-07-16T11:48:13+00:00"}
 {"head": "e56650b", "path": "architecture-v3/tests/calibration/test_sigma_phi.py", "tool": "Edit", "ts": "2026-07-16T11:48:26+00:00"}
+{"head": "2d6fdec", "path": "architecture-v3/ets/writer/stream.py", "tool": "Edit", "ts": "2026-07-16T13:43:53+00:00"}
+{"head": "2d6fdec", "path": "architecture-v3/ets/writer/stream.py", "tool": "Edit", "ts": "2026-07-16T13:44:10+00:00"}
+{"head": "2d6fdec", "path": "architecture-v3/ets/writer/stream.py", "tool": "Edit", "ts": "2026-07-16T13:44:35+00:00"}
+{"head": "2d6fdec", "path": "architecture-v3/ets/writer/stream.py", "tool": "Edit", "ts": "2026-07-16T13:45:04+00:00"}
