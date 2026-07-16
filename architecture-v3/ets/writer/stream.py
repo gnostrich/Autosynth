@@ -194,13 +194,14 @@ class StreamWriter:
         # heard, ≤ corpus units) + pending (≤ placements of one bar).
         self._n_corpus_units = sum(len(t.units) for t in world.tracks)
         self._n_bands = int(world.fstate.B.shape[1])
-        # Runaway-halt scale (Fix B): the log-space sampler draws M·s_phase
+        # Runaway-halt / sampler-reach scale (Fix B): the sampler draws M·s_phase
         # standard normals per bar; over the corpus horizon the number of draws
         # is N_draws = M·s_phase·(corpus bars). z_run = sqrt(2 ln N_draws) is the
         # asymptotic expected maximum of that many standard normals — the
-        # plausible-max draw magnitude for the whole run. Checking each bar
-        # against this run-scale magnitude leaves natural headroom (a per-bar max
-        # is ~sqrt(2 ln(M·s_phase)) ≪ z_run) with no hand-set constant.
+        # plausible-max draw magnitude for the whole run. It sets BOTH the
+        # conditional-slice grid reach (o_k + z_run·s_k) and the runaway bound
+        # (Σ_k o_k + z_run·s_k): the sampler draws the true measure restricted to
+        # the certified non-runaway set, no hand-set constant, one scale.
         n_corpus_bars = sum(int(t.units["bar"].max()) + 1 for t in world.tracks)
         n_draws = max(2, self.M * self.s_phase * int(n_corpus_bars))
         self._z_run = float(np.sqrt(2.0 * np.log(n_draws)))
@@ -291,7 +292,7 @@ class StreamWriter:
         #      render/speakers. (i) non-finite is free and always valid; (ii) the
         #      runaway bound is DERIVED (never hand-set): the certified settled
         #      mode mass M* = res.O.sum() (untilted == world total mass a.sum())
-        #      times the log-space sampler's plausible-max inflation occ_bound.
+        #      plus the sampler's plausible-max fluctuation reach occ_bound.
         if not np.all(np.isfinite(O)):
             raise StreamHalt(
                 f"bar {bar}: non-finite occupancy after temperature sampling "
