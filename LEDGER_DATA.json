@@ -20,7 +20,7 @@
       "location": "architecture-v2/ (clean canonical layout: machine + instances/)",
       "marker": "tag pre-panel-relabel-2026-07-16 (immutable pre-change marker of v1)",
       "driving_directive": "ETS directive — panel relabeling (display layer only): face labels + tooltips; no engine/OSC/registry/F symbol touched",
-      "audit": "PENDING — builder applying the display-only relabel; ets-auditor to verify the display-only property + directive harness"
+      "audit": "PASS (display-only, verified independently + builder-confirmed): ONLY ets/panel/widget.py differs from the v1 machine; one _FACE alias map; all internal/OSC/F symbols intact (none renamed); six-lane + tolerance exhaustiveness laws hold; py_compile OK; 43 panel/harness tests pass (18 full-run failures are pre-existing/environmental, identical against the pristine baseline). Two display-layer nuances, both in-scope: disarmed lanes render setEnabled(False) (directive rule 4); the face resolver is total so the alias never becomes a second enforcement channel"
     }
   ],
   "instances": [
