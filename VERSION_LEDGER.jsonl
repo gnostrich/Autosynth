@@ -2,3 +2,7 @@
 {"head": "6cd5834", "path": "scripts/ledger_hook.py", "tool": "Write", "ts": "2026-07-16T05:50:00+00:00"}
 {"head": "6cd5834", "path": ".claude/settings.json", "tool": "Edit", "ts": "2026-07-16T05:50:00+00:00"}
 {"head": "6cd5834", "path": "VERSIONS.md", "tool": "Write", "ts": "2026-07-16T05:50:00+00:00"}
+{"head": "53c4e0b", "path": "ets/functional/f.py", "tool": "Edit", "ts": "2026-07-16T06:18:02+00:00"}
+{"head": "53c4e0b", "path": "ets/functional/f.py", "tool": "Edit", "ts": "2026-07-16T06:18:12+00:00"}
+{"head": "53c4e0b", "path": "ets/functional/f.py", "tool": "Edit", "ts": "2026-07-16T06:18:33+00:00"}
+{"head": "53c4e0b", "note": "PIVOT: user chose full-fork isolation for the nidhogg instantiation (no edits to v1 code). The three ets/functional/f.py edits logged above were REVERTED (git checkout) — v1 f.py is byte-pristine. New instantiation is a self-contained copy under instantiations/nidhogg/.", "tool": "note", "ts": "2026-07-16T06:30:00+00:00"}
