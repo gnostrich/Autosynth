@@ -60,6 +60,10 @@ def main(argv=None) -> int:
     # meter path stays one-way (I-5); this timer reads, never emits.
     timer = QTimer(panel)
     timer.timeout.connect(panel.refresh_meters)
+    # ...and complete any in-flight outbound region SLEW ramp (B3.2): the same
+    # emit path (panel._push via tick_slew), a no-op once converged. No second
+    # channel, nothing read from settlement.
+    timer.timeout.connect(panel.tick_slew)
     timer.start(33)
 
     panel.show()

@@ -231,3 +231,19 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `84a30e9`
 - `Write` architecture-v5/PREREG-v5-interaction.md (2026-07-16T15:47:30+00:00)
 - `Edit` VERSIONS.md (2026-07-16T15:47:39+00:00)
+
+### at `42d6002`
+- `Write` architecture-v5/ets/panel/envelope.py (2026-07-16T15:55:30+00:00)
+- `Edit` architecture-v5/ets/panel/widget.py (2026-07-16T15:56:20+00:00)
+- `Edit` architecture-v5/ets/panel/widget.py (2026-07-16T15:56:25+00:00)
+- `Edit` architecture-v5/ets/panel/widget.py (2026-07-16T15:56:32+00:00)
+- `Edit` architecture-v5/ets/panel/widget.py (2026-07-16T15:56:41+00:00)
+- `Edit` architecture-v5/ets/panel/widget.py (2026-07-16T15:56:48+00:00)
+- `Edit` architecture-v5/ets/panel/__main__.py (2026-07-16T15:56:54+00:00)
+- `Write` architecture-v5/tests/v5/test_v5a_outboard.py (2026-07-16T15:57:51+00:00)
+- `Write` architecture-v5/tests/v5/_fakeqt.py (2026-07-16T15:58:00+00:00)
+- `Write` architecture-v5/tests/v5/test_v5b_hover_inert.py (2026-07-16T15:58:23+00:00)
+- `Write` architecture-v5/tests/v5/test_v5c_pick_and_place.py (2026-07-16T15:58:45+00:00)
+- `Write` architecture-v5/tests/v5/test_v5d_clamp.py (2026-07-16T15:59:03+00:00)
+- `Write` architecture-v5/tests/v5/test_v5e_slew.py (2026-07-16T15:59:21+00:00)
+- `Write` architecture-v5/tests/v5/test_v5f_door.py (2026-07-16T15:59:51+00:00)

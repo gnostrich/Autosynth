@@ -28,6 +28,9 @@ from PySide6.QtWidgets import (
     QSlider, QVBoxLayout, QWidget,
 )
 
+from ets.panel.envelope import (
+    SAFE_REGION_MAGNITUDE, SLEW_MAX_STEP, RegionSlew, clamp_region,
+)
 from ets.panel.lanes import (
     LANES, LaneKind, LaneVector, assert_lanes_exhaustive, default_lane_vector,
     spec,
@@ -269,11 +272,29 @@ class _RegionStrips(QGroupBox):
 
 class _RegionXYPad(QWidget):
     """The XY VECTOR PAD view of the REGION lane (spec §8 lane 1: "growable
-    channel strips / XY vector pad"). A UI affordance over the SAME u_region
-    vector — it introduces no lane. Interaction (macOS trackpad idiom): HOVER
-    over the pad to aim toward the nearby anchors (which sit on a circle), then
-    SCROLL to push the lean magnitude that way. Hovering alone changes nothing;
-    click/drag are inert. Emitted through the one region path.
+    channel strips / XY vector pad") — a POSITION-BASED pick-and-place surface
+    (Kaoss / vector-synth idiom). A UI affordance over the SAME u_region vector;
+    it introduces no lane and emits only through the one region path (C-3).
+
+    Interaction model (architecture-v5 B2):
+
+      * CLICK to ARM — the dot jumps to the cursor and begins following it; the
+        lean emits live (safe: it is clamped to the ring, see below).
+      * MOVE to position — the dot tracks the cursor. ANGLE selects which anchors
+        (inverse-distance weighting toward the anchors on the ring); DISTANCE
+        from centre is the lean magnitude. POSITION *is* the value — no momentum,
+        no roll.
+      * CLICK to DROP — the dot parks where it is, stops following, stays put.
+      * a second CLICK re-arms.
+
+    PASSIVE HOVER IS INERT: while disarmed, moving the cursor over the pad
+    changes and emits nothing. (Mouse tracking is enabled only so the dot can
+    follow the cursor between arm and drop, when the button is up; every move is
+    gated on the armed state, so a disarmed hover is a no-op — B1/B2.)
+
+    The emittable magnitude is walled at `SAFE_REGION_MAGNITUDE`: the dot cannot
+    leave the ring drawn at that radius, so no reachable position emits a lean
+    above the safe envelope (B3.1 / V5-D).
     """
 
     changed = Signal(object)   # full (K,) region lean vector
@@ -281,83 +302,145 @@ class _RegionXYPad(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._K = 0
-        self._pos: Optional[QPointF] = None   # hover AIM (direction), not a value
-        self._throw = 0.0                     # lean magnitude [0,1], scroll-driven
-        self._accum = 0.0
+        self._armed = False                   # dot follows the cursor iff armed
+        self._dot: Optional[QPointF] = None   # parked/following dot; None = centre
         self.setMinimumSize(140, 140)
-        self.setMouseTracking(True)           # hover reported without a click
-        self.setFocusPolicy(Qt.WheelFocus)
+        # Tracking is on ONLY so an armed dot can follow a button-up cursor; a
+        # disarmed move is ignored (passive hover is inert — B1/B2).
+        self.setMouseTracking(True)
         self.setToolTip(_FACE["region"].tooltip())   # display-layer face alias
+
+    # --- geometry -------------------------------------------------------------
+    def _center(self):
+        return self.width() / 2.0, self.height() / 2.0
+
+    def _ring_radius(self) -> float:
+        return 0.42 * min(self.width(), self.height())
+
+    def _anchor_xy(self, i: int):
+        cx, cy = self._center()
+        r = self._ring_radius()
+        ang = 2.0 * math.pi * i / max(1, self._K)
+        return cx + r * math.cos(ang), cy + r * math.sin(ang)
+
+    def _clamp_to_ring(self, pt: QPointF) -> QPointF:
+        """Project a point into the safe ring: the dot cannot leave it (the ring
+        is the painted SAFE_REGION_MAGNITUDE wall — B3.1)."""
+        cx, cy = self._center()
+        dx, dy = pt.x() - cx, pt.y() - cy
+        d = math.hypot(dx, dy)
+        R = self._ring_radius()
+        if d > R and d > 0:
+            dx, dy = dx * R / d, dy * R / d
+        return QPointF(cx + dx, cy + dy)
 
     def set_anchor_count(self, K: int) -> None:
         self._K = int(K)
         self.update()
 
-    def _anchor_xy(self, i: int):
-        r = 0.42 * min(self.width(), self.height())
-        cx, cy = self.width() / 2.0, self.height() / 2.0
-        ang = 2.0 * math.pi * i / max(1, self._K)
-        return cx + r * math.cos(ang), cy + r * math.sin(ang)
+    @property
+    def is_armed(self) -> bool:
+        return self._armed
+
+    def _dominant(self) -> Optional[int]:
+        v = self._vector()
+        if v.size == 0 or float(np.max(np.abs(v))) <= 0.0:
+            return None
+        return int(np.argmax(np.abs(v)))
 
     def _vector(self) -> np.ndarray:
-        """Region lean vector from the current AIM (hover direction) and THROW
-        (scroll magnitude): anchors weighted by inverse distance to the aim
-        point (vector-mixer crossfade, Doepfer A-144 idiom), magnitude = lane
-        max * throw. Aim absent -> center -> even lean."""
-        s = spec("region")
+        """Region lean vector from the DOT POSITION: anchors weighted by inverse
+        distance to the dot (vector-mixer crossfade, Doepfer A-144 idiom);
+        magnitude = SAFE_REGION_MAGNITUDE * (dot distance from centre / ring
+        radius). Dot at centre (or unset) -> zero lean. The scale uses the safe
+        cap, never the raw lane max, so the pad is a clamped control (B3.1)."""
         K = self._K
         u = np.zeros(K, dtype=np.float32)
-        if K == 0:
+        if K == 0 or self._dot is None:
             return u
-        if self._pos is None:
-            x, y = self.width() / 2.0, self.height() / 2.0
-        else:
-            x, y = self._pos.x(), self._pos.y()
+        cx, cy = self._center()
+        x, y = self._dot.x(), self._dot.y()
+        throw = min(1.0, math.hypot(x - cx, y - cy) / max(1e-6, self._ring_radius()))
         w = np.zeros(K)
         for i in range(K):
             ax, ay = self._anchor_xy(i)
             w[i] = 1.0 / (math.hypot(x - ax, y - ay) + 1e-6)
         w = w / w.sum()
-        u[:] = (s.hi * self._throw) * w
+        u[:] = (SAFE_REGION_MAGNITUDE * throw) * w
         return u
 
-    # HOVER = aim only (which anchors to lean toward). It does NOT change the
-    # value — no absolute "value follows the cursor".
-    def mouseMoveEvent(self, ev) -> None:
-        self._pos = ev.position()
-        self.update()
-
-    # click/drag inert (parity with the sliders — no accidental fling).
+    # --- interaction: pick-and-place ------------------------------------------
     def mousePressEvent(self, ev) -> None:
-        ev.ignore()
-
-    # SCROLL sets the lean magnitude toward the current aim, and emits.
-    def wheelEvent(self, ev) -> None:
-        pd = ev.pixelDelta().y()
-        step = (pd / 400.0) if pd != 0 else (ev.angleDelta().y() / 120.0) * 0.04
-        self._throw = float(min(1.0, max(0.0, self._throw + step)))
+        """CLICK toggles arm/drop. Arm: dot jumps to cursor and follows, emit.
+        Drop: park the dot where it is, stop following, emit the parked value."""
+        if self._K <= 0:
+            ev.ignore()
+            return
+        self._dot = self._clamp_to_ring(ev.position())
+        self._armed = not self._armed          # arm on the 1st click, drop on the 2nd
         self.changed.emit(self._vector())
         self.update()
         ev.accept()
 
+    def mouseMoveEvent(self, ev) -> None:
+        """Armed: the dot follows the cursor and emits live. Disarmed: INERT —
+        a passive hover changes and emits nothing (B1/B2)."""
+        if not self._armed:
+            ev.ignore()
+            return
+        self._dot = self._clamp_to_ring(ev.position())
+        self.changed.emit(self._vector())
+        self.update()
+        ev.accept()
+
+    # no wheelEvent: the pad is position-based; there is no scroll/throw channel.
+
     def paintEvent(self, _ev) -> None:
         qp = QPainter(self)
+        cx, cy = self._center()
+        R = self._ring_radius()
         qp.setPen(QPen(Qt.gray, 1))
         qp.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+        # the safe-envelope RING (= SAFE_REGION_MAGNITUDE); highlighted when armed
+        # so the operator sees armed vs parked at a glance.
+        qp.setPen(QPen(Qt.red if self._armed else Qt.darkGray, 2 if self._armed else 1))
+        qp.drawEllipse(QPointF(cx, cy), R, R)
+
+        dom = self._dominant()
         for i in range(self._K):
             ax, ay = self._anchor_xy(i)
-            qp.drawEllipse(QPointF(ax, ay), 3, 3)
-            qp.drawText(int(ax) + 5, int(ay), str(i))
-        # aim (hover) marker + throw magnitude ring from centre.
-        cx, cy = self.width() / 2.0, self.height() / 2.0
-        if self._throw > 0:
-            rmax = 0.42 * min(self.width(), self.height())
+            if i == dom:
+                qp.setPen(QPen(Qt.red, 2))
+                qp.drawEllipse(QPointF(ax, ay), 5, 5)
+            else:
+                qp.setPen(QPen(Qt.gray, 1))
+                qp.drawEllipse(QPointF(ax, ay), 3, 3)
+            qp.drawText(int(ax) + 6, int(ay) + 4, f"a{i}")
+
+        # centre mark
+        qp.setPen(QPen(Qt.gray, 1))
+        qp.drawEllipse(QPointF(cx, cy), 2, 2)
+
+        if self._dot is not None:
+            # centre -> dot vector line, then the filled draggable dot.
             qp.setPen(QPen(Qt.blue, 1))
-            qp.drawEllipse(QPointF(cx, cy), rmax * self._throw, rmax * self._throw)
-        if self._pos is not None:
-            qp.setPen(QPen(Qt.black, 2))
-            qp.drawEllipse(self._pos, 5, 5)
-            qp.drawText(6, self.height() - 6, f"throw {self._throw:.2f} (scroll)")
+            qp.drawLine(QPointF(cx, cy), self._dot)
+            qp.setPen(QPen(Qt.black, 1))
+            qp.setBrush(Qt.blue if self._armed else Qt.darkBlue)
+            qp.drawEllipse(self._dot, 6, 6)
+            qp.setBrush(Qt.NoBrush)
+
+        # numeric lean readout: dominant anchor + its lean.
+        v = self._vector()
+        state = "ARMED" if self._armed else "parked"
+        if v.size and dom is not None:
+            qp.setPen(QPen(Qt.black, 1))
+            qp.drawText(6, self.height() - 6,
+                        f"{state}  lean a{dom}={float(v[dom]):.2f}")
+        else:
+            qp.setPen(QPen(Qt.black, 1))
+            qp.drawText(6, self.height() - 6, f"{state}  (centre)")
         qp.end()
 
 
@@ -431,6 +514,12 @@ class Panel(QWidget):
         super().__init__(parent)
         self.emitter = emitter
         self.u = default_lane_vector(n_anchors)
+        # OUTBOUND region shaping (B3, UX-layer only; nothing from settlement):
+        # `self.u` is the raw TARGET the controls represent; what leaves on the
+        # wire is the clamped, slew-ramped region. The slew chases the target so
+        # a control JUMP never emits a one-frame discontinuity (V5-E).
+        self._region_slew = RegionSlew(SLEW_MAX_STEP, n=self.u.n_anchors)
+        self._region_slew.reset(clamp_region(self.u.u_region))
         self.tolerances = Tolerances()          # leash=inf, comma=inf (shipped)
         self.meter_state = MeterState()
         self.cc_map = CCMap()
@@ -569,10 +658,32 @@ class Panel(QWidget):
             self._region.set_anchor(i, float(vec[i]))
         self._push()
 
+    def _region_target(self) -> np.ndarray:
+        """The clamped region TARGET (safe-envelope wall, B3.1). Reads only the
+        panel's own control state — never settlement/F/render."""
+        return clamp_region(self.u.u_region)
+
+    def _outbound(self) -> LaneVector:
+        """Build the message that actually leaves the panel: `self.u` with its
+        region replaced by ONE bounded slew step toward the clamped target. The
+        scalar leans and T_s pass through unchanged (already range-bounded by
+        their lanes); only the region vector is clamped + ramped (B3)."""
+        out = self.u.copy()
+        out.u_region = self._region_slew.step(self._region_target())
+        return out
+
     def _push(self) -> None:
         if self.emitter is not None:
-            self.emitter.emit(self.u)
+            self.emitter.emit(self._outbound())
         self.lanes_changed.emit()
+
+    def tick_slew(self) -> None:
+        """Timer-driven ramp completion: while the emitted region has not reached
+        the (clamped) target, emit the next bounded step. This is the SAME emit
+        path (`_push`); it opens no second channel and reads nothing downstream.
+        A no-op once converged, so it does not spam the wire."""
+        if not self._region_slew.at_target(self._region_target()):
+            self._push()
 
     # --- tolerance knobs → /ets/tolerances (declared; consumed by nothing) ----
     def _on_tolerance(self, tol_id: str, value: float) -> None:
@@ -590,6 +701,8 @@ class Panel(QWidget):
         self.u.resize_region(K)
         self._region.set_anchor_count(K)
         self._xy.set_anchor_count(K)
+        # keep the outbound slew sized to the world support (preserves overlap).
+        self._region_slew.reset(clamp_region(self.u.u_region))
 
     # --- MIDI CC learn --------------------------------------------------------
     def arm_cc_learn(self, target: LaneTarget) -> None:
