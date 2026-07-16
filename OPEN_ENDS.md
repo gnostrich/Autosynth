@@ -5,7 +5,21 @@ single next action. Close top-down; don't start a new build while a diagnosis is
 
 Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪ background/cleanup
 
-## 1. Grating live audio  🔴  (DIAGNOSE FIRST — LEAD FOUND)
+## 1. Grating / sudden-loud live audio  ✅ SAFE (cap shipped) · divergence deferred
+- **RESOLVED for safety.** Loudness audit (scratch/loudness_audit.py) reproduced it: under a
+  decisive MULTI-lane steer the engine DIVERGES (phi_density → 3.77e15; arrangement audio
+  pre-cap rms ~1.7M, peak ~6.6M). The live output limiter/loudness-cap (`_playback_soft_limit`,
+  live-only, engine-fork playback layer) bounds this to rms 0.10 / peak ≤0.60 on EVERY bar →
+  eardrum-safe verified. Committed. render_offline + root engine untouched.
+- Root cause = the v1 engine's steering divergence (the sealed-v3 subject). It is JOINT/
+  combinatorial (continuity 3.0 alone is fine — the good music uses it; many lanes together
+  diverge), so a per-lane UI clamp would break good settings. Bounding the joint envelope, or
+  guarding phi_density engine-side, is a DEFERRED ENGINE DECISION (sealed-v3 / parked sampler),
+  NOT an autonomous change. The cap makes decisive steers SAFE (bounded) but not yet musical.
+- **Next (user decision):** either bound the joint steering envelope in the UI, or add an
+  engine-side phi_density guard (StreamHalt), or revive the parked variance-corrected sampler.
+
+### (historical lead, superseded by the audit above)
 - Symptom: sound grates / tears in the live app; offline renders sound clean.
 - **VERIFIED LEAD (d) — unlimited live output.** `master.py` (compressor→R128→peak
   limiter −1 dB) is applied to OFFLINE renders only; the LIVE engine path streams RAW —
