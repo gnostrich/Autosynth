@@ -141,3 +141,5 @@
 {"head": "9914b4f", "path": "architecture-v4/tests/instrument/test_f3_tap_and_affordance.py", "tool": "Write", "ts": "2026-07-16T15:15:01+00:00"}
 {"head": "9914b4f", "path": "architecture-v4/VERSION.md", "tool": "Edit", "ts": "2026-07-16T15:16:08+00:00"}
 {"head": "acd966b", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T15:22:56+00:00"}
+{"head": "84a30e9", "path": "architecture-v5/PREREG-v5-interaction.md", "tool": "Write", "ts": "2026-07-16T15:47:30+00:00"}
+{"head": "84a30e9", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T15:47:39+00:00"}

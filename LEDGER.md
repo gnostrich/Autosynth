@@ -227,3 +227,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `acd966b`
 - `Edit` VERSIONS.md (2026-07-16T15:22:56+00:00)
+
+### at `84a30e9`
+- `Write` architecture-v5/PREREG-v5-interaction.md (2026-07-16T15:47:30+00:00)
+- `Edit` VERSIONS.md (2026-07-16T15:47:39+00:00)

@@ -1,0 +1,34 @@
+[project]
+name = "ets"
+version = "0.0.0"
+description = "Equilibrium Tape Synth — engine"
+requires-python = ">=3.10"
+# Runtime deps are added as the features that need them land (build order 5b+).
+# No web/browser stack is permitted in the runtime (spec I-13).
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+# 'panel' = the desktop runtime extra (panel + engine live mode + the
+# tools/audio_check.py preflight). sounddevice is imported LAZILY by the engine
+# (live mode only) so offline/CI hosts without PortAudio run the full suite
+# without it (I-13-clean native stack). Deliberately NOT a core dependency.
+panel = ["PySide6-Essentials>=6.6", "python-osc>=1.8", "sounddevice>=0.4"]
+# 'mastering' = the EXTERNAL output-mastering layer (ets.render.master). pyloudnorm
+# is imported LAZILY and only when --master is requested, so core/CI run without
+# it. This layer is downstream of the pure render and never touches the intrinsic
+# object (registry: output-master-external).
+mastering = ["pyloudnorm>=0.1"]
+
+# The installable runtime package is `ets` (+ its subpackages) ONLY. Without
+# this, setuptools flat-layout auto-discovery (>=61) sees the repo's other
+# top-level dirs — legacy/, analysis/, litepaper/, corpus/, samples/, cache/ —
+# and aborts with "Multiple top-level packages discovered". Those are data,
+# docs, and frozen snapshots, not code to install. tests/ and scripts/ are run
+# by path (pytest testpaths / direct invocation), not installed.
+[tool.setuptools.packages.find]
+include = ["ets*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
