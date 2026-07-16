@@ -264,6 +264,108 @@ class OfflineResult:
     receipt: dict
 
 
+def track_anchor_profiles(world) -> Dict[int, np.ndarray]:
+    """READ-ONLY static telemetry: each source track's ANCHOR-MASS PROFILE.
+
+    A unit's anchor-mass profile is the band-indexed column of the frozen
+    world's anchor band-profile matrix B (world.fstate.B, shape (M, n_bands),
+    M = n_anchors): B[:, band] is the anchor masses of that band ("col @ B" from
+    ingestion). A track's profile is the mass-weighted sum of its units' columns
+    — sum_i mass_i * B[:, band_i] = B @ (per-band unit-mass totals) — then
+    peak-normalized to 0..1 (the dominant anchor = 1.0). Pure reduction over the
+    already-frozen world (track.masses + track.provenance_index['band'] + B);
+    it calls NOTHING downstream (no settlement, writer, render, F, or
+    provenance generation) and is computed ONCE at startup. Static.
+
+    Returns {track_id: np.ndarray (M,)}."""
+    B = np.asarray(world.fstate.B, dtype=np.float64)          # (M, n_bands)
+    M, n_bands = B.shape
+    profiles: Dict[int, np.ndarray] = {}
+    for track in world.tracks:
+        bands = np.asarray(track.provenance_index["band"], dtype=np.int64)
+        masses = np.asarray(track.masses, dtype=np.float64)
+        valid = (bands >= 0) & (bands < n_bands)
+        band_mass = np.zeros(n_bands, dtype=np.float64)
+        if valid.any():
+            np.add.at(band_mass, bands[valid], masses[valid])
+        v = B @ band_mass                                      # (M,)
+        peak = float(v.max()) if v.size else 0.0
+        profiles[int(track.track_id)] = (v / peak) if peak > 0.0 else v
+    return profiles
+
+
+def role_unit_counts(world) -> np.ndarray:
+    """READ-ONLY static per-ROLE metadata: how many source units live under each
+    role. A unit's role is the dominant anchor of its band's column of the frozen
+    world's anchor band-profile matrix B (argmax over B[:, band]); the count is
+    the number of units (across all tracks) whose band maps to that role. Pure
+    reduction over the frozen world (world.fstate.B + track.provenance_index),
+    computed ONCE at startup; nothing downstream is touched. Returns (M,) int."""
+    B = np.asarray(world.fstate.B, dtype=np.float64)          # (M, n_bands)
+    M, n_bands = B.shape
+    dom = B.argmax(0)                                         # (n_bands,) role/band
+    band_units = np.zeros(n_bands, dtype=np.int64)
+    for track in world.tracks:
+        bands = np.asarray(track.provenance_index["band"], dtype=np.int64)
+        valid = (bands >= 0) & (bands < n_bands)
+        if valid.any():
+            band_units += np.bincount(bands[valid],
+                                      minlength=n_bands).astype(np.int64)
+    counts = np.zeros(M, dtype=np.int64)
+    np.add.at(counts, dom, band_units)
+    return counts
+
+
+def bar_role_activity(rows, bank, B) -> np.ndarray:
+    """READ-ONLY per-ROLE activity for a produced bar.
+
+    Projects the just-produced bar's PLACED units through the frozen anchor
+    band-profile B (col @ B — the same map /ets/profiles uses): each placed row
+    is (slot, track, unit, section, mass); the unit's band comes from the
+    already-materialized bank (bank.get(...).band), and B[:, band] is that band's
+    per-anchor mass. Sum mass per band, then B @ band_mass gives the (M,) per-
+    anchor activity, peak-normalized to 0..1. Pure reduction over already-
+    produced rows + the frozen world/bank; it calls NOTHING downstream (no
+    settlement, writer, render, F, or provenance generation), so audio is
+    byte-identical whether or not this runs. Returns np.ndarray (M,)."""
+    B = np.asarray(B, dtype=np.float64)                       # (M, n_bands)
+    M, n_bands = B.shape
+    band_mass = np.zeros(n_bands, dtype=np.float64)
+    for (_slot, tid, uid, _sec, mass) in rows:
+        try:
+            band = int(bank.get(int(tid), int(uid)).band)
+        except KeyError:
+            continue
+        if 0 <= band < n_bands:
+            band_mass[band] += float(mass)
+    v = B @ band_mass                                         # (M,)
+    peak = float(v.max()) if v.size else 0.0
+    return (v / peak) if peak > 0.0 else v
+
+
+def nowplaying_activity(rows) -> List[Tuple[int, float]]:
+    """READ-ONLY reduction over a produced bar's provenance rows.
+
+    `rows` is the writer's already-produced schedule for the frontier bar
+    (r.rows = tuples (out_slot, src_track, src_unit, section, mass)); the SAME
+    object that bar_schedule() re-indexes into audio. This function only READS
+    it: it sums per-source-track mass (the energy the writer placed at the
+    frontier) and normalizes by the bar's peak track mass to a 0..1 activity.
+    It calls NOTHING downstream — no settlement, no writer, no render, no F, no
+    provenance generation — so audio is byte-identical whether or not this runs.
+
+    Returns (track_id, activity) pairs sorted by track_id."""
+    energy: Dict[int, float] = {}
+    for (_slot, tid, _unit, _sec, mass) in rows:
+        energy[int(tid)] = energy.get(int(tid), 0.0) + float(mass)
+    if not energy:
+        return []
+    peak = max(energy.values())
+    if peak <= 0.0:
+        return [(tid, 0.0) for tid in sorted(energy)]
+    return [(tid, energy[tid] / peak) for tid in sorted(energy)]
+
+
 class Engine:
     def __init__(self, wf: WorldFile, profile: str = "desktop", seed: int = 0,
                  sigma: Optional[SigmaPhi] = None):
@@ -409,6 +511,16 @@ class Engine:
             meters.clock(r.bar, r.bar * bar_seconds)
             meters.eoc(0)
             meters.novelty_sat(float(r.phi["novelty"]))
+            # READ-ONLY now-playing telemetry: reduce the just-produced bar's
+            # provenance rows (r.rows, already used to build `audio` above) to
+            # per-source-track 0..1 activity and emit to the meters destination.
+            # Reads produced state only; adds no call into settlement/writer/
+            # render/F/provenance-generation (audio byte-identical on/off).
+            meters.nowplaying(nowplaying_activity(r.rows))
+            # READ-ONLY per-ROLE activity: project the same produced rows through
+            # the frozen anchor band-profile B (col @ B) to per-anchor 0..1 and
+            # emit. Adds no downstream call (audio byte-identical on/off).
+            meters.roleactivity(bar_role_activity(r.rows, bank, world.fstate.B))
             log.info("bar %d committed: %d placements, settle %d iters, "
                      "%.3fs prod, phi_density=%.3f", r.bar, len(r.rows),
                      r.n_iter, dt, float(r.phi["density"]))
@@ -427,6 +539,13 @@ class Engine:
 
         dis = ",".join(disarmed_lanes(self.sigma))
 
+        # READ-ONLY static telemetry, computed ONCE from the frozen world: each
+        # source track's anchor-mass profile (K=world.M vector, 0..1). Emitted
+        # right after /ets/welcome so the panel can steer on a pad tap. Reads
+        # nothing downstream; audio path untouched.
+        track_profiles = track_anchor_profiles(world)
+        role_counts = role_unit_counts(world)      # static per-role unit count
+
         def answer_hello():
             got = inbox.hello()
             if got is not None and inbox.hello_event.is_set():
@@ -435,6 +554,8 @@ class Engine:
                 meters.retarget(host, port)
                 meters.welcome(world.M, self.wf.world_hash, L, bar_seconds,
                                int(world.sr), disarmed=dis)
+                meters.profiles(sorted(track_profiles.items()))
+                meters.rolemeta(enumerate(role_counts.tolist()))
 
         try:
             start_t = time.monotonic()

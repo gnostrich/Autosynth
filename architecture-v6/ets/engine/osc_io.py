@@ -173,6 +173,61 @@ class MeterEmitter:
     def novelty_sat(self, saturation: float) -> None:
         self._client.send_message(S.ADDR_METER_NOVELTY_SAT,
                                   S.encode_novelty_sat(saturation))
+
+    def nowplaying(self, activity) -> None:
+        """READ-ONLY telemetry (spec §12 meters direction): the source tracks
+        sounding at the just-produced frontier bar, with a normalized 0..1
+        activity. `activity` is an iterable of (track_id, activity) pairs; the
+        wire is a FLAT alternating list [int track_id, float activity, ...].
+        Sent to the SAME meters destination as the jacks. Values in, wire out —
+        this reads the writer's already-produced provenance and NEVER loops back
+        into control, settlement, the writer, render, F, or provenance
+        generation (the audio path is byte-identical with this on or off)."""
+        args: list = []
+        for tid, act in activity:
+            args.append(int(tid))
+            args.append(float(act))
+        self._client.send_message("/ets/nowplaying", args)
+
+    def profiles(self, profiles) -> None:
+        """READ-ONLY static telemetry: each source track's ANCHOR-MASS PROFILE,
+        a K-vector (K = n_anchors, sent on /ets/welcome) in 0..1, so the panel
+        can steer on a pad tap. `profiles` is an iterable of (track_id, sequence
+        of K floats); the wire is a FLAT list [int track_id, float p0, ...,
+        float p(K-1), int track_id, ...]. Sent ONCE to the SAME meters
+        destination as the jacks, right after /ets/welcome. This is frozen-world
+        structure out; it reads NOTHING downstream (settlement, writer, render,
+        F, provenance generation and the audio path are all untouched)."""
+        args: list = []
+        for tid, vec in profiles:
+            args.append(int(tid))
+            for x in vec:
+                args.append(float(x))
+        self._client.send_message("/ets/profiles", args)
+
+    def roleactivity(self, activity) -> None:
+        """READ-ONLY per-ROLE telemetry: the activity of each anchor/role in the
+        just-produced frontier bar. `activity` is a length-K sequence (K =
+        n_anchors, sent on /ets/welcome) of floats in 0..1; the wire is a FLAT
+        float list [a0, a1, ..., a(K-1)] (index == role id). Sent to the SAME
+        meters destination as the jacks, once per bar. Reads the writer's
+        already-produced bar rows only — no settlement/writer/render/F/
+        provenance call (audio byte-identical)."""
+        self._client.send_message("/ets/roleactivity",
+                                  [float(x) for x in activity])
+
+    def rolemeta(self, counts) -> None:
+        """READ-ONLY static per-ROLE metadata: how many source units live under
+        each role (for the pad drill-in). `counts` is an iterable of (role,
+        unit_count); the wire is a FLAT list [int role, int unit_count, ...].
+        Sent to the SAME meters destination once, right after /ets/welcome and
+        /ets/profiles. Frozen-world structure out; nothing downstream is
+        touched."""
+        args: list = []
+        for role, n in counts:
+            args.append(int(role))
+            args.append(int(n))
+        self._client.send_message("/ets/rolemeta", args)
     # NOTE deliberately ABSENT: slide/loop emitters. Those jacks are fed by the
     # Stage-0 meters (a separate feature); this engine does not fabricate their
     # values, and the panel displays '—' until the real feed exists.

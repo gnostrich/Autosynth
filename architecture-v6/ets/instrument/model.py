@@ -96,23 +96,54 @@ def track_palette(track_id: int) -> Tuple[int, int, int]:
 @dataclass
 class PadModel:
     """Material as MPC-style pads — ONE per SOURCE TRACK (F3.1). Pads light from
-    provenance the engine already emits; a decay makes the light 'breathe' with
-    real-time activity. Pure display: no lane, no emit, no writer.
+    a now-playing activity feed; a decay makes the light 'breathe' with real-time
+    activity. Pure display: no lane, no emit, no writer.
 
-    `observe(cells)` folds the currently-sounding cells into a per-track activity
-    level (summed settled mass, normalised). `decay(factor)` eases the lights
-    down between observations so a pad that just stopped fades rather than snaps.
+    Shared contract:
+      * `tracks`   — list[int] of source-track ids in a STABLE order (append on
+                     first sight; never reordered), so pad positions don't jump.
+      * `activity` — dict[int,float] track_id → 0..1 brightness.
+      * `set_activity(mapping)` — set activity for the given tracks (clamped 0..1),
+                     registering any new track id into `tracks`.
+      * `decay(factor)` — multiply every level toward 0 so lights fade, not snap.
+
+    `observe(cells)` (legacy path) folds currently-sounding provenance cells into
+    the same per-track activity level (summed settled mass, normalised).
     """
+    tracks: List[int] = field(default_factory=list)            # stable pad order
     activity: Dict[int, float] = field(default_factory=dict)   # track_id → 0..1
     _peak: float = 1e-9                                          # running mass norm
 
-    @property
-    def tracks(self) -> List[int]:
-        return sorted(self.activity)
+    def __post_init__(self) -> None:
+        # Keep tracks/activity consistent regardless of how it was constructed.
+        seen: List[int] = []
+        for t in list(self.tracks):
+            t = int(t)
+            if t not in seen:
+                seen.append(t)
+        for t in self.activity:                                 # tracks seeded via activity
+            if int(t) not in seen:
+                seen.append(int(t))
+        self.tracks = seen
 
-    def decay(self, factor: float = 0.6) -> None:
+    def _register(self, track_id: int) -> None:
+        """Ensure a track id has a stable pad slot (append on first sight)."""
+        t = int(track_id)
+        if t not in self.tracks:
+            self.tracks.append(t)
+        self.activity.setdefault(t, 0.0)
+
+    def set_activity(self, mapping: Dict[int, float]) -> None:
+        """Set pad brightness from a now-playing feed. New track ids are added to
+        `tracks` (in sorted order for determinism); values are clamped to 0..1.
+        Tracks absent from `mapping` are left untouched (use `decay` to fade)."""
+        for t in sorted(int(k) for k in mapping):
+            self._register(t)
+            self.activity[t] = float(min(1.0, max(0.0, mapping[t])))
+
+    def decay(self, factor: float = 0.85) -> None:
         for t in list(self.activity):
-            self.activity[t] *= float(factor)
+            self.activity[t] = float(self.activity[t] * float(factor))
 
     def observe(self, cells: Sequence[SoundingCell]) -> None:
         """Fold a set of sounding cells into pad activity. A track absent from
@@ -123,6 +154,7 @@ class PadModel:
         if by_track:
             self._peak = max(self._peak, max(by_track.values()))
         for t, m in by_track.items():
+            self._register(t)
             lvl = self.activity.get(t, 0.0) + m / self._peak
             self.activity[t] = float(min(1.0, lvl))
 
