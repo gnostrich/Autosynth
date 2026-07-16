@@ -33,3 +33,25 @@ the app's permissions, so this committed file is the authoritative marker.)
 Upgrades beyond v1 do NOT modify the above in place; they add new folders and,
 where an upgrade supersedes a v1 component, leave the v1 component intact and
 select the new one explicitly.
+
+## Retrain = a new version (the load-bearing case)
+
+Training the model on a **different corpus** is not a re-render — it is a new
+trained version, and it lands in a new folder (e.g. `v2/`) with v1 frozen:
+
+- **v1 is never overwritten.** In particular `ets/functional/f.py`'s `LAMBDA`,
+  the v1 `corpus.etsworld`, the v1 `ets/calibration/sigma_phi.json`, and the v1
+  exam results in `REGISTRY.jsonl`/`PREREG.md` stay exactly as they are.
+- **A retrain reruns the full discipline on the new corpus:** ingest → freeze a
+  new world → **refit `LAMBDA` by the NCE separation exam on the new corpus's own
+  scramble family (with the pre-registered KILL condition — an honest exam that
+  can fail)** → calibrate `sigma_phi` for the new world → gates. None of this is
+  assumed to transfer from v1; it is re-earned.
+- **Model weights are versioned artifacts, not a shared global.** v2's refit
+  `LAMBDA`, world, and calibration live under `v2/` (its own `f.py`/weights or a
+  version-selected weights artifact), so running v2 never changes what v1 does.
+- The registry/prereg for a retrain are appended (append-only) and clearly
+  namespaced to the new version, so v1's exam receipts remain unambiguous.
+
+When an upgrade prompt requests a retrain, it is built this way by default,
+whether or not the prompt restates the hygiene.
