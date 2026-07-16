@@ -152,3 +152,21 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `4d5149a`
 - `Edit` architecture-v3/ets/writer/stream.py (2026-07-16T13:45:35+00:00)
+
+### at `749fa55`
+- `Edit` architecture-v3/ets/writer/stream.py (2026-07-16T13:53:19+00:00)
+- `Edit` architecture-v3/ets/writer/stream.py (2026-07-16T13:53:30+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:53:46+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:53:58+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:54:28+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:54:44+00:00)
+- `Edit` architecture-v3/ets/writer/stream.py (2026-07-16T13:55:36+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:55:46+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:55:58+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:56:12+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T13:56:21+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:14+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:21+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:29+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:35+00:00)
+- `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:39+00:00)

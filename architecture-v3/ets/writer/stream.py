@@ -110,24 +110,36 @@ def _normal_cdf(z: np.ndarray) -> np.ndarray:
                   ).reshape(z.shape)
 
 
-def sample_conditional_column(o: np.ndarray, slot_state, T: float,
-                              s_lap: np.ndarray, reach: float,
-                              z: np.ndarray, n: int = _GRID_N) -> np.ndarray:
-    """ONE deterministic, strictly-positive draw from the exact per-role 1D
-    conditional slices of the per-slot Gibbs measure exp(−F_col/T) through the
-    settled mode ``o`` (module docstring). This is the SINGLE sampler both the
-    streaming writer and the Table-6 measurement invoke (apples-to-apples).
-
-    For role k with per-role Laplace std s_lap[k]>0, build the potential
-    g_k(x) = F_col(o with o_k:=x)/T on a positive grid [x0, o_k + reach·s_lap_k]
-    — F_col via f.py's OWN terms (single source of truth, no re-derivation) — and
-    inverse-CDF map u_k=Φ(z_k) → O_k. The grid starts strictly above 0 so the
-    draw is strictly positive (no clamp, no floor-fill). Roles on a zero-variance
-    direction (s_lap[k]=0) pin to the mode. z is the per-column N(0,1) vector."""
+def laplace_column_std(o: np.ndarray, slot_state, T: float) -> np.ndarray:
+    """Per-role O-space Laplace std s_k = sqrt(diag(T·H_O⁻¹)) for one slot column,
+    with H_O = solver._d2F_dO2_slot(o) (the EXACT per-slot Hessian). Directions
+    of unreliable curvature (eigenvalue ≤ M·eps·λ_max) get zero variance. This is
+    the SINGLE definition of the per-role fluctuation scale — it sets both the
+    conditional-slice grid reach and the Fix-B runaway bound (writer) and is the
+    apples-to-apples reach the Table-6 measurement uses."""
     M = o.shape[0]
-    out = np.array(o, float)
-    u = _normal_cdf(z)
-    Ocol = np.array(o, float)
+    H = 0.5 * (sv._d2F_dO2_slot(o, slot_state) + sv._d2F_dO2_slot(o, slot_state).T)
+    w, V = np.linalg.eigh(H)
+    tol = M * np.finfo(float).eps * float(np.max(np.abs(w)))
+    var = np.where(w > tol, T / np.maximum(w, tol), 0.0)
+    return np.sqrt((V * V) @ var)
+
+
+def conditional_column_grids(o: np.ndarray, slot_state, T: float,
+                             s_lap: np.ndarray, reach: float,
+                             n: int = _GRID_N):
+    """Per-role inverse-CDF tables (x, cdf) for the exact 1D conditional slices of
+    exp(−F_col/T) through the settled mode ``o``. This is the slot-only (draw-
+    independent) part of the sampler — built ONCE per column. For role k with
+    per-role Laplace std s_lap[k]>0 the potential g_k(x)=F_col(o with o_k:=x)/T is
+    evaluated via f.py's OWN terms (single source of truth) on a strictly-positive
+    grid [x0, o_k + reach·s_lap_k]; roles on a zero-variance direction
+    (s_lap[k]=0) return None (pin to mode). Returned tables drive BOTH the writer
+    (one z per column) and the Table-6 measurement (many z, vectorised) — one
+    sampler, no re-derivation."""
+    M = o.shape[0]
+    grids = [None] * M
+    col = np.array(o, float).reshape(-1, 1)
     for k in range(M):
         sk = float(s_lap[k])
         if sk <= 0.0:                      # unreliable-curvature axis: pin to mode
@@ -136,7 +148,6 @@ def sample_conditional_column(o: np.ndarray, slot_state, T: float,
         x = np.linspace(0.0, xmax, n)
         x[0] = xmax / (n * 50.0)           # strictly-positive support ⇒ draw > 0
         g = np.empty(n)
-        col = Ocol.reshape(-1, 1)
         for i in range(n):
             col[k, 0] = x[i]
             g[i] = (ff.term_T2(col, slot_state) + ff.term_T3(col, slot_state)) / T
@@ -145,9 +156,34 @@ def sample_conditional_column(o: np.ndarray, slot_state, T: float,
         p = np.exp(-g) * np.gradient(x)    # trapezoidal measure weights
         cdf = np.cumsum(p)
         cdf /= cdf[-1]
+        grids[k] = (x, cdf)
+    return grids
+
+
+def conditional_invcdf(grids, u: np.ndarray, o: np.ndarray) -> np.ndarray:
+    """Map uniforms u (per role) through the inverse-CDF tables to a strictly-
+    positive occupancy column; roles with no table (grids[k] is None) pin to the
+    mode o[k]. u may be a (M,) column (writer) — the caller handles batching."""
+    out = np.array(o, float)
+    for k, gk in enumerate(grids):
+        if gk is None:
+            continue
+        x, cdf = gk
         uk = min(max(float(u[k]), 1e-12), 1.0 - 1e-12)
         out[k] = float(np.interp(uk, cdf, x))
     return out
+
+
+def sample_conditional_column(o: np.ndarray, slot_state, T: float,
+                              s_lap: np.ndarray, reach: float,
+                              z: np.ndarray, n: int = _GRID_N) -> np.ndarray:
+    """ONE deterministic, strictly-positive draw from the exact per-role 1D
+    conditional slices of exp(−F_col/T) through the settled mode ``o`` (module
+    docstring). The SINGLE sampler both the streaming writer and the Table-6
+    measurement invoke. z is the per-column N(0,1) vector, mapped u=Φ(z) →
+    inverse-CDF; no clamp, no floor-fill (positivity is the grid support)."""
+    grids = conditional_column_grids(o, slot_state, T, s_lap, reach, n)
+    return conditional_invcdf(grids, _normal_cdf(z), o)
 
 
 class StreamHalt(RuntimeError):
@@ -242,17 +278,12 @@ class StreamWriter:
             if clamp_mask[s] or T <= 0.0:            # clamp pattern / temperature
                 occ_bound += float(o.sum())          # pinned column: no fluctuation
                 continue
-            H = sv._d2F_dO2_slot(o, state)           # H_O = d²F_O/dO² (this slot)
-            H = 0.5 * (H + H.T)
-            w, V = np.linalg.eigh(H)
-            tol = M * np.finfo(float).eps * float(np.max(np.abs(w)))
-            var = np.where(w > tol, T / np.maximum(w, tol), 0.0)
-            # per-role O-space Laplace std s_k = sqrt(diag of the covariance
-            # T·H_O⁻¹): sets BOTH the sampler grid reach (o_k + z_run·s_k) and the
-            # Fix-B plausible-max bound Σ_k(o_k + z_run·s_k). One scale, no second
-            # channel; the draw lives on [~0, o_k + z_run·s_k] ⇒ occ ≤ occ_bound.
-            s_k = np.sqrt((V * V) @ var)
+            # per-role O-space Laplace std s_k sets BOTH the sampler grid reach
+            # (o_k + z_run·s_k) and the Fix-B plausible-max bound Σ_k(o_k +
+            # z_run·s_k). One scale, no second channel; the draw lives on
+            # [~0, o_k + z_run·s_k] component-wise ⇒ occ ≤ occ_bound.
             slot_state = replace(state, theta=state.theta[:, s:s + 1])
+            s_k = laplace_column_std(o, slot_state, T)
             O[:, s] = sample_conditional_column(o, slot_state, T, s_k, z_run, z)
             occ_bound += float(np.sum(o + z_run * s_k))
         return O, occ_bound

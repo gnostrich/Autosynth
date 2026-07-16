@@ -41,6 +41,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dataclasses import replace
 from ets.functional import f as ff
 from ets.functional import solver as sv
+from ets.writer.stream import (_normal_cdf, conditional_column_grids,
+                               laplace_column_std)
 
 FLOOR = 1e-12
 
@@ -122,7 +124,7 @@ def _reference_true_std(o, state, T, n=60000, burn=5000, seed=0):
             acc += 1
         if i >= burn:
             samples[i - burn] = np.exp(y)
-    return samples.std(axis=0, ddof=1), acc / (n + burn)
+    return samples.std(axis=0, ddof=1), acc / (n + burn), samples.mean(axis=0)
 
 
 def _settled_columns(world, n_bars=3):
@@ -137,14 +139,28 @@ def _settled_columns(world, n_bars=3):
     return res.O, theta_out
 
 
+def _run_reach(world, s_phase=8):
+    """The plausible-reach scale z_run = sqrt(2 ln N_draws) the streaming writer
+    (StreamWriter) uses on THIS world, replicated identically so the shipped
+    conditional sampler is measured on its true operating reach (apples-to-apples
+    with the writer). N_draws = M·s_phase·(corpus bars)."""
+    M = int(world.M)
+    sp = int(getattr(world, "s_phase", s_phase))
+    n_bars = sum(int(t.units["bar"].max()) + 1 for t in world.tracks)
+    n_draws = max(2, M * sp * int(n_bars))
+    return float(np.sqrt(2.0 * np.log(n_draws)))
+
+
 def measure(world, T=1.0, n_draws=20000, seed=7, ref_n=40000):
     O_star, theta_out = _settled_columns(world)
     M, S = O_star.shape
+    reach = _run_reach(world)
     rng = np.random.default_rng(seed)
     # aggregate over slot columns (the ensemble the sampler faces per bar)
-    old_clip = 0; old_total = 0; new_clip = 0; new_total = 0; log_clip = 0
-    old_bias = []; new_bias = []; log_bias = []
-    old_mr = []; new_mr = []; log_mr = []          # mean/mode ratios
+    old_clip = 0; old_total = 0; new_clip = 0; new_total = 0
+    log_clip = 0; cond_clip = 0
+    old_bias = []; new_bias = []; log_bias = []; cond_bias = []; ref_bias = []
+    old_mr = []; new_mr = []; log_mr = []; cond_mr = []; ref_mr = []  # mean/mode
     for s in range(S):
         o = O_star[:, s]
         state = _slot_state(world.fstate, theta_out[:, s])
@@ -152,7 +168,7 @@ def measure(world, T=1.0, n_draws=20000, seed=7, ref_n=40000):
             continue
         Z = rng.standard_normal((n_draws, M))
         old = np.empty((n_draws, M)); new = np.empty((n_draws, M))
-        log = np.empty((n_draws, M))
+        log = np.empty((n_draws, M)); cond = np.empty((n_draws, M))
         for i in range(n_draws):
             oi, raw = _old_additive_draw(o, state, T, Z[i])
             ni, _ = _new_reflect_draw(o, state, T, Z[i])
@@ -161,17 +177,40 @@ def measure(world, T=1.0, n_draws=20000, seed=7, ref_n=40000):
             old_clip += int(np.sum(raw <= FLOOR)); old_total += M
             new_clip += int(np.sum(ni <= FLOOR)); new_total += M
             log_clip += int(np.sum(li <= FLOOR))
-        std_true, acc = _reference_true_std(o, state, T, n=ref_n, seed=seed + s)
+        # NEW conditional sampler: build the per-role inverse-CDF tables ONCE for
+        # this slot (draw-independent), then map every draw's Φ(z) through them —
+        # the SAME grids + np.interp the shipped sample_conditional_column uses.
+        s_lap = laplace_column_std(o, state, T)
+        grids = conditional_column_grids(o, state, T, s_lap, reach)
+        U = _normal_cdf(Z)                       # (n_draws, M) uniforms
+        for k in range(M):
+            if grids[k] is None:
+                cond[:, k] = o[k]
+            else:
+                x, cdf = grids[k]
+                cond[:, k] = np.interp(np.clip(U[:, k], 1e-12, 1 - 1e-12), cdf, x)
+        cond_clip += int(np.sum(cond <= FLOOR))
+        std_true, acc, mean_true = _reference_true_std(o, state, T, n=ref_n,
+                                                       seed=seed + s)
+        # true-Gibbs-ref column: an INDEPENDENT reference chain scored against the
+        # first — the Monte-Carlo noise floor of the std_bias instrument itself.
+        std_ref2, _, _ = _reference_true_std(o, state, T, n=ref_n,
+                                             seed=seed + s + 991)
         typ = float(np.mean(std_true)) + 1e-30
         mode = float(o.sum()) + 1e-30
         old_bias.append(np.mean(np.abs(old.std(0, ddof=1) - std_true)) / typ)
         new_bias.append(np.mean(np.abs(new.std(0, ddof=1) - std_true)) / typ)
         log_bias.append(np.mean(np.abs(log.std(0, ddof=1) - std_true)) / typ)
+        cond_bias.append(np.mean(np.abs(cond.std(0, ddof=1) - std_true)) / typ)
+        ref_bias.append(np.mean(np.abs(std_ref2 - std_true)) / typ)
         old_mr.append(old.sum(1).mean() / mode)
         new_mr.append(new.sum(1).mean() / mode)
         log_mr.append(log.sum(1).mean() / mode)
+        cond_mr.append(cond.sum(1).mean() / mode)
+        ref_mr.append(float(mean_true.sum()) / mode)
     return {
         "T_s": T, "n_slots_measured": len(old_bias), "n_draws_per_slot": n_draws,
+        "reach_z_run": reach,
         "OLD_additive": {"clip_rate": old_clip / max(1, old_total),
                          "std_bias": float(np.mean(old_bias)),
                          "mean_mode_ratio": float(np.mean(old_mr))},
@@ -181,6 +220,12 @@ def measure(world, T=1.0, n_draws=20000, seed=7, ref_n=40000):
         "REJECTED_logspace": {"clip_rate": log_clip / max(1, new_total),
                               "std_bias": float(np.mean(log_bias)),
                               "mean_mode_ratio": float(np.mean(log_mr))},
+        "TRUE_gibbs_ref": {"clip_rate": 0.0,
+                           "std_bias": float(np.mean(ref_bias)),
+                           "mean_mode_ratio": float(np.mean(ref_mr))},
+        "NEW_conditional": {"clip_rate": cond_clip / max(1, new_total),
+                            "std_bias": float(np.mean(cond_bias)),
+                            "mean_mode_ratio": float(np.mean(cond_mr))},
     }
 
 
@@ -199,16 +244,19 @@ def main():
         label = "SYNTHETIC CI world (M=%d)" % world.M
     res = measure(world)
     print(f"Table-6 measurement — {label}, T_s={res['T_s']}, "
-          f"{res['n_slots_measured']} slots x {res['n_draws_per_slot']} draws")
-    for k in ("OLD_additive", "NEW_reflect", "REJECTED_logspace"):
+          f"{res['n_slots_measured']} slots x {res['n_draws_per_slot']} draws, "
+          f"reach z_run={res['reach_z_run']:.3f}")
+    for k in ("OLD_additive", "NEW_reflect", "REJECTED_logspace",
+              "TRUE_gibbs_ref", "NEW_conditional"):
         print(f"  {k:18s} clip_rate={res[k]['clip_rate']*100:6.2f}%   "
               f"std_bias={res[k]['std_bias']:.4f}   "
               f"mean/mode={res[k]['mean_mode_ratio']:.2f}")
-    o, n = res["OLD_additive"], res["NEW_reflect"]
+    o, n = res["OLD_additive"], res["NEW_conditional"]
     print(f"  => clip {o['clip_rate']*100:.2f}% -> {n['clip_rate']*100:.2f}% "
-          f"(shipped reflect); std_bias {o['std_bias']:.3f} -> {n['std_bias']:.3f}; "
-          f"mean/mode {o['mean_mode_ratio']:.2f} -> {n['mean_mode_ratio']:.2f} "
-          f"(log-space REJECTED: mean/mode={res['REJECTED_logspace']['mean_mode_ratio']:.1f})")
+          f"(shipped conditional); std_bias {o['std_bias']:.3f} -> {n['std_bias']:.3f} "
+          f"(true-Gibbs-ref noise floor {res['TRUE_gibbs_ref']['std_bias']:.3f}; "
+          f"reflect {res['NEW_reflect']['std_bias']:.3f}); "
+          f"mean/mode {o['mean_mode_ratio']:.2f} -> {n['mean_mode_ratio']:.2f}")
 
 
 if __name__ == "__main__":
