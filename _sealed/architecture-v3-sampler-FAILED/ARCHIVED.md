@@ -24,6 +24,6 @@ for joint/temporal coherence** — so it graded the moment-match as "better" whi
 ear heard it as worse. If v3 is ever un-archived, the resumption path is a
 **variance-corrected correlated draw** (keep the eigenvector coupling, calibrate
 its variance to true Gibbs) gated on BOTH std_bias AND a new **correlation-fidelity
-metric**. Full write-up: `../reports/2026-07-16-decision-park-v3-sampler.md`.
+metric**. Full write-up: `../../reports/2026-07-16-decision-park-v3-sampler.md`.
 
 Retained in-tree for that finding and for resumption only. Not merged, not shipped.

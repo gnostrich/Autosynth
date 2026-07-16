@@ -110,3 +110,8 @@
 {"head": "a49b326", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T14:33:16+00:00"}
 {"head": "a49b326", "path": "samples/genre_set/README.md", "tool": "Edit", "ts": "2026-07-16T14:35:17+00:00"}
 {"head": "f3ae7ef", "path": "scripts/verify_version.py", "tool": "Write", "ts": "2026-07-16T14:42:41+00:00"}
+{"head": "baa3bdf", "path": "scripts/make_longset.py", "tool": "Write", "ts": "2026-07-16T14:45:49+00:00"}
+{"head": "baa3bdf", "path": "_sealed/README.md", "tool": "Write", "ts": "2026-07-16T14:47:21+00:00"}
+{"head": "baa3bdf", "path": "VERSIONS.md", "tool": "Edit", "ts": "2026-07-16T14:47:44+00:00"}
+{"head": "baa3bdf", "path": "_sealed/architecture-v3-sampler-FAILED/ARCHIVED.md", "tool": "Edit", "ts": "2026-07-16T14:48:09+00:00"}
+{"head": "baa3bdf", "path": "reports/2026-07-16-decision-park-v3-sampler.md", "tool": "Edit", "ts": "2026-07-16T14:48:14+00:00"}

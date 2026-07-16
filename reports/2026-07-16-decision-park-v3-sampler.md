@@ -103,4 +103,6 @@ delivers and needs none of the v3 sampler work.
 - v1 remains the active engine and canonical genre generator; **`generate_batch.py`
   (batch settler, u=0, `--master`) is the reproduction recipe for the genre-best
   quality.**
-- architecture-v3 retained in-tree as parked WIP for resumption (streaming path only).
+- architecture-v3 **SEALED** at `_sealed/architecture-v3-sampler-FAILED/` (2026-07-16;
+  see `_sealed/README.md`). It did NOT advance the engine line — v1 stays canonical.
+  Retained for the coherence-metric finding + possible resumption (streaming path only).

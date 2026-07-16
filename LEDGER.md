@@ -186,3 +186,10 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `f3ae7ef`
 - `Write` scripts/verify_version.py (2026-07-16T14:42:41+00:00)
+
+### at `baa3bdf`
+- `Write` scripts/make_longset.py (2026-07-16T14:45:49+00:00)
+- `Write` _sealed/README.md (2026-07-16T14:47:21+00:00)
+- `Edit` VERSIONS.md (2026-07-16T14:47:44+00:00)
+- `Edit` _sealed/architecture-v3-sampler-FAILED/ARCHIVED.md (2026-07-16T14:48:09+00:00)
+- `Edit` reports/2026-07-16-decision-park-v3-sampler.md (2026-07-16T14:48:14+00:00)

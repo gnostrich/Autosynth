@@ -87,21 +87,38 @@ timestamp, tool, path, git HEAD). It is the running provenance of how each
 architecture version and instantiation came to be — the fine-grained companion
 to the coarse table below.
 
-## Active version
+## Taxonomy — two lines (read this first)
 
-**v1 is the canonical, active engine** (root tree; psytech founding instantiation),
-byte-unchanged. The genre-best psytech deliverable + its exact reproduction recipe
-are committed at **`samples/genre_set/`** (streaming engine + low-temperature steered
-journeys; deterministic seeds). `architecture-v3/` is **ARCHIVED** — its sampler
-changes failed the ear test (see `architecture-v3/ARCHIVED.md`); retained only for
-the correlation-fidelity finding + possible resumption. See
-`reports/2026-07-16-decision-park-v3-sampler.md` for the decision, the
-correlation-vs-marginal-variance finding, and the resumption plan.
+Versioning runs on **two independent lines** so a UX change never risks the music
+and a failed engine experiment never pollutes the interface:
 
-**Version-control note (2026-07-16):** the good genre renders + their journey
-recipes previously lived only in ephemeral scratch and were never committed. That
-gap is now closed — they are under `samples/genre_set/` (recipes + renders). Nothing
-was lost; the code was always in git and v1 was never mutated.
+- **Engine line** (the code that produces the music). `v0 → v1`. **v1 is ACTIVE,
+  canonical, and byte-verified** by `scripts/verify_version.py` (files + world hash +
+  reproduced-audio hash all pinned in `verification/canonical_manifest.json`). An
+  engine version only advances the line if it ships; a failed attempt is **sealed**
+  and the line stays put.
+- **UX / FE line** (interface layered on the v1 engine, **zero engine change**).
+  `architecture-v2` = the knob-naming relabel (display-only) → **KEPT, active**. The
+  next UX/FE upgrade continues this line (built on v1 engine + v2 naming).
+
+### Current state
+
+| Line | Version | Location | State |
+|---|---|---|---|
+| Engine | **v1** | repo root (`ets/`, `corpus.etsworld`, calibration) | **ACTIVE / canonical / verified** |
+| Engine | v3-sampler | `_sealed/architecture-v3-sampler-FAILED/` | **SEALED (failed ear test).** Did NOT advance the engine line; retained for the coherence-metric finding only. See its `ARCHIVED.md` + `reports/2026-07-16-decision-park-v3-sampler.md`. |
+| UX/FE | **v2** (knob naming) | `architecture-v2/` | **KEPT / active UX layer** (display-only over v1) |
+| UX/FE | next | (incoming) | to be built on v1 engine + v2 naming |
+
+The genre-best psytech deliverable + its exact reproduction recipe are committed at
+**`samples/genre_set/`** (streaming engine + low-temperature steered journeys;
+deterministic seeds), with a `longset/` recipe for the ~30-min set.
+
+**Version-control note (2026-07-16):** the good genre renders + their journey recipes
+previously lived only in ephemeral scratch and were never committed (`.gitignore`
+ignores `samples/` + `*.flac`). That gap is closed — recipes are force-committed
+under `samples/genre_set/`. Nothing was lost; the code was always in git and v1 was
+never mutated.
 
 ## Recorded versions
 
