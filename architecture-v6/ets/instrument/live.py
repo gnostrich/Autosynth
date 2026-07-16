@@ -33,6 +33,7 @@ import argparse
 import sys
 from typing import Dict, List, Optional
 
+from ets.instrument.cue import CueMonitor
 from ets.instrument.feed import TelemetryReceiver
 from ets.instrument.model import PadModel, TapeModel
 from ets.instrument.pads import RegionTapPads, TrackPadGrid, UnitLayerView
@@ -66,9 +67,16 @@ class LiveInstrument:
         self.transport = Transport()
         self.profiles: Dict[int, List[float]] = {}
         self.role_unit_counts: Dict[int, int] = {}
+        self.unit_pools: Dict[int, List[dict]] = {}    # role -> its drill-in pool
         self._inbox_roleactivity: Optional[List[float]] = None
         self._inbox_nowplaying: Optional[Dict[int, float]] = None
         self._want_K: Optional[int] = None
+        # CUE audition bus (F3.5): a read-only cue monitor. In this CONNECTED
+        # instrument the produced audio + the source-unit bank live in the ENGINE
+        # process, so the cue bus records the audition intent but has no buffer to
+        # sound here — a DISCLOSED WALL (see the module report). It never touches
+        # main-out and never re-renders; toggling CUE only reroutes a unit tap.
+        self.cue = CueMonitor()
         # meter telemetry flows into the panel's own read-only MeterState via its
         # existing dispatcher — no new meter logic, and it can reach no emitter.
         self._meter_dispatch = build_meter_dispatcher(self.panel.meter_state)
@@ -77,6 +85,7 @@ class LiveInstrument:
         self.receiver = TelemetryReceiver(
             on_roleactivity=self._feed_roleactivity,
             on_rolemeta=self._feed_rolemeta,
+            on_unitpool=self._feed_unitpool,
             on_nowplaying=self._feed_nowplaying,
             on_profiles=self._feed_profiles,
             on_meter=self._feed_meter,
@@ -93,9 +102,12 @@ class LiveInstrument:
         root.addWidget(QLabel("ROLE PADS — tap to steer, tap-HOLD to drill", self.window))
         root.addWidget(self.role_pads, 3)
 
-        # drill-in detail for one role (hidden until a drill fires).
-        self.unit_layer = UnitLayerView(0, 0, parent=self.window)
+        # drill-in overlay for one role (hidden until a drill fires).
+        self.unit_layer = UnitLayerView(parent=self.window)
         self.unit_layer.setVisible(False)
+        self.unit_layer.unit_tapped.connect(self.on_unit_tapped)
+        self.unit_layer.cue_toggled.connect(self.on_cue_toggled)
+        self.unit_layer.closed.connect(self.close_unit_layer)
         root.addWidget(self.unit_layer, 1)
 
         # control surface (region vector control + tolerances + meters).
@@ -136,6 +148,10 @@ class LiveInstrument:
         self.role_pads.held.connect(self.steer_anchor)      # sustain the lean
         self.role_pads.released.connect(self.ease_anchor)   # ease home
         self.role_pads.drill.connect(self.open_unit_layer)
+        # CLICK-AWAY: interacting with the coarse role pads dismisses an open
+        # drill (returns to the 5 play-pads). A tap fires before the 350 ms drill,
+        # so this never blocks re-opening; it just makes a re-tap shallow-close.
+        self.role_pads.tapped.connect(self._click_away)
 
         # --- single GUI timer: drain inboxes, breathe lights, finish slew -----
         self._timer = QTimer(self.window)
@@ -163,16 +179,77 @@ class LiveInstrument:
             self.panel.tap_region_anchor(a, 0.0)
 
     def open_unit_layer(self, anchor: int) -> None:
-        """Tap-HOLD drill: expand role `anchor` into its units. Pure display —
-        opens no engine channel. Unit count comes from /ets/rolemeta (falls back
-        to the role's profile-vector length if rolemeta has not arrived)."""
+        """Tap-HOLD drill: expand role `anchor` into its UNIT POOL (from the
+        read-only /ets/unitpool telemetry) as mini-cells coloured by source
+        track. Pure display — opens no engine channel."""
         a = int(anchor)
-        n_units = self.role_unit_counts.get(a)
-        if n_units is None:
-            prof = self.profiles.get(a)
-            n_units = len(prof) if prof else 0
-        self.unit_layer.set_role(a, int(n_units))
+        pool = self.unit_pools.get(a, [])
+        self.unit_layer.set_role(a, pool)
         self.unit_layer.setVisible(True)
+
+    def close_unit_layer(self) -> None:
+        """Shallow-close the drill and return to the 5 play-pads. Clears any cue
+        audition so a closed drill leaves the cue bus idle."""
+        self.unit_layer.setVisible(False)
+        self.cue.clear_audition()
+
+    def _click_away(self, _anchor: int) -> None:
+        # isHidden() is the explicit show/hide flag (True only when we hid it),
+        # independent of whether a top-level window is currently shown.
+        if not self.unit_layer.isHidden():
+            self.close_unit_layer()
+
+    # === unit-in-drill FINE steer / cue (the ONLY new gesture surface) ========
+    def on_cue_toggled(self, on: bool) -> None:
+        """CUE toggle: ON routes a unit tap to private audition; OFF routes it to
+        a FINE steer. Toggling OFF also clears the cue audition."""
+        self.cue.set_active(bool(on))
+        if not on:
+            self.cue.clear_audition()
+
+    def on_unit_tapped(self, index: int) -> None:
+        """A unit cell in the drilled role was tapped. CUE OFF → FINE STEER; CUE
+        ON → private cue audition. `index` is the cell's index into the role's
+        /ets/unitpool pool."""
+        role = self.unit_layer.role
+        pool = self.unit_pools.get(role, [])
+        if not (0 <= index < len(pool)):
+            return
+        rec = pool[index]
+        if self.cue.active:
+            self.audition_unit(rec)
+        else:
+            self.steer_unit(rec)
+
+    def steer_unit(self, rec: dict) -> None:
+        """FINE STEER: lean the region toward THIS unit's anchor-profile
+        (rec['profile'] = the frozen B[:, band] 5-vector), peak-NORMALIZED and
+        scaled to SAFE_REGION_MAGNITUDE, via the panel's EXISTING whole-vector
+        region path (`set_region_vector`). This is NOT clamping/force-one-unit: it
+        sets a soft lean over ALL roles in the unit's true proportions, so the
+        writer favours that unit AND its neighbours (breathing brings friends).
+        A unit tap reaches the engine ONLY as this region-tilt lean."""
+        from ets.panel.envelope import SAFE_REGION_MAGNITUDE
+        import numpy as np
+        prof = np.asarray(rec.get("profile", ()), dtype=np.float32).reshape(-1)
+        peak = float(np.max(np.abs(prof))) if prof.size else 0.0
+        if peak <= 0.0:
+            return
+        vec = (prof / peak) * np.float32(SAFE_REGION_MAGNITUDE)
+        self.panel.set_region_vector(vec)
+
+    def audition_unit(self, rec: dict) -> None:
+        """CUE audition: route this unit's SOURCE TRACK to the private cue bus.
+        DISCLOSED WALL: the source-unit bank and the produced audio live in the
+        ENGINE process, so this connected instrument holds no buffer to sound and
+        cannot isolate a single unit's audio; the cue records the audition intent
+        (by source track, the honest subset the cue-buffer path supports) and
+        never touches main-out or re-renders. A real private audition needs an
+        engine-side cue output (out of scope: engine edits are read-only
+        telemetry) or the monitor app that holds produced audio (ets.instrument
+        .app). This is exactly the cue-buffer fallback the task allows."""
+        self.cue.set_active(True)
+        self.cue.audition(int(rec.get("track_id", -1)))
 
     # === telemetry inboxes (called on the receiver thread; data only) ========
     def _feed_roleactivity(self, levels: List[float]) -> None:
@@ -182,6 +259,10 @@ class LiveInstrument:
 
     def _feed_rolemeta(self, counts: List[int]) -> None:
         self.role_unit_counts = {i: int(c) for i, c in enumerate(counts)}
+
+    def _feed_unitpool(self, role: int, units: List[dict]) -> None:
+        # static, arrives once per role right after welcome; plain data only.
+        self.unit_pools[int(role)] = list(units)
 
     def _feed_nowplaying(self, activity: Dict[int, float]) -> None:
         self._inbox_nowplaying = activity
@@ -219,6 +300,16 @@ class LiveInstrument:
             self._inbox_nowplaying = None
         self.pad_model.decay(0.90)
         self.track_pads.update()
+
+        # drill cell breathing: no PER-UNIT sounding signal is emitted, so we
+        # light each pool cell by its SOURCE TRACK's now-playing activity (the
+        # per-track /ets/nowplaying feed). Track-level breathing, honestly not
+        # per-unit; all cells of an active track brighten together.
+        if self.unit_layer.isVisible():
+            pool = self.unit_pools.get(self.unit_layer.role, [])
+            self.unit_layer.set_activity(
+                [self.pad_model.activity.get(int(u.get("track_id", -1)), 0.0)
+                 for u in pool])
 
         # advance the playhead over produced output (no re-settle; F3-D).
         pos = self.transport.tick(self._tick_ms / 1000.0)
@@ -273,14 +364,21 @@ def main(argv=None) -> int:
         inst.receiver._handle_nowplaying("/ets/nowplaying", 0, 0.8, 7, 0.3)
         inst.receiver._handle_profiles(
             "/ets/profiles", 0, 0.7, 0.2, 0.1, 7, 0.1, 0.2, 0.7)
+        # a /ets/unitpool for role 0 (M=3): two units on two source tracks.
+        inst.receiver._handle_unitpool(
+            "/ets/unitpool", 0, 3,
+            0, 0, 2, 0.6, 0.3, 0.1,       # unit 0, track 0, band 2, profile
+            5, 7, 4, 0.2, 0.2, 0.6)       # unit 5, track 7, band 4, profile
         inst._on_tick()                 # apply K=3 + lights on the GUI thread
         inst.steer_anchor(0)            # simulate tapped(0) -> region path
         inst.open_unit_layer(0)         # simulate drill(0) -> unit layer
+        inst.on_unit_tapped(0)          # CUE off: unit 0 -> FINE steer (region)
         inst.window.repaint()
         app.processEvents()
         routed = inst.emitter.last_args is not None
         print(f"[live] smoke ok (K={inst.panel.u.n_anchors}, "
               f"role_tap_emitted_region_lanes={routed}, "
+              f"unit_pool_role0={len(inst.unit_pools.get(0, []))}, "
               f"unit_layer_visible={inst.unit_layer.isVisible()}, "
               f"lanes={list(inst.panel.lane_control_ids)})")
         inst.receiver.stop()

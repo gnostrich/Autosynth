@@ -7,6 +7,10 @@ announced in /ets/hello:
   * /ets/roleactivity— flat float K-vector: per-ROLE (anchor) light-up level
                        0..1 for the primary role grid (the play surface);
   * /ets/rolemeta    — flat int K-vector: per-role unit_count (drill-in sizing);
+  * /ets/unitpool    — one message PER ROLE: [int role, int M, then per unit
+                       int unit_id, int track_id, int band, float p0..p(M-1)];
+                       the units of that role's drill-in pool, each with its
+                       anchor profile B[:,band] (length M);
   * /ets/nowplaying  — flat [int track_id, float activity, ...]: which source
                        tracks are sounding now (secondary per-track pad lights);
   * /ets/profiles    — flat [int track_id, float p0..p(K-1), ...]: each track's
@@ -63,6 +67,8 @@ class TelemetryReceiver:
     Every callback is optional; a missing one makes its address a no-op.
       * on_roleactivity(list[float])           per-role (anchor) light-up 0..1
       * on_rolemeta(list[int])                  per-role unit_count
+      * on_unitpool(role, list[dict])           role -> its drill-in unit pool,
+            each unit {unit_id, track_id, band, profile:[float]*M}
       * on_nowplaying(dict[int,float])          track_id -> activity (0..1)
       * on_profiles(dict[int, list[float]])     track_id -> normalized K-vector
       * on_meter(address, *args)                forwarded /ets/meter/* payload
@@ -71,12 +77,14 @@ class TelemetryReceiver:
     def __init__(self,
                  on_roleactivity: Optional[Callable[[List[float]], None]] = None,
                  on_rolemeta: Optional[Callable[[List[int]], None]] = None,
+                 on_unitpool: Optional[Callable[[int, List[dict]], None]] = None,
                  on_nowplaying: Optional[Callable[[Dict[int, float]], None]] = None,
                  on_profiles: Optional[Callable[[Dict[int, List[float]]], None]] = None,
                  on_meter: Optional[Callable[..., None]] = None,
                  host: str = "127.0.0.1", port: int = 0) -> None:
         self._on_roleactivity = on_roleactivity
         self._on_rolemeta = on_rolemeta
+        self._on_unitpool = on_unitpool
         self._on_nowplaying = on_nowplaying
         self._on_profiles = on_profiles
         self._on_meter = on_meter
@@ -84,6 +92,7 @@ class TelemetryReceiver:
         disp.map("/ets/meter/*", self._handle_meter)
         disp.map("/ets/roleactivity", self._handle_roleactivity)
         disp.map("/ets/rolemeta", self._handle_rolemeta)
+        disp.map("/ets/unitpool", self._handle_unitpool)
         disp.map("/ets/nowplaying", self._handle_nowplaying)
         disp.map("/ets/profiles", self._handle_profiles)
         self._server = osc_server.ThreadingOSCUDPServer((host, int(port)), disp)
@@ -101,6 +110,26 @@ class TelemetryReceiver:
     def _handle_rolemeta(self, _address: str, *args) -> None:
         if self._on_rolemeta is not None:
             self._on_rolemeta([int(a) for a in args])
+
+    def _handle_unitpool(self, _address: str, *args) -> None:
+        """One role's drill-in pool. Framing: [role, M, then repeating blocks of
+        (unit_id, track_id, band, M floats)]. M is read from the message (the
+        world's anchor count, already public on /ets/welcome) — a structural size,
+        not a hidden framing channel — so each unit block is sliced deterministically."""
+        if self._on_unitpool is None or len(args) < 2:
+            return
+        role = int(args[0])
+        M = int(args[1])
+        step = 3 + M
+        units: List[dict] = []
+        i = 2
+        while i + step <= len(args):
+            uid = int(args[i]); tid = int(args[i + 1]); band = int(args[i + 2])
+            prof = [float(x) for x in args[i + 3:i + 3 + M]]
+            units.append({"unit_id": uid, "track_id": tid, "band": band,
+                          "profile": prof})
+            i += step
+        self._on_unitpool(role, units)
 
     def _handle_nowplaying(self, _address: str, *args) -> None:
         if self._on_nowplaying is not None:

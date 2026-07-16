@@ -18,7 +18,9 @@ from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+)
 
 from ets.instrument.model import PadModel, track_palette
 
@@ -219,25 +221,35 @@ class RegionTapPads(QWidget):
         qp.end()
 
 
-class UnitLayerView(QWidget):
-    """Drill-in detail for ONE role: its units as a row/grid of small layer cells,
-    coloured by role and lit by optional per-unit activity. Pure display — shown
-    when RegionTapPads.drill(anchor) fires; emits no gesture."""
+class UnitCellGrid(QWidget):
+    """The mini-cell canvas of ONE role's drill-in pool: each UNIT as a small
+    cell, coloured by its SOURCE TRACK (`track_palette(track_id)` — the same
+    tape-diagram colours), lit by optional per-cell activity. A click emits the
+    cell's pool INDEX; the parent maps that to a FINE steer or a cue audition.
 
-    def __init__(self, role: int = 0, n_units: int = 0, activity=None,
-                 parent=None) -> None:
+    Pure display + a single index-emitting gesture: it drives no lane and imports
+    nothing from the trained object. The units it draws come from the engine's
+    read-only /ets/unitpool telemetry."""
+
+    tapped = Signal(int)     # unit index within the drilled role's pool
+
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._role = int(role)
-        self._n = int(n_units)
-        self._activity = list(activity) if activity is not None else []
-        self.setMinimumSize(160, 72)
-        self.setToolTip("UNIT LAYERS — the units inside the drilled role "
-                        "(display only).")
+        self._units: list = []            # [{unit_id, track_id, band, profile}]
+        self._activity: list[float] = []  # per-cell brightness 0..1
+        self.setMinimumSize(160, 96)
+        self.setToolTip("UNIT CELLS — one per unit in the drilled role's pool, "
+                        "coloured by source track. Tap a cell to FINE-STEER "
+                        "toward that unit's anchor profile (CUE off) or audition "
+                        "it privately (CUE on).")
 
-    def set_role(self, role: int, n_units: int, activity=None) -> None:
-        self._role = int(role)
-        self._n = int(n_units)
-        self._activity = list(activity) if activity is not None else []
+    def set_units(self, units) -> None:
+        self._units = list(units or [])
+        self._activity = [0.0] * len(self._units)
+        self.update()
+
+    def set_activity(self, levels) -> None:
+        self._activity = [float(min(1.0, max(0.0, v))) for v in (levels or [])]
         self.update()
 
     def _grid(self, n: int):
@@ -246,28 +258,113 @@ class UnitLayerView(QWidget):
         return rows, cols
 
     def _level(self, i: int) -> float:
-        return (float(min(1.0, max(0.0, self._activity[i])))
-                if 0 <= i < len(self._activity) else 0.0)
+        return self._activity[i] if 0 <= i < len(self._activity) else 0.0
+
+    def _index_at(self, x: float, y: float):
+        n = len(self._units)
+        if n == 0:
+            return None
+        rows, cols = self._grid(n)
+        w = self.width() / cols
+        h = self.height() / rows
+        if w <= 0 or h <= 0:
+            return None
+        c = int(x / w)
+        r = int(y / h)
+        if not (0 <= c < cols and 0 <= r < rows):
+            return None
+        k = r * cols + c
+        return k if 0 <= k < n else None
+
+    def mousePressEvent(self, ev) -> None:
+        k = self._index_at(ev.position().x(), ev.position().y())
+        if k is not None:
+            self.tapped.emit(k)
+        ev.accept()
 
     def paintEvent(self, _ev) -> None:
         qp = QPainter(self)
-        qp.setPen(QPen(Qt.gray, 1))
-        qp.drawText(6, 14, f"role {self._role} — {self._n} units")
-        if self._n <= 0:
+        n = len(self._units)
+        if n == 0:
+            qp.setPen(QPen(Qt.gray, 1))
+            qp.drawText(6, 16, "no units in this role's pool yet")
             qp.end()
             return
-        cr, cg, cb = track_palette(self._role)
-        rows, cols = self._grid(self._n)
-        top = 20
+        rows, cols = self._grid(n)
         w = self.width() / cols
-        h = max(1.0, (self.height() - top) / rows)
-        for k in range(self._n):
+        h = self.height() / rows
+        for k, u in enumerate(self._units):
             r, c = divmod(k, cols)
-            x, y = c * w, top + r * h
+            x, y = c * w, r * h
+            cr, cg, cb = track_palette(int(u.get("track_id", 0)))
             col = QColor(cr, cg, cb)
-            col.setAlphaF(0.20 + 0.80 * self._level(k))
+            col.setAlphaF(0.25 + 0.75 * self._level(k))
             qp.fillRect(int(x) + 2, int(y) + 2, int(w) - 4, int(h) - 4, col)
             qp.setPen(QPen(Qt.black, 1))
             qp.drawRect(int(x) + 2, int(y) + 2, int(w) - 4, int(h) - 4)
-            qp.drawText(int(x) + 5, int(y) + 15, str(k))
+            qp.drawText(int(x) + 4, int(y) + 14,
+                        f"u{int(u.get('unit_id', k))}")
+            qp.drawText(int(x) + 4, int(y) + 26,
+                        f"T{int(u.get('track_id', 0))}")
         qp.end()
+
+
+class UnitLayerView(QWidget):
+    """Drill-in overlay for ONE role (the classical-sampler drill): a title, a
+    CUE toggle, a close button, and the role's unit-cell grid (`UnitCellGrid`).
+
+    Shallow / modal: shown when RegionTapPads.drill(anchor) fires, dismissed by
+    the close button (`closed`) or by a click-away on the coarse role pads (the
+    app hides it). It emits three things and drives no lane itself:
+      * unit_tapped(int)  — a unit cell's pool index (the app FINE-steers or cues)
+      * cue_toggled(bool) — CUE on/off (tap routes to audition vs steer)
+      * closed()          — the close button was pressed
+    The cells come from the engine's read-only /ets/unitpool; nothing here touches
+    settlement / F / render / the writer."""
+
+    unit_tapped = Signal(int)
+    cue_toggled = Signal(bool)
+    closed = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._role = 0
+        root = QVBoxLayout(self)
+        header = QHBoxLayout()
+        self._title = QLabel("ROLE 0 — units", self)
+        self._cue = QPushButton("CUE", self)
+        self._cue.setCheckable(True)
+        self._cue.setToolTip("CUE: route a unit tap to PRIVATE audition instead "
+                             "of steering (never touches main-out).")
+        self._close = QPushButton("close", self)
+        self._close.setToolTip("Close the drill and return to the role pads.")
+        header.addWidget(self._title)
+        header.addStretch(1)
+        header.addWidget(self._cue)
+        header.addWidget(self._close)
+        root.addLayout(header)
+        self.grid = UnitCellGrid(self)
+        root.addWidget(self.grid, 1)
+
+        self.grid.tapped.connect(self.unit_tapped)
+        self._cue.toggled.connect(self.cue_toggled)
+        self._close.clicked.connect(self.closed)
+        self.setMinimumSize(200, 140)
+
+    @property
+    def role(self) -> int:
+        return self._role
+
+    @property
+    def cue_on(self) -> bool:
+        return self._cue.isChecked()
+
+    def set_role(self, role: int, units=None) -> None:
+        """Show role `role` with its unit pool (`units`: the /ets/unitpool
+        records). Pure display refresh."""
+        self._role = int(role)
+        self._title.setText(f"ROLE {self._role} — units")
+        self.grid.set_units(units or [])
+
+    def set_activity(self, levels) -> None:
+        self.grid.set_activity(levels)

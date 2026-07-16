@@ -679,6 +679,23 @@ class Panel(QWidget):
                 self._region.set_anchor(anchor, float(value))
         self._push()
 
+    def set_region_vector(self, vec) -> None:
+        """Set the WHOLE region lean at once AND push it — the public whole-vector
+        twin of `tap_region_anchor`, driven by the unit-drill FINE steer
+        (ets.instrument.live). It is EXACTLY the existing region path: it writes
+        u_region, mirrors the strip sliders (display), and emits on the ONE
+        outbound /ets/lanes channel via the same `_push`. It opens no second
+        channel — a unit tap reaches the engine ONLY as a lean on this region-tilt
+        lane. The emitted vector is the panel's usual clamped + slew-ramped region
+        (`_outbound`), so a discrete unit tap lands as one bounded glide, never a
+        one-frame discontinuity, and never past the safe envelope."""
+        v = np.asarray(vec, dtype=np.float32).reshape(-1)
+        n = min(self.u.n_anchors, v.shape[0])
+        self.u.u_region[:n] = v[:n]
+        for i in range(min(self._region.anchor_count, n)):
+            self._region.set_anchor(i, float(v[i]))
+        self._push()
+
     def _on_region_vector(self, vec) -> None:
         """The XY pad view sets the whole region lean at once (same lane). It
         updates ONLY the region TARGET (and mirrors it onto the strip sliders,

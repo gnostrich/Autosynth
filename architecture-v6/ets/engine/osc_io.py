@@ -228,6 +228,27 @@ class MeterEmitter:
             args.append(int(role))
             args.append(int(n))
         self._client.send_message("/ets/rolemeta", args)
+
+    def unitpool(self, role, M, units) -> None:
+        """READ-ONLY static per-ROLE unit POOL for the pad drill-in. ONE message
+        per role (a small datagram): the wire is a FLAT list
+            [int role, int M, then per unit:
+                int unit_id, int track_id, int band, float p0 .. p(M-1)]
+        where p0..p(M-1) is the unit's ANCHOR PROFILE B[:, band] (the length-M
+        column of the frozen anchor band-profile matrix). M is the world's anchor
+        count (already public on /ets/welcome), included here so the receiver can
+        slice each unit block without a hidden framing channel. Sent to the SAME
+        meters destination once, right after /ets/rolemeta. Frozen-world structure
+        out; it reads NOTHING downstream (settlement, writer, render, F,
+        provenance generation and the audio path are all untouched)."""
+        args: list = [int(role), int(M)]
+        for uid, tid, band, prof in units:
+            args.append(int(uid))
+            args.append(int(tid))
+            args.append(int(band))
+            for x in prof:
+                args.append(float(x))
+        self._client.send_message("/ets/unitpool", args)
     # NOTE deliberately ABSENT: slide/loop emitters. Those jacks are fed by the
     # Stage-0 meters (a separate feature); this engine does not fabricate their
     # values, and the panel displays '—' until the real feed exists.
