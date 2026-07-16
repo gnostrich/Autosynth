@@ -69,8 +69,38 @@ External read-layer notes (unchanged, orthogonal to the engine): drop the SBR-li
 upscale; keep an optional gentle smart-EQ (presence lift, minimal bass cut) in the
 mastering stage.
 
+## Two rendering paths — DO NOT CONFLATE (critical version-control note)
+
+v1 has **two distinct render paths**, and the genre-best "driving + spacey" sound
+comes from the FIRST one:
+
+1. **Batch settler — `scripts/generate_batch.py`, u=0 (canonical quality path).**
+   Settles the WHOLE tape to a global Lyapunov F-descent certificate
+   (`generate_batch`, monotone convergence, e.g. n_iter≈8, F 0.6068→0.6043), then
+   renders. **Deterministic — it does NOT use the temperature sampler at all.**
+   This global settlement is *why* it is maximally coherent (propulsive pulse +
+   sustained atmospheric textures held together across the whole tape). This is
+   the path that produced the founding-instantiation music the user calls
+   genre-best. Reproduce with:
+   `python3 scripts/generate_batch.py --seconds N --master --master-lufs -14 --out <path>`
+   (world frozen fresh from `cache/ingest`, sigma=median; source units from corpus).
+
+2. **Streaming engine — `Engine.render_offline` / the live writer.** Causal,
+   bar-by-bar, WITH the stochastic temperature sampler (`_sample_temperature`).
+   **This is the ONLY path the entire v3 divergence/silence/coherence saga was
+   ever about.** The switching (independent moment-match) and chaotic-periods
+   (over-dispersed reflected) findings are properties of *this* path's draw. They
+   do not describe the batch path, which has no such draw.
+
+Implication: the parked v3 work is a fix for the *streaming/steering* path. It is
+orthogonal to the batch path that generates the canonical genre music. If we only
+ever need great non-interactive tracks in this genre, the batch settler already
+delivers and needs none of the v3 sampler work.
+
 ## Status
 
 - Builder (moment-match / tier-2) **stopped**. No further v3 spend until un-parked.
-- v1 remains the active engine and canonical genre generator.
-- architecture-v3 retained in-tree as parked WIP for resumption.
+- v1 remains the active engine and canonical genre generator; **`generate_batch.py`
+  (batch settler, u=0, `--master`) is the reproduction recipe for the genre-best
+  quality.**
+- architecture-v3 retained in-tree as parked WIP for resumption (streaming path only).
