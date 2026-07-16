@@ -170,3 +170,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:29+00:00)
 - `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:35+00:00)
 - `Edit` architecture-v3/scripts/measure_table6.py (2026-07-16T14:00:39+00:00)
+
+### at `9fd4d24`
+- `Write` reports/2026-07-16-decision-park-v3-sampler.md (2026-07-16T14:14:14+00:00)
+- `Edit` VERSIONS.md (2026-07-16T14:14:27+00:00)

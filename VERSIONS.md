@@ -87,12 +87,21 @@ timestamp, tool, path, git HEAD). It is the running provenance of how each
 architecture version and instantiation came to be — the fine-grained companion
 to the coarse table below.
 
+## Active version
+
+**v1 is the canonical, active engine** (root tree; psytech founding instantiation).
+It is byte-unchanged and genre-best at u=0 autopilot. `architecture-v3/` is
+**PARKED (TBD)** — retained in-tree for resumption, not promoted. See
+`reports/2026-07-16-decision-park-v3-sampler.md` for the decision, the
+correlation-vs-marginal-variance finding, and the tier-2 resumption plan.
+
 ## Recorded versions
 
 | Architecture version | Marker (commit) | Local tag | State |
 |---|---|---|---|
 | **v0-validated** | `6eabf6d` | `v0-validated-revr1` | racer-C rev-r1 pass (min held-out sep 0.95); snapshot `legacy/v0-validated/` |
-| **v1-stable** | `05a4468` | `v1-stable` | Live synth (engine+panel/OSC), rev-r1 F on unit-resolved fiber, first instantiation = psytech world/LAMBDA/calibration, drift split, mastering layer, bank cache + float16, 14/15 invariants, 232 tests green |
+| **v1-stable** | `05a4468` | `v1-stable` | **ACTIVE / canonical.** Live synth (engine+panel/OSC), rev-r1 F on unit-resolved fiber, first instantiation = psytech world/LAMBDA/calibration, drift split, mastering layer, bank cache + float16, 14/15 invariants, 232 tests green |
+| **architecture-v3** | (branch WIP) | — | **PARKED / TBD.** Steering-time divergence+silence fix (A+B+C) + sampler experiments. Not merged, not active. Ear-testing found the moment-match draw destroys inter-role coupling (switching); the reflected draw keeps coupling but over-disperses (chaotic). Resumption = tier-2 variance-corrected correlated draw + a correlation-fidelity gate. See decision report. |
 
 (Annotated git tags are created, but remote tag push is blocked by app
 permissions, so this committed file is the authoritative marker.)
