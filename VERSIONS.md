@@ -108,7 +108,7 @@ and a failed engine experiment never pollutes the interface:
 | Engine | **v1** | repo root (`ets/`, `corpus.etsworld`, calibration) | **ACTIVE / canonical / verified** |
 | Engine | v3-sampler | `_sealed/architecture-v3-sampler-FAILED/` | **SEALED (failed ear test).** Did NOT advance the engine line; retained for the coherence-metric finding only. See its `ARCHIVED.md` + `reports/2026-07-16-decision-park-v3-sampler.md`. |
 | UX/FE | **v2** (knob naming) | `architecture-v2/` | **KEPT / active UX layer** (display-only over v1) |
-| UX/FE | **v4** (Feature 3: instrument half) | `architecture-v4/` | **IN PROGRESS** — pad grid + tape view + cue; read/tap/monitor layer, zero engine diffs (fork of v2; pre-change tag `pre-feature3-v4-base`). Numbered v4 because v3 is the sealed/burned number. See `architecture-v4/PREREG-feature3.md`. |
+| UX/FE | **v4** (Feature 3: instrument half) | `architecture-v4/` | **COMPLETE / MERGED** — pad grid + tape view + tap/hold (region-tilt only) + transport + cue. Read/tap/monitor layer, **zero engine diffs** (fork of v2; pre-change tag `pre-feature3-v4-base`). ets-auditor **PASS** (no second path into settlement/F/render/provenance; F3-A outboard byte-identical, bites); 17 instrument + 43 panel/h6 tests green. 3 walls reported honestly (live x-process provenance feed; track↔anchor join; true pad-isolation audition). Numbered v4 because v3 is the sealed/burned number. See `architecture-v4/PREREG-feature3.md`. |
 
 The genre-best psytech deliverable + its exact reproduction recipe are committed at
 **`samples/genre_set/`** (streaming engine + low-temperature steered journeys;

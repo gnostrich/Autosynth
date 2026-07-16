@@ -224,3 +224,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` architecture-v4/tests/instrument/test_f3e_cue_neutrality.py (2026-07-16T15:14:19+00:00)
 - `Write` architecture-v4/tests/instrument/test_f3_tap_and_affordance.py (2026-07-16T15:15:01+00:00)
 - `Edit` architecture-v4/VERSION.md (2026-07-16T15:16:08+00:00)
+
+### at `acd966b`
+- `Edit` VERSIONS.md (2026-07-16T15:22:56+00:00)
