@@ -712,7 +712,7 @@
           <section class="tape-panel panel">
             <div class="sec-h" style="margin-bottom:2px">
               <span class="lbl">Output Tape</span><span class="rule"></span>
-              <span class="hint">settled render · playhead from telemetry</span>
+              <span class="hint">playhead from telemetry · waveform not wired yet</span>
             </div>
             <div class="tape-scroll">
               <div class="tape" id="tape">
@@ -743,7 +743,7 @@
         <button class="xbtn" id="drillClose" aria-label="Close drill">×</button>
       </div>
       <div class="unit-grid" id="unitGrid"></div>
-      <p class="cap">Each cell is one <b>unit</b>, colored by its source track. This drill-in is a <b>display</b> view of the role's makeup — steering is done from the pad face and the XY tilt.</p>
+      <p class="cap"><b>Not wired yet.</b> A faithful drill-in shows the role's real units colored by their real source track — that data (per-bar unit→track provenance) exists on the server but is not yet piped to this view. Rather than show invented cells, this surface is disarmed until it is wired to real provenance.</p>
     </section>
   </div>
 
@@ -775,8 +775,6 @@
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var $ = function(id){ return document.getElementById(id); };
   var noop = function(){};
-
-  var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
   var TAPE_WINDOW = 16;   // seconds shown across the tape before the playhead wraps
 
   /* ================= THEME (display-only) ================= */
@@ -869,9 +867,7 @@
     filesEl.innerHTML = "";
     files.forEach(function(n, i){
       var d = document.createElement("div"); d.className = "file";
-      var color = TRACK_COLORS[i % TRACK_COLORS.length];
-      d.innerHTML = '<span class="sw" style="background:'+color+';color:'+color+'"></span>'+
-                    '<span>'+escapeHtml(n)+'</span><span class="b">local</span>';
+      d.innerHTML = '<span>'+escapeHtml(n)+'</span><span class="b">local</span>';
       filesEl.appendChild(d);
     });
     trainBtn.disabled = false; trainNote.textContent = files.length + " source(s) ready.";
@@ -1231,49 +1227,34 @@
 
   /* ================= SOURCE LIBRARY (from ingested files) ================= */
   var libRows = $("libRows");
-  var eyeOpen = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
-  var eyeOff  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3l18 18M10.6 6.2A9.7 9.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.2 7.2A17 17 0 0 0 2 12s3.5 6 10 6a9.6 9.6 0 0 0 3.3-.6"/></svg>';
   function renderLibrary(files){
+    // Plain, honest tracklist of the REAL ingested filenames — no per-track color
+    // (there is no real per-source color to show), no "active in render" indicator
+    // (we don't track that here), no light-up. Just index + the real filename.
     files = files || [];
     if(!files.length){ libRows.innerHTML = '<div class="empty">no sources ingested</div>'; $("libCount").textContent = "0 loaded"; return; }
     libRows.innerHTML = "";
     files.forEach(function(name, i){
-      var color = TRACK_COLORS[i % TRACK_COLORS.length];
       var rowEl = document.createElement("div");
       rowEl.className = "trk";
       rowEl.innerHTML =
-        '<span class="sw" style="background:'+color+';color:'+color+'"></span>'+
-        '<span class="tid num">T'+i+'</span>'+
-        '<span class="tname" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'+
-        '<span class="np" title="active in render"></span>'+
-        '<button class="eye" aria-label="Toggle visibility of '+escapeHtml(name)+'" aria-pressed="true">'+eyeOpen+'</button>';
-      var eye = rowEl.querySelector(".eye");
-      eye.addEventListener("click", function(){   // display only — no engine call
-        var hidden = rowEl.classList.toggle("hidden");
-        eye.innerHTML = hidden ? eyeOff : eyeOpen;
-        eye.setAttribute("aria-pressed", hidden?"false":"true");
-      });
+        '<span class="tid num">'+(i+1)+'</span>'+
+        '<span class="tname" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>';
       libRows.appendChild(rowEl);
     });
     $("libCount").textContent = files.length + " loaded";
   }
 
-  /* ================= TAPE WAVEFORM (cosmetic) ================= */
-  (function buildWave(){
-    var wav = $("wav"), W=720, H=150, mid=H/2, pts=[];
-    for(var x=0;x<=W;x+=3){
-      var env = 0.35+0.5*Math.abs(Math.sin(x*0.011))*Math.abs(Math.sin(x*0.003+1));
-      var a = env*(0.55+0.45*Math.sin(x*0.09))*mid*0.86;
-      pts.push([x, mid-a]);
-    }
-    var top="M0 "+mid, bot="";
-    pts.forEach(function(p){ top+=" L"+p[0]+" "+p[1].toFixed(1); });
-    for(var i=pts.length-1;i>=0;i--){ var p=pts[i]; bot+=" L"+p[0]+" "+(mid+(mid-p[1])).toFixed(1); }
-    var grad = '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
-      '<stop offset="0" stop-color="var(--tape)" stop-opacity="0.9"/>'+
-      '<stop offset="0.5" stop-color="var(--accent)" stop-opacity="0.55"/>'+
-      '<stop offset="1" stop-color="var(--tape)" stop-opacity="0.9"/></linearGradient></defs>';
-    wav.innerHTML = grad+'<path d="'+top+bot+' Z" fill="url(#wg)" opacity="0.85"/>'+
+  /* ================= TAPE BASELINE (no fabricated waveform) =================
+     The real settled-render waveform is NOT wired to this SVG yet, so we draw an
+     HONEST empty tape: a flat baseline only. No synthetic envelope stands in for
+     real audio (that would be a fabrication). The playhead below IS real — it is
+     driven by the engine's per-bar telemetry `t`. A real waveform (drawn from the
+     decoded /api/stream PCM) is a follow-up; until then this surface shows nothing
+     it cannot back. */
+  (function buildTapeBaseline(){
+    var wav = $("wav"), H=150, mid=H/2;
+    wav.innerHTML =
       '<line x1="0" y1="'+mid+'" x2="720" y2="'+mid+'" stroke="var(--line)" stroke-width="0.6"/>';
   })();
 
@@ -1296,21 +1277,11 @@
   function openDrill(i){
     lastFocus = document.activeElement;
     drillTag.textContent = "role "+i;
-    var units = 36;   // cosmetic makeup view; steering is not done here
-    drillTitle.textContent = units+" units · drilled";
+    drillTitle.textContent = "role "+i+" · drill-in";
+    // HONEST DISARM: do NOT synthesize unit cells. The real per-role unit makeup
+    // (units colored by real source track) is not wired to this view yet, so we
+    // render nothing fabricated — the caption states plainly that it is not wired.
     unitGrid.innerHTML = "";
-    for(var u=0; u<units; u++){
-      var color = TRACK_COLORS[(u*7+i) % TRACK_COLORS.length];
-      var cell = document.createElement("button");
-      cell.className = "unit";
-      cell.style.background = color;
-      cell.setAttribute("aria-label","unit "+u);
-      cell.addEventListener("click", (function(c){ return function(){
-        unitGrid.querySelectorAll(".unit.sel").forEach(function(n){ n.classList.remove("sel"); });
-        c.classList.add("sel");   // display selection only — no engine call
-      };})(cell));
-      unitGrid.appendChild(cell);
-    }
     drillBack.classList.add("open"); drillBack.setAttribute("aria-hidden","false");
     $("drillClose").focus();
   }
