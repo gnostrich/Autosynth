@@ -1,0 +1,90 @@
+{
+  "instantiation": "futuregarage",
+  "architecture": "v1 (ETS rev-r1 F, unit-resolved fiber) \u2014 FULL FORK copy under instantiations/futuregarage/",
+  "genre": "deep / atmospheric halftime (bass) \u2014 25 tracks",
+  "n_tracks": 25,
+  "corpus_tracks": [
+    "02 - kim - rescue in love.mp3",
+    "03 - va#U0142ian#U0167 - Songbird.mp3",
+    "04 - va#U0142ian#U0167 - Ad astra.mp3",
+    "05 - Laenges - Vain.mp3",
+    "08 - Insight Music - e#U0300nouement x Logic23 - Entropy.mp3",
+    "09 - Zyphyr - M e l a t o n i n.mp3",
+    "12 - Zyphyr - a v a s t h a.mp3",
+    "13 - Qlafim - Numb.mp3",
+    "16 - TBFM - Absence.mp3",
+    "19 - Insight Music - Logic23 x voidshade - Faded Memories.mp3",
+    "22 - Re-Sengie - Manu Shrine & Denis Zyryanov - Abuse.mp3",
+    "23 - Re-Sengie - Enter The Void.mp3",
+    "26 - Reflectline - Go Back.mp3",
+    "27 - Reflectline - Night.mp3",
+    "28 - Reflectline - nebraska.mp3",
+    "29 - Reflectline - Lost.mp3",
+    "30 - TBFM - Holodno.mp3",
+    "32 - Saurabh Alwadkar - presence.mp3",
+    "33 - Sublab - Sublab & Azaleh - Aquila.mp3",
+    "34 - Antent - Surreal.mp3",
+    "37 - Rusez1 - Loco.mp3",
+    "38 - Duqa - Forever.mp3",
+    "43 - VMDM RECORDS - malek - Depths.mp3",
+    "44 - VMDM RECORDS - malek - dance or i.mp3",
+    "45 - VMDM RECORDS - malek - ALLS.mp3"
+  ],
+  "world": {
+    "hash": "863316226e18de4d94a5428a9d8f74f88b9291958c134ea968c750a4b03fcad4",
+    "M_anchors": 5,
+    "sigma": 0.6115988854171652,
+    "file": "corpus.etsworld"
+  },
+  "lambda": {
+    "T1_gw": 1.0,
+    "T2": 5.032823194421518,
+    "T3": 1.0209148623852349,
+    "T4": 10.817367934599108,
+    "T1p": 8.868646981570928,
+    "T5": 0.1
+  },
+  "separation_exam": {
+    "KILL": false,
+    "sep_min_threshold": 0.9,
+    "heldout_seeds": [
+      4,
+      5
+    ],
+    "per_family": {
+      "grid-shuffle": {
+        "sep_rate": 1.0,
+        "median_margin": 19.253
+      },
+      "role-permute": {
+        "sep_rate": 0.98,
+        "median_margin": 0.982
+      },
+      "phase-rotate": {
+        "sep_rate": 1.0,
+        "median_margin": 6.21
+      },
+      "cross-track-swap": {
+        "sep_rate": 0.98,
+        "median_margin": 6.659
+      }
+    },
+    "overall_min_sep": 0.98,
+    "verdict": "PASS"
+  },
+  "sigma_phi": {
+    "armed_lanes": [
+      "region",
+      "continuity",
+      "novelty"
+    ],
+    "disarmed_lanes": [
+      "density",
+      "gauge"
+    ],
+    "n_bars": 2104,
+    "note": "disarmed lanes measured sigma==0 exactly at u=0 (structural, no floor invented)"
+  },
+  "isolation": "full fork; v1 tree byte-unchanged; renders selected via this fork's ets + world",
+  "render_recipe": "scripts/render_journeys.py (world+bank once, seeded/steered journeys, external master)"
+}

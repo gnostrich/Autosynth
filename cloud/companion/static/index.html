@@ -1,0 +1,1575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETS — Equilibrium Tape Synth</title>
+<style>
+  :root{
+    /* geometry */
+    --r-lg: 16px;
+    --r-md: 11px;
+    --r-sm: 7px;
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 22px;
+    --sp-6: 32px;
+    --maxw: 1180px;
+    --fs-micro: 10.5px;
+    --fs-tiny: 12px;
+    --fs-body: 14px;
+    --fs-h: 17px;
+    --fs-num: 26px;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, Menlo, Consolas, "SF Mono", monospace;
+
+    /* DARK — primary/hero look */
+    --bg: #0E1214;
+    --bg-grad-a: #10171a;
+    --bg-grad-b: #0b0f11;
+    --panel: #151C1F;
+    --panel-2: #1A2225;
+    --panel-inset: #0F1517;
+    --line: #253230;
+    --line-soft: #1D2725;
+    --ink: #EAF1EF;
+    --ink-2: #C4D0CD;
+    --muted: #8A9794;
+    --faint: #5E6B68;
+    --accent: #4FE0AE;          /* phosphor mint — role energy (bold) */
+    --accent-deep: #1EB98A;
+    --accent-glow: rgba(79,224,174,.55);
+    --tape: #E8A24C;            /* sodium/tape amber (quiet accent) */
+    --tape-glow: rgba(232,162,76,.5);
+    --danger: #E86A6A;
+    --shadow: 0 18px 40px -18px rgba(0,0,0,.7), 0 2px 0 rgba(255,255,255,.015) inset;
+    --pad-shadow: 0 22px 50px -22px rgba(0,0,0,.8);
+    --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  }
+
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg: #E7ECEA;
+      --bg-grad-a: #EEF2F0;
+      --bg-grad-b: #DFE6E3;
+      --panel: #F6F8F7;
+      --panel-2: #EDF1EF;
+      --panel-inset: #E4EAE8;
+      --line: #CBD5D1;
+      --line-soft: #D9E1DE;
+      --ink: #16201D;
+      --ink-2: #35423E;
+      --muted: #5C6A66;
+      --faint: #869590;
+      --accent: #0E9E76;
+      --accent-deep: #0A7A5A;
+      --accent-glow: rgba(14,158,118,.32);
+      --tape: #B26A1C;
+      --tape-glow: rgba(178,106,28,.32);
+      --danger: #C0483F;
+      --shadow: 0 14px 30px -18px rgba(30,50,44,.35), 0 1px 0 rgba(255,255,255,.6) inset;
+      --pad-shadow: 0 16px 34px -18px rgba(30,50,44,.4);
+      --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+    }
+  }
+  /* explicit toggle wins in BOTH directions */
+  :root[data-theme="dark"]{
+    --bg: #0E1214; --bg-grad-a: #10171a; --bg-grad-b: #0b0f11;
+    --panel: #151C1F; --panel-2: #1A2225; --panel-inset: #0F1517;
+    --line: #253230; --line-soft: #1D2725;
+    --ink: #EAF1EF; --ink-2: #C4D0CD; --muted: #8A9794; --faint: #5E6B68;
+    --accent: #4FE0AE; --accent-deep: #1EB98A; --accent-glow: rgba(79,224,174,.55);
+    --tape: #E8A24C; --tape-glow: rgba(232,162,76,.5); --danger:#E86A6A;
+    --shadow: 0 18px 40px -18px rgba(0,0,0,.7), 0 2px 0 rgba(255,255,255,.015) inset;
+    --pad-shadow: 0 22px 50px -22px rgba(0,0,0,.8);
+  }
+  :root[data-theme="light"]{
+    --bg: #E7ECEA; --bg-grad-a: #EEF2F0; --bg-grad-b: #DFE6E3;
+    --panel: #F6F8F7; --panel-2: #EDF1EF; --panel-inset: #E4EAE8;
+    --line: #CBD5D1; --line-soft: #D9E1DE;
+    --ink: #16201D; --ink-2: #35423E; --muted: #5C6A66; --faint: #869590;
+    --accent: #0E9E76; --accent-deep: #0A7A5A; --accent-glow: rgba(14,158,118,.32);
+    --tape: #B26A1C; --tape-glow: rgba(178,106,28,.32); --danger:#C0483F;
+    --shadow: 0 14px 30px -18px rgba(30,50,44,.35), 0 1px 0 rgba(255,255,255,.6) inset;
+    --pad-shadow: 0 16px 34px -18px rgba(30,50,44,.4);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; }
+  #ets{
+    font-family: var(--font-ui);
+    font-size: var(--fs-body);
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 640px at 78% -8%, var(--bg-grad-a), transparent 60%),
+      radial-gradient(900px 520px at 8% 108%, var(--bg-grad-a), transparent 55%),
+      linear-gradient(180deg, var(--bg-grad-b), var(--bg));
+    min-height: 100vh;
+    padding: var(--sp-5) var(--sp-5) 108px;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.45;
+    overflow-x: hidden;
+  }
+  #ets .wrap{ max-width: var(--maxw); margin: 0 auto; }
+
+  .micro{
+    font-size: var(--fs-micro);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 600;
+  }
+  .num{ font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+  .panel{
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+  }
+
+  /* ---------- HEADER ---------- */
+  header.hd{
+    display:flex; align-items:center; gap: var(--sp-4);
+    flex-wrap: wrap;
+    padding: var(--sp-4) var(--sp-5);
+    margin-bottom: var(--sp-5);
+  }
+  .mark{ display:flex; align-items:baseline; gap: 12px; }
+  .mark .glyph{
+    width: 30px; height: 30px; flex:0 0 auto; align-self:center;
+    border-radius: 8px;
+    background:
+      radial-gradient(circle at 32% 30%, var(--accent), transparent 60%),
+      linear-gradient(145deg, var(--panel-2), var(--panel-inset));
+    border: 1px solid var(--line);
+    box-shadow: 0 0 18px -4px var(--accent-glow);
+    position: relative;
+  }
+  .mark .glyph::after{
+    content:""; position:absolute; inset:7px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    opacity:.75;
+  }
+  .mark h1{
+    font-size: var(--fs-h); margin:0; font-weight:650; letter-spacing:.005em;
+    color: var(--ink);
+  }
+  .mark h1 b{ color: var(--accent); font-weight:650; }
+  .mark .sub{ font-size: var(--fs-micro); }
+  .hd .spacer{ flex:1 1 auto; }
+
+  .pill{
+    display:inline-flex; align-items:center; gap: 7px;
+    padding: 5px 11px; border-radius: 999px;
+    background: var(--panel-inset);
+    border: 1px solid var(--line);
+    font-size: var(--fs-micro); letter-spacing:.13em; text-transform:uppercase;
+    color: var(--ink-2); font-weight:600;
+  }
+  .pill .tick{ width:6px; height:6px; border-radius:50%; background: var(--faint); }
+  .pill.live .tick{ background: var(--accent); box-shadow:0 0 8px var(--accent); }
+  .conn{
+    display:inline-flex; align-items:center; gap:8px;
+    font-size: var(--fs-micro); letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600;
+  }
+  .conn .dot{
+    width:9px; height:9px; border-radius:50%;
+    background: var(--faint);
+  }
+  .conn .dot.on{
+    background: var(--accent);
+    box-shadow: 0 0 0 0 var(--accent-glow), 0 0 10px 1px var(--accent);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  .conn .dot.bad{ background: var(--danger); box-shadow: 0 0 10px 1px var(--danger); }
+  @keyframes breathe{ 0%,100%{ box-shadow:0 0 0 0 var(--accent-glow), 0 0 8px 1px var(--accent);} 50%{ box-shadow:0 0 0 5px transparent, 0 0 16px 3px var(--accent);} }
+
+  .iconbtn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    height: 34px; padding: 0 13px;
+    background: var(--panel-inset); color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 9px;
+    font: inherit; font-size: var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; font-weight:600;
+    cursor: pointer;
+  }
+  .iconbtn:hover{ border-color: var(--accent-deep); color: var(--ink); }
+  .iconbtn:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .iconbtn svg{ width:15px; height:15px; }
+
+  /* ---------- SECTION TITLES ---------- */
+  .sec-h{ display:flex; align-items:center; gap: var(--sp-3); margin: 0 2px var(--sp-3); flex-wrap:wrap; }
+  .sec-h .lbl{ font-size: var(--fs-micro); letter-spacing:.18em; text-transform:uppercase; color: var(--muted); font-weight:650; }
+  .sec-h .rule{ flex:1; height:1px; background: linear-gradient(90deg, var(--line), transparent); min-width:20px; }
+  .sec-h .hint{ font-size: var(--fs-micro); color: var(--faint); letter-spacing:.04em; text-transform:none; }
+
+  /* ---------- SOURCE + TRAIN (phase-1 flow, mockup skin) ---------- */
+  section.block{ padding: var(--sp-5); margin-bottom: var(--sp-5); }
+  .drop{
+    border:1.5px dashed var(--line); border-radius: var(--r-md); padding: 26px 20px; text-align:center;
+    color: var(--muted); transition: border-color .18s, background .18s, color .18s; cursor:pointer;
+  }
+  .drop:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .drop.hot{ border-color: var(--accent); background: rgba(79,224,174,.06); color: var(--ink); }
+  .drop .big{ font-size:15px; margin-bottom:6px; }
+  .drop b{ color: var(--ink-2); }
+  .drop .note{ font-size: var(--fs-tiny); color: var(--faint); }
+  .files{ display:flex; flex-direction:column; gap:6px; margin-top: var(--sp-4); }
+  .file{
+    display:grid; grid-template-columns: 12px 1fr auto; gap: var(--sp-3); align-items:center;
+    padding: 9px 12px; border-radius: var(--r-sm);
+    background: var(--panel-inset); border:1px solid var(--line-soft); font-size:13px; color: var(--ink-2);
+  }
+  .file .sw{ width:11px; height:11px; border-radius:3px; box-shadow:0 0 9px -2px currentColor; }
+  .file .b{ color: var(--faint); font-variant-numeric: tabular-nums; font-size:12px; }
+  .empty{ color: var(--faint); font-size:13px; padding:6px 2px; }
+  .row{ display:flex; gap: var(--sp-3); align-items:center; flex-wrap:wrap; }
+  button.act{
+    appearance:none; font:inherit; font-weight:650; letter-spacing:.02em; cursor:pointer;
+    padding:11px 20px; border-radius:10px; border:1px solid var(--accent); color:#06110d;
+    background: var(--accent); box-shadow:0 0 20px -4px var(--accent-glow);
+  }
+  button.act:hover{ box-shadow:0 0 26px -2px var(--accent-glow); }
+  button.act:focus-visible{ outline:none; box-shadow: var(--focus); }
+  button.act:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+  button.ghost{ background: var(--panel-inset); color: var(--ink-2); border:1px solid var(--line); box-shadow:none; }
+  button.ghost:hover{ border-color: var(--accent-deep); color: var(--ink); box-shadow:none; }
+  .note{ font-size: var(--fs-tiny); color: var(--faint); }
+  .seal{ font-size:11.5px; color: var(--faint); display:flex; gap:8px; align-items:center; margin-top: var(--sp-4); }
+  .seal .lock{ color: var(--accent); }
+  .seal b{ color: var(--ink-2); }
+  .result{
+    font-family: var(--font-mono); font-size:12.5px; white-space:pre-wrap;
+    background: var(--panel-inset); border:1px solid var(--line); border-radius:8px; padding:14px; color: var(--ink-2);
+    max-height:280px; overflow:auto;
+  }
+  .badge{
+    display:inline-block; padding:3px 9px; border-radius:6px; font-size: var(--fs-micro); letter-spacing:.12em;
+    text-transform:uppercase; font-weight:700;
+  }
+  .badge.ok{ background: var(--accent); color:#06110d; }
+  .badge.err{ background: var(--danger); color:#1a0808; }
+
+  /* ---------- INSTRUMENT wrapper + lock overlay ---------- */
+  .instrument{ position: relative; }
+  /* Honest steer state: a corpus whose region lane measured σ=0 disarms region
+     steering — the pads/XY settle no differently. Dim those surfaces + tag them so
+     the operator isn't misled into thinking a dead pad steers. */
+  .instrument.region-disarmed .pads, .instrument.region-disarmed .xy{ opacity:.55; }
+  .instrument.region-disarmed .pads::after{ content:"region steering disarmed on this corpus";
+    display:block; margin-top:8px; font-size: var(--fs-micro); letter-spacing:.1em;
+    text-transform:uppercase; color: var(--tape); font-weight:650; }
+  .instrument .inst-inner{ transition: filter .2s ease, opacity .2s ease; }
+  .instrument:not(.ready) .inst-inner{ filter: blur(1.6px); opacity:.42; pointer-events:none; user-select:none; }
+  .inst-lock{
+    position:absolute; inset:0; z-index:25; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap: var(--sp-3); text-align:center;
+    border-radius: var(--r-lg); padding: var(--sp-5);
+    background: radial-gradient(600px 300px at 50% 30%, rgba(79,224,174,.06), transparent 70%), rgba(9,13,14,.66);
+    backdrop-filter: blur(2px);
+  }
+  :root[data-theme="light"] .inst-lock{ background: radial-gradient(600px 300px at 50% 30%, rgba(14,158,118,.08), transparent 70%), rgba(231,236,234,.7); }
+  @media (prefers-color-scheme: light){ :root:not([data-theme]) .inst-lock{ background: radial-gradient(600px 300px at 50% 30%, rgba(14,158,118,.08), transparent 70%), rgba(231,236,234,.7); } }
+  .instrument.ready .inst-lock{ display:none; }
+  .inst-lock .lk-glyph{
+    width:46px; height:46px; border-radius:12px;
+    background: linear-gradient(145deg, var(--panel-2), var(--panel-inset));
+    border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color: var(--muted);
+    box-shadow: var(--shadow);
+  }
+  .inst-lock .lk-glyph svg{ width:22px; height:22px; }
+  .inst-lock h3{ margin:0; font-size:16px; font-weight:650; color: var(--ink); }
+  .inst-lock p{ margin:0; font-size: var(--fs-tiny); color: var(--muted); max-width: 46ch; }
+
+  /* stream error banner */
+  .stream-err{
+    display:none; margin: 0 2px var(--sp-4); padding: 11px 14px; border-radius: var(--r-md);
+    border:1px solid var(--danger); background: rgba(232,106,106,.08); color: var(--ink); font-size: var(--fs-tiny);
+  }
+  .stream-err.show{ display:block; }
+  .stream-err b{ color: var(--danger); }
+
+  /* ---------- ROLE PADS (hero) ---------- */
+  section.pads{ padding: var(--sp-5); margin-bottom: var(--sp-5); }
+  .pad-row{ display:grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--sp-3); }
+  .pad{
+    position: relative;
+    aspect-ratio: 1 / 1.02;
+    border-radius: var(--r-md);
+    background:
+      radial-gradient(120% 90% at 50% 8%, var(--panel-2), var(--panel-inset) 70%);
+    border: 1px solid var(--line);
+    box-shadow: var(--pad-shadow);
+    cursor: pointer;
+    padding: 13px 13px 12px;
+    display:flex; flex-direction:column; justify-content:space-between;
+    color: var(--ink);
+    overflow: hidden;
+    transition: transform .12s ease, border-color .18s ease;
+    text-align:left;
+    font: inherit;
+  }
+  .pad:focus-visible{ outline:none; box-shadow: var(--pad-shadow), var(--focus); }
+  .pad:hover{ transform: translateY(-2px); }
+  .pad:active{ transform: translateY(0); }
+  /* ambient breathing glow layer; --tele is live telemetry energy 0..1 */
+  .pad .halo{
+    position:absolute; inset:-1px; border-radius: var(--r-md); pointer-events:none;
+    background: radial-gradient(90% 70% at 50% 118%, var(--accent-glow), transparent 62%);
+    opacity: calc(.12 + var(--tele,0) * .78);
+    transition: opacity .12s linear;
+  }
+  .pad .ring{
+    position:absolute; inset:0; border-radius: var(--r-md); pointer-events:none;
+    box-shadow: inset 0 0 0 1px transparent;
+    transition: box-shadow .25s ease;
+  }
+  .pad.active{ border-color: var(--accent); }
+  .pad.active .ring{ box-shadow: inset 0 0 0 1px var(--accent-deep), inset 0 -30px 44px -20px var(--accent-glow), 0 0 26px -2px var(--accent-glow); }
+  .pad .idx{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--muted); font-weight:650; position:relative; }
+  .pad.active .idx{ color: var(--accent); }
+  .pad .big{ position:relative; }
+  .pad .big .n{ font-size: 30px; font-weight:600; letter-spacing:-.01em; line-height:1; }
+  .pad .big .u{ font-size: var(--fs-micro); letter-spacing:.16em; text-transform:uppercase; color: var(--faint); margin-top:5px; }
+  .pad .lvl{
+    position:relative; height:4px; border-radius:3px; overflow:hidden;
+    background: var(--panel-inset); border:1px solid var(--line-soft);
+  }
+  .pad .lvl i{ position:absolute; left:0; top:0; bottom:0; width: 8%; background: linear-gradient(90deg, var(--accent-deep), var(--accent)); box-shadow:0 0 8px var(--accent-glow); border-radius:3px; transition: width .1s linear; }
+
+  /* ---------- MIDDLE: XY + LANE CONSOLE ---------- */
+  .grid-2{ display:grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: var(--sp-5); margin-bottom: var(--sp-5); align-items:stretch; }
+
+  .xy{ padding: var(--sp-5); display:flex; flex-direction:column; }
+  .xy .pad-xy{
+    position:relative; width:100%; aspect-ratio:1/1; max-width:100%;
+    border-radius: var(--r-md);
+    background:
+      linear-gradient(180deg, var(--panel-inset), #0c1113);
+    border: 1px solid var(--line);
+    box-shadow: inset 0 2px 30px -10px rgba(0,0,0,.6);
+    overflow:hidden; cursor: crosshair; touch-action:none;
+    margin-top: var(--sp-2);
+  }
+  :root[data-theme="light"] .xy .pad-xy{ background: linear-gradient(180deg, var(--panel-inset), #dbe3e0); }
+  @media (prefers-color-scheme: light){ :root:not([data-theme]) .xy .pad-xy{ background: linear-gradient(180deg, var(--panel-inset), #dbe3e0); } }
+  .xy .grid-lines{ position:absolute; inset:0; pointer-events:none; opacity:.55; }
+  .xy .cross{ position:absolute; background: var(--accent); opacity:.14; pointer-events:none; }
+  .xy .cross.h{ left:0; right:0; height:1px; }
+  .xy .cross.v{ top:0; bottom:0; width:1px; }
+  .xy .anchor{
+    position:absolute; width:9px; height:9px; margin:-4.5px 0 0 -4.5px; border-radius:50%;
+    background: var(--faint); box-shadow: 0 0 0 2px var(--panel-inset); pointer-events:none;
+    transition: background .15s, box-shadow .15s;
+  }
+  .xy .anchor.dom{ background: var(--accent); box-shadow: 0 0 0 2px var(--panel-inset), 0 0 12px 1px var(--accent-glow); }
+  .xy .anchor .alab{
+    position:absolute; top:11px; left:50%; transform:translateX(-50%);
+    font-size:9px; letter-spacing:.08em; color: var(--faint); font-weight:650; white-space:nowrap;
+  }
+  .xy .anchor.dom .alab{ color: var(--accent); }
+  .puck{
+    position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px;
+    border-radius:50%;
+    background: radial-gradient(circle at 40% 35%, var(--accent), var(--accent-deep));
+    box-shadow: 0 0 0 5px var(--accent-glow), 0 0 22px 3px var(--accent-glow), 0 6px 14px -4px rgba(0,0,0,.6);
+    border: 1.5px solid rgba(255,255,255,.35);
+    cursor: grab;
+  }
+  .puck:active{ cursor: grabbing; }
+  .puck:focus-visible{ outline:none; box-shadow: 0 0 0 5px var(--accent-glow), var(--focus); }
+  .puck::after{ content:""; position:absolute; inset:8px; border-radius:50%; background: rgba(255,255,255,.7); }
+  .xy .readout{ display:flex; gap: var(--sp-5); margin-top: var(--sp-4); flex-wrap:wrap; }
+  .xy .readout .k{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--faint); font-weight:650; }
+  .xy .readout .val{ font-size: var(--fs-num); font-weight:600; letter-spacing:-.01em; line-height:1.05; }
+  .xy .readout .val small{ font-size: 12px; color: var(--muted); font-weight:600; }
+
+  /* lane console (display-only tolerances/weights) */
+  .console{ padding: var(--sp-5); display:flex; flex-direction:column; gap: var(--sp-4); }
+  .lanes{ display:flex; flex-direction:column; gap: var(--sp-4); }
+  .lane{ display:grid; grid-template-columns: 92px 1fr 52px; align-items:center; gap: var(--sp-3); }
+  .lane .name{ font-size: var(--fs-micro); letter-spacing:.15em; text-transform:uppercase; color: var(--ink-2); font-weight:650; }
+  .lane .desc{ font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--faint); font-weight:600; margin-top:2px; }
+  .lane .rd{ text-align:right; font-size: 15px; font-weight:600; color: var(--ink); }
+  .slider{ position:relative; height: 30px; display:flex; align-items:center; }
+  .slider input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:100%; margin:0; background:transparent; cursor:pointer; }
+  .slider .track{
+    position:absolute; left:0; right:0; height:6px; border-radius:5px;
+    background: var(--panel-inset); border:1px solid var(--line-soft); pointer-events:none;
+  }
+  .slider .fill{
+    position:absolute; left:0; height:6px; border-radius:5px; pointer-events:none;
+    background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+    box-shadow: 0 0 10px -1px var(--accent-glow);
+  }
+  .slider input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%;
+    background: var(--ink); border:2px solid var(--accent);
+    box-shadow: 0 0 0 3px var(--panel), 0 0 14px -1px var(--accent-glow); cursor:grab; margin-top:0;
+  }
+  .slider input[type=range]::-moz-range-thumb{
+    width:16px; height:16px; border-radius:50%; background: var(--ink); border:2px solid var(--accent);
+    box-shadow: 0 0 0 3px var(--panel), 0 0 14px -1px var(--accent-glow); cursor:grab;
+  }
+  .slider input[type=range]:focus-visible{ outline:none; }
+  .slider input[type=range]:focus-visible ~ .fill{ box-shadow: 0 0 0 2px var(--accent); }
+
+  .meters{ display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); padding-top: var(--sp-3); border-top:1px solid var(--line-soft); }
+  .meter .mh{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }
+  .meter .mv{ font-size:13px; font-weight:600; color: var(--ink); }
+  .meter .bars{ display:flex; gap:3px; align-items:flex-end; height:46px; }
+  .meter .bars i{ flex:1; background: var(--panel-inset); border:1px solid var(--line-soft); border-radius:2px; height:20%; transition: height .09s linear, background .09s linear; }
+  .meter .bars i.on{ background: linear-gradient(180deg, var(--accent), var(--accent-deep)); border-color: transparent; box-shadow:0 0 8px -2px var(--accent-glow); }
+  .meter .bars i.hot{ background: linear-gradient(180deg, var(--tape), #c07a1e); box-shadow:0 0 9px -1px var(--tape-glow); }
+
+  /* ---------- BOTTOM: LIBRARY + TAPE ---------- */
+  .bottom{ display:grid; grid-template-columns: minmax(0,0.92fr) minmax(0,1.08fr); gap: var(--sp-5); margin-bottom: var(--sp-5); align-items:stretch; }
+  .lib{ padding: var(--sp-5); }
+  .lib .rows{ display:flex; flex-direction:column; gap: 6px; margin-top: var(--sp-2); }
+  .trk{
+    display:grid; grid-template-columns: 14px 34px 1fr auto auto; align-items:center; gap: var(--sp-3);
+    padding: 9px 11px; border-radius: var(--r-sm);
+    background: var(--panel-inset); border:1px solid var(--line-soft);
+  }
+  .trk .sw{ width:12px; height:12px; border-radius:3px; box-shadow: 0 0 9px -2px currentColor; }
+  .trk .tid{ font-size: var(--fs-micro); letter-spacing:.1em; color: var(--muted); font-weight:700; }
+  .trk .tname{ font-size:13px; color: var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trk .np{ width:8px; height:8px; border-radius:50%; background: var(--faint); }
+  .trk.playing .np{ background: var(--tape); box-shadow:0 0 9px var(--tape-glow); }
+  .trk.playing .tname{ color: var(--ink); }
+  .eye{
+    background: transparent; border:1px solid transparent; border-radius:6px; cursor:pointer; color: var(--muted);
+    width:28px; height:26px; display:inline-flex; align-items:center; justify-content:center; padding:0;
+  }
+  .eye:hover{ border-color: var(--line); color: var(--ink); }
+  .eye:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .eye svg{ width:17px; height:17px; }
+  .trk.hidden{ opacity:.42; }
+  .trk.hidden .sw{ box-shadow:none; filter: grayscale(.7); }
+  .lib .empty{ margin-top: var(--sp-2); }
+
+  /* tape */
+  .tape-panel{ padding: var(--sp-5); display:flex; flex-direction:column; }
+  .tape-scroll{ overflow-x:auto; overflow-y:hidden; border-radius: var(--r-md); margin-top: var(--sp-2); border:1px solid var(--line); background: var(--panel-inset); }
+  .tape{
+    position:relative; height: 150px; min-width: 720px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 63px, var(--line-soft) 63px 64px);
+  }
+  .tape .wav{ position:absolute; inset:0; display:block; width:100%; height:100%; }
+  .tape .ph{
+    position:absolute; top:0; bottom:0; width:2px; left: 0%;
+    background: var(--tape); box-shadow: 0 0 14px 2px var(--tape-glow);
+  }
+  .tape .ph::before{ content:""; position:absolute; top:-1px; left:-4px; width:10px; height:10px; border-radius:2px; background: var(--tape); box-shadow:0 0 12px var(--tape-glow); }
+  .tape .played{ position:absolute; top:0; bottom:0; left:0; width:0%; background: linear-gradient(90deg, var(--tape-glow), transparent); opacity:.4; pointer-events:none; }
+  .tape-legend{ display:flex; justify-content:space-between; margin-top: var(--sp-3); }
+
+  /* ---------- DRILL OVERLAY (display-only) ---------- */
+  .drill-back{
+    position: fixed; inset:0; z-index:60; display:none;
+    background: rgba(6,9,10,.66); backdrop-filter: blur(4px);
+    padding: var(--sp-5);
+    align-items:center; justify-content:center;
+  }
+  .drill-back.open{ display:flex; }
+  .drill{
+    width: min(760px, 100%); max-height: 88vh; overflow:auto;
+    padding: var(--sp-5);
+    animation: rise .22s ease;
+  }
+  @keyframes rise{ from{ transform: translateY(10px); opacity:0; } to{ transform:none; opacity:1; } }
+  .drill .dh{ display:flex; align-items:center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+  .drill .dh .role-tag{
+    font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; font-weight:700; color: var(--bg);
+    background: var(--accent); padding:5px 10px; border-radius:6px;
+  }
+  .drill .dh h3{ margin:0; font-size:16px; font-weight:600; }
+  .drill .dh .sp{ flex:1; }
+  .xbtn{
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--line); background: var(--panel-inset);
+    color: var(--muted); cursor:pointer; font-size:17px; line-height:1; display:inline-flex; align-items:center; justify-content:center; padding:0;
+  }
+  .xbtn:hover{ color: var(--ink); border-color: var(--danger); }
+  .xbtn:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .unit-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(40px,1fr)); gap: 7px; }
+  .unit{
+    aspect-ratio:1; border-radius:6px; cursor:pointer; border:1px solid rgba(255,255,255,.06);
+    position:relative; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); opacity:.8;
+  }
+  .unit:hover{ transform: scale(1.08); outline: 1.5px solid var(--ink); }
+  .unit:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .unit.sel{ outline:2px solid var(--accent); box-shadow: 0 0 14px -1px var(--accent-glow); opacity:1; }
+  .drill .cap{ font-size: var(--fs-tiny); color: var(--muted); margin-top: var(--sp-4); line-height:1.5; }
+  .drill .cap b{ color: var(--ink-2); font-weight:600; }
+
+  /* ---------- TRANSPORT (fixed footer) ---------- */
+  .transport{
+    position: fixed; left:0; right:0; bottom:0; z-index:40;
+    display:flex; justify-content:center; padding: var(--sp-3) var(--sp-4);
+    background: linear-gradient(180deg, transparent, var(--bg) 42%);
+    pointer-events:none;
+  }
+  .transport .tbar{
+    pointer-events:auto;
+    display:flex; align-items:center; gap: var(--sp-4);
+    padding: 9px 12px 9px 16px; border-radius: 14px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--line); box-shadow: 0 20px 40px -16px rgba(0,0,0,.6);
+  }
+  .tbtns{ display:flex; gap: 8px; }
+  .tbtn{
+    width:44px; height:40px; border-radius:10px; border:1px solid var(--line);
+    background: var(--panel-inset); color: var(--ink-2); cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; padding:0;
+  }
+  .tbtn svg{ width:16px; height:16px; }
+  .tbtn:hover{ color: var(--ink); border-color: var(--accent-deep); }
+  .tbtn:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .tbtn:disabled{ opacity:.4; cursor:not-allowed; }
+  .tbtn.play.active{ background: var(--accent); color: #06110d; border-color: var(--accent); box-shadow:0 0 20px -3px var(--accent-glow); }
+  .tbtn.stop:hover:not(:disabled){ border-color: var(--danger); }
+  .time{
+    display:flex; align-items:baseline; gap:8px; padding-left: var(--sp-3); border-left:1px solid var(--line);
+  }
+  .time .k{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--faint); font-weight:650; }
+  .time .v{ font-size:20px; font-weight:600; letter-spacing:.01em; min-width: 92px; }
+  .time .v small{ font-size:12px; color: var(--muted); }
+
+  .pad:focus-visible .idx{ color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation: none !important; transition: none !important; }
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 900px){
+    .grid-2{ grid-template-columns: 1fr; }
+    .bottom{ grid-template-columns: 1fr; }
+  }
+  @media (max-width: 620px){
+    #ets{ padding: var(--sp-4) var(--sp-3) 100px; }
+    .pad-row{ grid-template-columns: repeat(2,1fr); }
+    .lane{ grid-template-columns: 78px 1fr 44px; }
+    header.hd{ padding: var(--sp-3) var(--sp-4); }
+  }
+</style>
+</head>
+<body>
+<div id="ets">
+  <div class="wrap">
+
+    <!-- HEADER -->
+    <header class="hd panel">
+      <div class="mark">
+        <span class="glyph" aria-hidden="true"></span>
+        <div>
+          <h1><b>ETS</b> — Equilibrium Tape Synth</h1>
+          <div class="sub micro">sealed on-device box · steer the terrain</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <span class="pill" id="cloudPill"><span class="tick"></span><span id="cloudTag">cloud —</span></span>
+      <span class="conn"><span class="dot" id="connDot"></span><span id="connText">connecting…</span></span>
+      <button class="iconbtn" id="themeBtn" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
+        <span id="themeLbl">theme</span>
+      </button>
+    </header>
+
+    <!-- SOURCE AUDIO (phase-1 ingest, local-only) -->
+    <section class="block panel">
+      <div class="sec-h">
+        <span class="lbl">Source Audio</span><span class="rule"></span>
+        <button class="act ghost" id="resetBtn" style="padding:6px 12px;font-size:11px;" title="Clear the corpus and start fresh">New corpus</button>
+      </div>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop audio files here or click to choose">
+        <div class="big">Drop audio here <b>or click to choose</b></div>
+        <div class="note">Files stay on this machine. They're ingested locally — never uploaded.</div>
+        <input type="file" id="picker" multiple hidden>
+      </div>
+      <div class="files" id="files"><div class="empty">no files ingested yet</div></div>
+      <div class="seal"><span class="lock" aria-hidden="true">🔒</span>
+        <span>Only gauge-invariant <b>stage-3</b> cost matrices leave this box — raw audio and recipes never do.</span></div>
+    </section>
+
+    <!-- TRAIN (cloud anchor-fit) -->
+    <section class="block panel">
+      <div class="sec-h"><span class="lbl">Train (cloud anchor-fit)</span><span class="rule"></span></div>
+      <div class="row">
+        <button class="act" id="trainBtn" disabled>Train on cloud</button>
+        <span class="note" id="trainNote">ingest at least one source, then train.</span>
+      </div>
+      <div id="resultWrap" style="margin-top:16px;display:none;">
+        <div class="row" style="margin-bottom:10px;"><span id="resultBadge" class="badge ok">world verified</span>
+          <span class="note" id="resultMeta"></span></div>
+        <div class="result" id="result"></div>
+      </div>
+    </section>
+
+    <!-- INSTRUMENT (phase-2 live surface) -->
+    <div class="sec-h">
+      <span class="lbl">Instrument</span>
+      <span class="rule"></span>
+      <span class="hint" id="instHint">world not loaded</span>
+    </div>
+
+    <div class="stream-err" id="streamErr" role="alert"></div>
+
+    <div class="instrument" id="instrument">
+      <div class="inst-lock" id="instLock">
+        <span class="lk-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        </span>
+        <h3>Loading the founding demo world…</h3>
+        <p>Play the built-in <b>founding demo world</b> now, or ingest audio + <b>Train on cloud</b> to build, play, and steer <i>your own</i> trained world right here. Training also measures a σ_φ calibration for your corpus, so after it finishes the instrument switches to your world — live to play and steer.</p>
+      </div>
+
+      <div class="inst-inner">
+        <!-- ROLE PADS -->
+        <section class="pads panel">
+          <div class="sec-h" style="margin-bottom:2px">
+            <span class="lbl">Role Pads</span><span class="rule"></span>
+            <span class="hint">tap to steer region tilt · tap-hold to drill</span>
+          </div>
+          <div class="pad-row" id="padRow" style="margin-top:12px"><!-- pads injected from /api/world M --></div>
+        </section>
+
+        <!-- XY + CONSOLE -->
+        <div class="grid-2">
+          <!-- XY VECTOR PAD -->
+          <section class="xy panel">
+            <div class="sec-h" style="margin-bottom:2px">
+              <span class="lbl">Region Tilt · XY</span><span class="rule"></span>
+            </div>
+            <div class="pad-xy" id="xyPad" tabindex="0" role="application" aria-label="Region tilt vector pad — click to place, drag to move">
+              <svg class="grid-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <g stroke="currentColor" stroke-width=".25" style="color:var(--line)">
+                  <path d="M25 0V100M50 0V100M75 0V100M0 25H100M0 50H100M0 75H100"/>
+                </g>
+              </svg>
+              <div class="cross h" id="crossH"></div>
+              <div class="cross v" id="crossV"></div>
+              <!-- role anchors injected -->
+              <div class="puck" id="puck" tabindex="0" role="slider" aria-label="Region tilt puck" aria-valuetext="x 0.00, y 0.00"></div>
+            </div>
+            <div class="readout">
+              <div>
+                <div class="k">tilt-x</div>
+                <div class="val num" id="rx">+0.00</div>
+              </div>
+              <div>
+                <div class="k">tilt-y</div>
+                <div class="val num" id="ry">+0.00</div>
+              </div>
+              <div>
+                <div class="k">dominant</div>
+                <div class="val" id="dom">role 0 <small id="domPct">— 50%</small></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- LANE CONSOLE (display-only) -->
+          <section class="console panel">
+            <div class="sec-h" style="margin-bottom:2px">
+              <span class="lbl">Lane Console</span><span class="rule"></span>
+              <span class="hint">display · tolerances &amp; weights</span>
+            </div>
+            <div class="lanes" id="lanes"><!-- lanes injected --></div>
+
+            <div class="meters" id="meters">
+              <div class="meter" data-m="settle">
+                <div class="mh"><span class="micro">settle</span><span class="mv num" data-v>0.0</span></div>
+                <div class="bars" data-bars></div>
+              </div>
+              <div class="meter" data-m="drift">
+                <div class="mh"><span class="micro">drift</span><span class="mv num" data-v>0.0</span></div>
+                <div class="bars" data-bars></div>
+              </div>
+              <div class="meter" data-m="output">
+                <div class="mh"><span class="micro">output</span><span class="mv num" data-v>0.0</span></div>
+                <div class="bars" data-bars></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- BOTTOM: LIBRARY + TAPE -->
+        <div class="bottom">
+          <!-- SOURCE LIBRARY (from ingested files, display-only) -->
+          <section class="lib panel">
+            <div class="sec-h" style="margin-bottom:2px">
+              <span class="lbl">Source Library</span><span class="rule"></span>
+              <span class="hint" id="libCount">0 loaded</span>
+            </div>
+            <div class="rows" id="libRows"><div class="empty">no sources ingested</div></div>
+          </section>
+
+          <!-- OUTPUT TAPE -->
+          <section class="tape-panel panel">
+            <div class="sec-h" style="margin-bottom:2px">
+              <span class="lbl">Output Tape</span><span class="rule"></span>
+              <span class="hint">settled render · playhead from telemetry</span>
+            </div>
+            <div class="tape-scroll">
+              <div class="tape" id="tape">
+                <div class="played" id="tapePlayed"></div>
+                <svg class="wav" id="wav" viewBox="0 0 720 150" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="ph" id="playhead"></div>
+              </div>
+            </div>
+            <div class="tape-legend">
+              <span class="micro">00:00</span>
+              <span class="micro">tape · live window</span>
+              <span class="micro" id="tapeEnd">--:--</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- DRILL OVERLAY (display-only, no engine calls) -->
+  <div class="drill-back" id="drillBack" aria-hidden="true">
+    <section class="drill panel" role="dialog" aria-modal="true" aria-label="Role drill-in">
+      <div class="dh">
+        <span class="role-tag" id="drillTag">role 0</span>
+        <h3 id="drillTitle">units · drilled</h3>
+        <span class="sp"></span>
+        <button class="xbtn" id="drillClose" aria-label="Close drill">×</button>
+      </div>
+      <div class="unit-grid" id="unitGrid"></div>
+      <p class="cap">Each cell is one <b>unit</b>, colored by its source track. This drill-in is a <b>display</b> view of the role's makeup — steering is done from the pad face and the XY tilt.</p>
+    </section>
+  </div>
+
+  <!-- TRANSPORT -->
+  <div class="transport">
+    <div class="tbar">
+      <div class="tbtns">
+        <button class="tbtn play" id="btnPlay" aria-label="Play" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg>
+        </button>
+        <button class="tbtn" id="btnPause" aria-label="Pause" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+        </button>
+        <button class="tbtn stop" id="btnStop" aria-label="Stop" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+      </div>
+      <div class="time">
+        <span class="k">t</span>
+        <span class="v num" id="timeRead">0.00<small>s</small></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var $ = function(id){ return document.getElementById(id); };
+  var noop = function(){};
+
+  var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
+  var TAPE_WINDOW = 16;   // seconds shown across the tape before the playhead wraps
+
+  /* ================= THEME (display-only) ================= */
+  var root = document.documentElement;
+  var themeBtn = $("themeBtn"), themeLbl = $("themeLbl");
+  function sysDark(){ return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches; }
+  function applyThemeLabel(){
+    var t = root.getAttribute("data-theme");
+    var eff = t || (sysDark() ? "dark" : "light");
+    themeLbl.textContent = eff;
+  }
+  themeBtn.addEventListener("click", function(){
+    var t = root.getAttribute("data-theme");
+    var eff = t || (sysDark() ? "dark" : "light");
+    root.setAttribute("data-theme", eff === "dark" ? "light" : "dark");
+    applyThemeLabel();
+  });
+  applyThemeLabel();
+
+  /* ================= APP STATE ================= */
+  var world = { ready:false, M:0, sr:48000 };
+  var state = "idle";        // idle | playing | paused
+  var padEls = [], anchorEls = [];
+  var anchors = [];          // {x,y} in 0..1 for each role
+  var region = [];           // last computed region vector (length M)
+  var activeRole = 0;
+  var es = null;             // telemetry EventSource
+
+  /* ================= HEALTH / STATUS / WORLD ================= */
+  var connDot = $("connDot"), connText = $("connText"), cloudTag = $("cloudTag"), cloudPill = $("cloudPill");
+
+  function loadHealth(){
+    return fetch("/api/health").then(function(r){ return r.json(); }).then(function(h){
+      connDot.className = "dot on"; connText.textContent = "companion live";
+      var c = h && h.cloud;
+      if(c === "inproc"){ cloudTag.textContent = "cloud — offline (inproc)"; cloudPill.classList.remove("live"); }
+      else if(c){ cloudTag.textContent = "cloud → " + String(c).replace(/^https?:\/\//,""); cloudPill.classList.add("live"); }
+      else { cloudTag.textContent = "cloud —"; }
+    }).catch(function(){
+      connDot.className = "dot bad"; connText.textContent = "no companion";
+    });
+  }
+
+  function loadStatus(){
+    return fetch("/api/status").then(function(r){ return r.json(); }).then(function(s){
+      renderIngestFiles(s.files || []);
+      renderLibrary(s.files || []);
+      // s.world (a path or null) is an early hint; /api/world is the authority.
+      return s;
+    }).catch(noop);
+  }
+
+  function loadWorld(){
+    return fetch("/api/world").then(function(r){
+      if(!r.ok) throw new Error("world "+r.status);
+      return r.json();
+    }).then(function(w){
+      if(w && w.ready && w.M > 0){
+        world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
+        world.isTrained = !!w.is_trained;
+        world.regionArmed = (w.region_armed !== false);   // default armed if absent
+        enableInstrument();
+        // Honest steer state: a disarmed region means taps settle no differently.
+        instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
+          + " · " + world.M + " roles · "
+          + (world.regionArmed ? "steer live" : "region DISARMED — steer inactive");
+        instrument.classList.toggle("region-disarmed", !world.regionArmed);
+      } else {
+        world.ready = false; lockInstrument("world not ready");
+      }
+    }).catch(function(){
+      world.ready = false; lockInstrument("world not loaded");
+    });
+  }
+
+  /* ================= SOURCE INGEST (phase-1, local-only) ================= */
+  var drop = $("drop"), picker = $("picker"), filesEl = $("files");
+  var trainBtn = $("trainBtn"), trainNote = $("trainNote");
+
+  function renderIngestFiles(files){
+    if(!files || !files.length){
+      filesEl.innerHTML = '<div class="empty">no files ingested yet</div>';
+      trainBtn.disabled = true; trainNote.textContent = "ingest at least one source, then train.";
+      return;
+    }
+    filesEl.innerHTML = "";
+    files.forEach(function(n, i){
+      var d = document.createElement("div"); d.className = "file";
+      var color = TRACK_COLORS[i % TRACK_COLORS.length];
+      d.innerHTML = '<span class="sw" style="background:'+color+';color:'+color+'"></span>'+
+                    '<span>'+escapeHtml(n)+'</span><span class="b">local</span>';
+      filesEl.appendChild(d);
+    });
+    trainBtn.disabled = false; trainNote.textContent = files.length + " source(s) ready.";
+  }
+
+  function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]; }); }
+
+  function upload(file){
+    return fetch("/api/ingest", {
+      method:"POST",
+      headers:{ "X-Filename": file.name, "Content-Type":"application/octet-stream" },
+      body:file
+    }).then(function(r){ return r.json(); });
+  }
+  function handleFiles(list){
+    var arr = Array.prototype.slice.call(list); if(!arr.length) return;
+    var chain = Promise.resolve();
+    arr.forEach(function(f){ chain = chain.then(function(){ return upload(f); }); });
+    chain.then(function(last){
+      var files = (last && last.files) || null;
+      if(files){ renderIngestFiles(files); renderLibrary(files); }
+    }).catch(noop);
+  }
+
+  drop.addEventListener("click", function(){ picker.click(); });
+  drop.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); picker.click(); } });
+  picker.addEventListener("change", function(){ handleFiles(picker.files); picker.value=""; });
+  ["dragenter","dragover"].forEach(function(e){ drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add("hot"); }); });
+  ["dragleave","drop"].forEach(function(e){ drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove("hot"); }); });
+  drop.addEventListener("drop", function(ev){ if(ev.dataTransfer && ev.dataTransfer.files) handleFiles(ev.dataTransfer.files); });
+
+  $("resetBtn").addEventListener("click", function(){
+    fetch("/api/reset", { method:"POST" }).then(function(r){ return r.json(); }).then(function(j){
+      renderIngestFiles(j.files || []); renderLibrary(j.files || []);
+      $("resultWrap").style.display = "none";
+      // a reset clears the world too — lock the instrument and stop any playback
+      if(state !== "idle") stopPlayback();
+      world.ready = false; lockInstrument("corpus reset · train again");
+    }).catch(noop);
+  });
+
+  /* ================= TRAIN ================= */
+  var resultWrap = $("resultWrap"), resultEl = $("result"), resultBadge = $("resultBadge"), resultMeta = $("resultMeta");
+  trainBtn.addEventListener("click", function(){
+    trainBtn.disabled = true; var old = trainBtn.textContent; trainBtn.textContent = "training…";
+    resultWrap.style.display = "none";
+    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({}) })
+      .then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); })
+      .then(function(res){
+        var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
+        if(j.ok){
+          resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
+          resultMeta.textContent = "cloud anchor-fit returned + receipt verified locally";
+          var r = j.receipt || {};
+          var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
+          var msg;
+          if(j.playback === "live"){
+            // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
+            // the companion repointed the player at the user's trained world.
+            // Compute ARMED from the ACTUAL disarmed set (never hardcode "armed"):
+            // on a small/degenerate corpus region itself can disarm.
+            var dis = (j.sigma_phi_disarmed || []).map(function(l){ return l === "cont" ? "continuity" : l; });
+            var ALL = ["region", "continuity", "novelty", "density", "gauge"];
+            var armed = ALL.filter(function(l){ return dis.indexOf(l) < 0; });
+            msg = "\nYour trained world is now LIVE below — play and steer it." +
+                  "\nTraining also measured a σ_φ calibration for your corpus." +
+                  (dis.length ? "\nDisarmed at u=0 (measured σ=0, no tilt — same as the" +
+                     " founding world): " + dis.join(", ") + ".  Armed: " + armed.join(", ") + "." : "");
+            if(dis.indexOf("region") >= 0){
+              msg += "\n⚠ REGION steering is DISARMED on this corpus — the pads / XY will not" +
+                     " change the terrain. Use more, longer, more varied tracks to arm it.";
+            }
+          } else if(j.playback === "error"){
+            // BUILD + verify + σ_φ succeeded; an UNEXPECTED failure bringing it live is
+            // surfaced honestly; the calibrated demo world stays live meanwhile.
+            msg = "\nYour world was BUILT, VERIFIED, and CALIBRATED (it references your" +
+                  " local audio), but bringing it live hit an unexpected error; the demo" +
+                  " world stays live.\nError: " + (j.playback_error || "unknown");
+          } else {
+            // .npz geometry-only verify path
+            msg = "\n(geometry-only verify: receipt confirmed; the instrument keeps" +
+                  " playing the founding demo world.)";
+          }
+          resultEl.textContent = "trained world → " + j.world + msg + "\n" + lines.join("\n");
+          // loadWorld() re-reads /api/world; the instHint reflects whatever is
+          // actually PLAYING (the demo world unless the trained world went live).
+          loadWorld();
+        } else {
+          resultBadge.className = "badge err"; resultBadge.textContent = "failed";
+          resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
+        }
+      }).catch(function(e){
+        trainBtn.textContent = old; trainBtn.disabled = false;
+        resultWrap.style.display = "block"; resultBadge.className = "badge err"; resultBadge.textContent = "error";
+        resultEl.textContent = String(e);
+      });
+  });
+
+  /* ================= INSTRUMENT ENABLE / LOCK ================= */
+  var instrument = $("instrument"), instHint = $("instHint");
+  var btnPlay = $("btnPlay"), btnPause = $("btnPause"), btnStop = $("btnStop");
+
+  function lockInstrument(hint){
+    instrument.classList.remove("ready");
+    instHint.textContent = hint || "world not loaded";
+    btnPlay.disabled = true; btnPause.disabled = true; btnStop.disabled = true;
+  }
+
+  function enableInstrument(){
+    instrument.classList.add("ready");
+    instHint.textContent = world.M + " roles · " + world.sr + " Hz";
+    $("tapeEnd").textContent = fmtClock(TAPE_WINDOW);
+    buildPads(world.M);
+    buildAnchors(world.M);
+    buildLanesOnce();
+    buildMetersOnce();
+    // default steer: centre / role 0 active
+    setPuck(anchors[0] ? anchors[0].x : 0.5, anchors[0] ? anchors[0].y : 0.5);
+    activateRole(0, false);
+    sendSteerNow();               // publish an initial region tilt
+    btnPlay.disabled = false; btnPause.disabled = true; btnStop.disabled = true;
+  }
+
+  /* ================= ROLE PADS (built from M) ================= */
+  var padRow = $("padRow");
+  var holdTimer = null;
+  function buildPads(M){
+    padRow.innerHTML = ""; padEls = [];
+    for(var i=0;i<M;i++){
+      (function(idx){
+        var b = document.createElement("button");
+        b.className = "pad";
+        b.setAttribute("aria-pressed","false");
+        b.setAttribute("aria-label","Role "+idx+", steer region tilt");
+        b.innerHTML =
+          '<span class="halo"></span><span class="ring"></span>'+
+          '<span class="idx">role '+idx+'</span>'+
+          '<span class="big"><div class="n num" data-n>—</div><div class="u">energy</div></span>'+
+          '<span class="lvl"><i data-lvl></i></span>';
+        b.addEventListener("click", function(){ activateRole(idx, true); });
+        b.addEventListener("pointerdown", function(){
+          holdTimer = setTimeout(function(){ openDrill(idx); holdTimer=null; }, 480);
+        });
+        var cancel = function(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
+        b.addEventListener("pointerup", cancel);
+        b.addEventListener("pointerleave", cancel);
+        b.addEventListener("keydown", function(e){
+          if(e.key==="Enter"||e.key===" "){ e.preventDefault(); activateRole(idx, true); }
+          if(e.key.toLowerCase()==="d"){ openDrill(idx); }
+        });
+        padRow.appendChild(b);
+        padEls.push(b);
+      })(i);
+    }
+  }
+
+  function activateRole(i, steer){
+    activeRole = i;
+    padEls.forEach(function(el,k){
+      var on = k===i;
+      el.classList.toggle("active", on);
+      el.setAttribute("aria-pressed", on?"true":"false");
+    });
+    if(anchors[i]) setPuck(anchors[i].x, anchors[i].y);
+    if(steer) sendSteerNow();
+  }
+
+  /* ================= XY PUCK + REGION VECTOR ================= */
+  var xyPad = $("xyPad"), puck = $("puck"), crossH = $("crossH"), crossV = $("crossV");
+  var rx = $("rx"), ry = $("ry"), domEl = $("dom"), domPct = $("domPct");
+  var px = 0.5, py = 0.5;
+  function clamp(v){ return Math.max(0, Math.min(1, v)); }
+
+  function buildAnchors(M){
+    // remove old
+    anchorEls.forEach(function(el){ if(el.parentNode) el.parentNode.removeChild(el); });
+    anchorEls = []; anchors = [];
+    var cx = 0.5, cy = 0.5, R = M > 1 ? 0.34 : 0;
+    for(var i=0;i<M;i++){
+      var theta = -Math.PI/2 + (i * 2*Math.PI / M);   // start at top, clockwise
+      var ax = cx + R*Math.cos(theta);
+      var ay = cy + R*Math.sin(theta);
+      anchors.push({ x:ax, y:ay });
+      var el = document.createElement("div");
+      el.className = "anchor";
+      el.style.left = (ax*100)+"%"; el.style.top = (ay*100)+"%";
+      el.innerHTML = '<span class="alab">r'+i+'</span>';
+      xyPad.appendChild(el);
+      anchorEls.push(el);
+    }
+  }
+
+  // region vector: gaussian weight per role by puck distance to its anchor, normalised to sum 1
+  function regionFromPuck(){
+    var M = world.M || anchors.length;
+    var w = new Array(M), sum = 0, sigma = 0.30;
+    for(var i=0;i<M;i++){
+      var a = anchors[i] || {x:0.5,y:0.5};
+      var dx = a.x - px, dy = a.y - py;
+      var d2 = dx*dx + dy*dy;
+      var v = Math.exp(-d2 / (2*sigma*sigma));
+      w[i] = v; sum += v;
+    }
+    if(sum <= 0){ for(var j=0;j<M;j++) w[j] = 1/M; sum = 1; }
+    else { for(var k=0;k<M;k++) w[k] /= sum; }
+    return w;
+  }
+
+  function dominant(w){
+    var best = 0, bv = -1;
+    for(var i=0;i<w.length;i++){ if(w[i] > bv){ bv = w[i]; best = i; } }
+    return { i:best, v:bv };
+  }
+
+  function setPuck(x,y){
+    px = clamp(x); py = clamp(y);
+    puck.style.left = (px*100)+"%"; puck.style.top = (py*100)+"%";
+    crossH.style.top = (py*100)+"%"; crossV.style.left = (px*100)+"%";
+    var vx = (px*2-1), vy = -(py*2-1);
+    rx.textContent = (vx>=0?"+":"")+vx.toFixed(2);
+    ry.textContent = (vy>=0?"+":"")+vy.toFixed(2);
+    puck.setAttribute("aria-valuetext","x "+vx.toFixed(2)+", y "+vy.toFixed(2));
+    region = regionFromPuck();
+    var dom = dominant(region);
+    domEl.childNodes[0].nodeValue = "role "+dom.i+" ";
+    domPct.textContent = "— "+Math.round(dom.v*100)+"%";
+    anchorEls.forEach(function(el,k){ el.classList.toggle("dom", k===dom.i); });
+  }
+
+  /* -------- THE ONE ENGINE-CONTROL PATH: POST /api/steer -------- */
+  var steerTimer = null, steerPending = false;
+  function sendSteer(regionVec){
+    // The ONLY request in this app that steers the engine. Region tilt only.
+    return fetch("/api/steer", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ region: regionVec })
+    }).catch(noop);
+  }
+  function sendSteerNow(){
+    if(!world.ready) return;
+    steerPending = false;
+    sendSteer(region.slice());
+  }
+  function sendSteerThrottled(){
+    if(!world.ready) return;
+    steerPending = true;
+    if(steerTimer) return;
+    steerTimer = setTimeout(function(){
+      steerTimer = null;
+      if(steerPending) sendSteerNow();
+    }, 80);
+  }
+
+  var dragging = false;
+  function fromEvent(e){
+    var rect = xyPad.getBoundingClientRect();
+    var cx = (e.touches?e.touches[0].clientX:e.clientX);
+    var cy = (e.touches?e.touches[0].clientY:e.clientY);
+    setPuck((cx-rect.left)/rect.width, (cy-rect.top)/rect.height);
+    sendSteerThrottled();
+  }
+  xyPad.addEventListener("pointerdown", function(e){
+    if(!world.ready) return;
+    if(e.target===puck){ dragging=true; puck.setPointerCapture && puck.setPointerCapture(e.pointerId); return; }
+    dragging=true; fromEvent(e);
+  });
+  window.addEventListener("pointermove", function(e){ if(dragging){ fromEvent(e); } });
+  window.addEventListener("pointerup", function(){ if(dragging){ dragging=false; sendSteerNow(); } });
+  puck.addEventListener("pointerdown", function(e){ if(!world.ready) return; dragging=true; e.stopPropagation(); });
+  puck.addEventListener("keydown", function(e){
+    if(!world.ready) return;
+    var s=0.05, done=true;
+    if(e.key==="ArrowLeft") setPuck(px-s,py);
+    else if(e.key==="ArrowRight") setPuck(px+s,py);
+    else if(e.key==="ArrowUp") setPuck(px,py-s);
+    else if(e.key==="ArrowDown") setPuck(px,py+s);
+    else done=false;
+    if(done){ e.preventDefault(); sendSteerNow(); }
+  });
+
+  /* ================= LANES (display-only) ================= */
+  var lanesWrap = $("lanes"), lanesBuilt = false;
+  var LANES = [
+    { key:"region",     desc:"tilt spread", val:62 },
+    { key:"continuity", desc:"lane bind",   val:74 },
+    { key:"novelty",    desc:"escape prob", val:33 },
+    { key:"density",    desc:"units / bar", val:55 }
+  ];
+  function buildLanesOnce(){
+    if(lanesBuilt) return; lanesBuilt = true;
+    LANES.forEach(function(l){
+      var rowEl = document.createElement("div");
+      rowEl.className = "lane";
+      rowEl.innerHTML =
+        '<div><div class="name">'+l.key+'</div><div class="desc">'+l.desc+'</div></div>'+
+        '<div class="slider"><div class="track"></div><div class="fill"></div>'+
+          '<input type="range" min="0" max="100" value="'+l.val+'" aria-label="'+l.key+' lane (display only)"></div>'+
+        '<div class="rd num">'+l.val+'</div>';
+      lanesWrap.appendChild(rowEl);
+      var input = rowEl.querySelector("input"), fill = rowEl.querySelector(".fill"), rd = rowEl.querySelector(".rd");
+      function upd(){ fill.style.width = input.value+"%"; rd.textContent = input.value; }
+      input.addEventListener("input", upd);   // display only — no engine call
+      upd();
+    });
+  }
+
+  /* ================= METERS (driven by telemetry) ================= */
+  var meterDefs = [], metersBuilt = false;
+  function buildMetersOnce(){
+    if(metersBuilt) return; metersBuilt = true;
+    document.querySelectorAll(".meter").forEach(function(m){
+      var bars = m.querySelector("[data-bars]"), N = 14;
+      for(var i=0;i<N;i++){ bars.appendChild(document.createElement("i")); }
+      meterDefs.push({ el:m, bars: bars.querySelectorAll("i"), v: m.querySelector("[data-v]"),
+        hot: m.getAttribute("data-m")==="output", key: m.getAttribute("data-m") });
+    });
+  }
+  function setMeter(m, lvl){
+    lvl = Math.max(0, Math.min(1, lvl));
+    var lit = Math.round(lvl*m.bars.length);
+    for(var i=0;i<m.bars.length;i++){
+      var on = i<lit;
+      m.bars[i].className = on ? (m.hot && i>=m.bars.length-3 ? "on hot":"on") : "";
+      m.bars[i].style.height = on ? (18 + (i/m.bars.length)*82)+"%" : "12%";
+    }
+    m.v.textContent = (lvl*10).toFixed(1);
+  }
+  function updateMeters(roles){
+    if(!roles || !roles.length) return;
+    var sum=0, mx=0, mn=1;
+    for(var i=0;i<roles.length;i++){ var v=roles[i]; sum+=v; if(v>mx)mx=v; if(v<mn)mn=v; }
+    var mean = sum/roles.length;
+    meterDefs.forEach(function(m){
+      if(m.key==="settle") setMeter(m, mean);
+      else if(m.key==="drift") setMeter(m, Math.min(1, (mx-mn)*1.4));
+      else setMeter(m, mx);
+    });
+  }
+
+  /* ================= SOURCE LIBRARY (from ingested files) ================= */
+  var libRows = $("libRows");
+  var eyeOpen = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var eyeOff  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3l18 18M10.6 6.2A9.7 9.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.2 7.2A17 17 0 0 0 2 12s3.5 6 10 6a9.6 9.6 0 0 0 3.3-.6"/></svg>';
+  function renderLibrary(files){
+    files = files || [];
+    if(!files.length){ libRows.innerHTML = '<div class="empty">no sources ingested</div>'; $("libCount").textContent = "0 loaded"; return; }
+    libRows.innerHTML = "";
+    files.forEach(function(name, i){
+      var color = TRACK_COLORS[i % TRACK_COLORS.length];
+      var rowEl = document.createElement("div");
+      rowEl.className = "trk";
+      rowEl.innerHTML =
+        '<span class="sw" style="background:'+color+';color:'+color+'"></span>'+
+        '<span class="tid num">T'+i+'</span>'+
+        '<span class="tname" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'+
+        '<span class="np" title="active in render"></span>'+
+        '<button class="eye" aria-label="Toggle visibility of '+escapeHtml(name)+'" aria-pressed="true">'+eyeOpen+'</button>';
+      var eye = rowEl.querySelector(".eye");
+      eye.addEventListener("click", function(){   // display only — no engine call
+        var hidden = rowEl.classList.toggle("hidden");
+        eye.innerHTML = hidden ? eyeOff : eyeOpen;
+        eye.setAttribute("aria-pressed", hidden?"false":"true");
+      });
+      libRows.appendChild(rowEl);
+    });
+    $("libCount").textContent = files.length + " loaded";
+  }
+
+  /* ================= TAPE WAVEFORM (cosmetic) ================= */
+  (function buildWave(){
+    var wav = $("wav"), W=720, H=150, mid=H/2, pts=[];
+    for(var x=0;x<=W;x+=3){
+      var env = 0.35+0.5*Math.abs(Math.sin(x*0.011))*Math.abs(Math.sin(x*0.003+1));
+      var a = env*(0.55+0.45*Math.sin(x*0.09))*mid*0.86;
+      pts.push([x, mid-a]);
+    }
+    var top="M0 "+mid, bot="";
+    pts.forEach(function(p){ top+=" L"+p[0]+" "+p[1].toFixed(1); });
+    for(var i=pts.length-1;i>=0;i--){ var p=pts[i]; bot+=" L"+p[0]+" "+(mid+(mid-p[1])).toFixed(1); }
+    var grad = '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0" stop-color="var(--tape)" stop-opacity="0.9"/>'+
+      '<stop offset="0.5" stop-color="var(--accent)" stop-opacity="0.55"/>'+
+      '<stop offset="1" stop-color="var(--tape)" stop-opacity="0.9"/></linearGradient></defs>';
+    wav.innerHTML = grad+'<path d="'+top+bot+' Z" fill="url(#wg)" opacity="0.85"/>'+
+      '<line x1="0" y1="'+mid+'" x2="720" y2="'+mid+'" stroke="var(--line)" stroke-width="0.6"/>';
+  })();
+
+  var playhead = $("playhead"), tapePlayed = $("tapePlayed"), timeRead = $("timeRead");
+  function fmtClock(sec){
+    sec = Math.max(0, sec||0);
+    var m = Math.floor(sec/60), s = Math.floor(sec%60);
+    return (m<10?"0":"")+m+":"+(s<10?"0":"")+s;
+  }
+  function updateTape(t){
+    var frac = (t % TAPE_WINDOW) / TAPE_WINDOW;
+    playhead.style.left = (frac*100)+"%";
+    tapePlayed.style.width = (frac*100)+"%";
+    timeRead.innerHTML = (t>=0?t.toFixed(2):"0.00")+"<small>s</small>";
+  }
+
+  /* ================= DRILL OVERLAY (display-only) ================= */
+  var drillBack = $("drillBack"), drillTag = $("drillTag"), drillTitle = $("drillTitle"), unitGrid = $("unitGrid");
+  var lastFocus = null;
+  function openDrill(i){
+    lastFocus = document.activeElement;
+    drillTag.textContent = "role "+i;
+    var units = 36;   // cosmetic makeup view; steering is not done here
+    drillTitle.textContent = units+" units · drilled";
+    unitGrid.innerHTML = "";
+    for(var u=0; u<units; u++){
+      var color = TRACK_COLORS[(u*7+i) % TRACK_COLORS.length];
+      var cell = document.createElement("button");
+      cell.className = "unit";
+      cell.style.background = color;
+      cell.setAttribute("aria-label","unit "+u);
+      cell.addEventListener("click", (function(c){ return function(){
+        unitGrid.querySelectorAll(".unit.sel").forEach(function(n){ n.classList.remove("sel"); });
+        c.classList.add("sel");   // display selection only — no engine call
+      };})(cell));
+      unitGrid.appendChild(cell);
+    }
+    drillBack.classList.add("open"); drillBack.setAttribute("aria-hidden","false");
+    $("drillClose").focus();
+  }
+  function closeDrill(){
+    drillBack.classList.remove("open"); drillBack.setAttribute("aria-hidden","true");
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  $("drillClose").addEventListener("click", closeDrill);
+  drillBack.addEventListener("click", function(e){ if(e.target===drillBack) closeDrill(); });
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape" && drillBack.classList.contains("open")) closeDrill(); });
+
+  /* ================= TELEMETRY (SSE, READ-ONLY) ================= */
+  function openTelemetry(){
+    closeTelemetry();
+    if(typeof EventSource === "undefined") return;
+    try{ es = new EventSource("/api/telemetry"); }
+    catch(e){ es = null; return; }
+    es.onmessage = function(ev){
+      if(state !== "playing") return;   // freeze UI while paused/idle
+      var d; try{ d = JSON.parse(ev.data); }catch(_){ return; }
+      applyTelemetry(d);
+    };
+    es.onerror = function(){ /* browser auto-reconnects the SSE stream */ };
+  }
+  function closeTelemetry(){ if(es){ try{ es.close(); }catch(e){} es = null; } }
+
+  function applyTelemetry(d){
+    var roles = d && d.roles;
+    if(roles && roles.length){
+      for(var i=0;i<padEls.length && i<roles.length;i++){
+        var e = Math.max(0, Math.min(1, roles[i]));
+        var pad = padEls[i];
+        pad.style.setProperty("--tele", e.toFixed(3));
+        var lvl = pad.querySelector("[data-lvl]"); if(lvl) lvl.style.width = (6 + e*94).toFixed(0)+"%";
+        var n = pad.querySelector("[data-n]"); if(n) n.textContent = Math.round(e*100);
+      }
+      updateMeters(roles);
+    }
+    if(typeof d.t === "number") updateTape(d.t);
+  }
+
+  /* ================= AUDIO: pull /api/stream (16-bit PCM WAV) via Web Audio ================= */
+  var WORKLET_SRC =
+    "class PCMPlayer extends AudioWorkletProcessor{"+
+    " constructor(){super();this.chunks=[];this.cur=null;this.curPos=0;this.buffered=0;this.tick=0;"+
+    "  this.port.onmessage=(e)=>{const d=e.data;"+
+    "   if(d.type==='push'){this.chunks.push(d);this.buffered+=d.frames;}"+
+    "   else if(d.type==='flush'){this.chunks=[];this.cur=null;this.curPos=0;this.buffered=0;}};}"+
+    " process(inputs,outputs){const out=outputs[0];const nch=out.length;const N=out[0].length;"+
+    "  for(let i=0;i<N;i++){"+
+    "   if(!this.cur||this.curPos>=this.cur.frames){this.cur=this.chunks.shift()||null;this.curPos=0;}"+
+    "   if(this.cur){out[0][i]=this.cur.ch0[this.curPos];"+
+    "     if(nch>1){const c1=this.cur.ch1||this.cur.ch0;out[1][i]=c1[this.curPos];}"+
+    "     this.curPos++;this.buffered--;}"+
+    "   else{for(let c=0;c<nch;c++)out[c][i]=0;}}"+
+    "  if((this.tick++&15)===0){this.port.postMessage({type:'stat',buffered:this.buffered});}"+
+    "  return true;}}"+
+    "registerProcessor('ets-pcm',PCMPlayer);";
+
+  var audio = {
+    ctx:null, node:null, worklet:false, reader:null, channels:2,
+    tail:null, buffered:0, stopped:true, queue:[]
+  };
+  var workletURL = null;
+  function sleep(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+
+  function chr(buf,o,n){ var s=""; for(var i=0;i<n;i++) s+=String.fromCharCode(buf[o+i]); return s; }
+  function parseWavHeader(buf){
+    if(buf.length < 12) return null;
+    if(chr(buf,0,4)!=="RIFF" || chr(buf,8,4)!=="WAVE") throw new Error("not a WAV stream");
+    var dv = new DataView(buf.buffer, buf.byteOffset, buf.length);
+    var off = 12, fmt = null;
+    while(off + 8 <= buf.length){
+      var id = chr(buf,off,4);
+      var size = dv.getUint32(off+4, true);
+      if(id === "fmt "){
+        if(off+8+16 > buf.length) return null;
+        fmt = { channels: dv.getUint16(off+10,true), sampleRate: dv.getUint32(off+12,true), bits: dv.getUint16(off+22,true) };
+      } else if(id === "data"){
+        return { fmt: fmt, dataStart: off+8 };
+      }
+      off += 8 + size + (size & 1);
+    }
+    return null;
+  }
+
+  function pushChunk(ch0, ch1, frames){
+    if(frames <= 0) return;
+    if(audio.worklet && audio.node){
+      var tl = (audio.channels>1) ? [ch0.buffer, ch1.buffer] : [ch0.buffer];
+      audio.node.port.postMessage({ type:"push", frames:frames, ch0:ch0, ch1:(audio.channels>1?ch1:null) }, tl);
+      audio.buffered += frames;
+    } else {
+      audio.queue.push({ ch0:ch0, ch1:(audio.channels>1?ch1:ch0), frames:frames, pos:0 });
+      audio.buffered += frames;
+    }
+  }
+
+  function feedPCM(bytes){
+    var data;
+    if(audio.tail && audio.tail.length){
+      data = new Uint8Array(audio.tail.length + bytes.length);
+      data.set(audio.tail, 0); data.set(bytes, audio.tail.length);
+    } else { data = bytes; }
+    var frameBytes = 2 * audio.channels;
+    var nFrames = Math.floor(data.length / frameBytes);
+    var usable = nFrames * frameBytes;
+    if(nFrames > 0){
+      var dv = new DataView(data.buffer, data.byteOffset, usable);
+      var ch0 = new Float32Array(nFrames);
+      var ch1 = (audio.channels>1) ? new Float32Array(nFrames) : null;
+      for(var f=0; f<nFrames; f++){
+        var b = f*frameBytes;
+        ch0[f] = dv.getInt16(b, true) / 32768;
+        if(audio.channels>1) ch1[f] = dv.getInt16(b+2, true) / 32768;
+      }
+      pushChunk(ch0, ch1, nFrames);
+    }
+    audio.tail = (usable < data.length) ? data.slice(usable) : null;
+  }
+
+  function buildAudioGraph(channels){
+    audio.channels = channels;
+    if(audio.worklet){
+      audio.node = new AudioWorkletNode(audio.ctx, "ets-pcm", {
+        numberOfInputs:0, numberOfOutputs:1, outputChannelCount:[Math.max(1,channels)]
+      });
+      audio.node.port.onmessage = function(ev){ if(ev.data && ev.data.type==="stat") audio.buffered = ev.data.buffered; };
+    } else {
+      audio.node = audio.ctx.createScriptProcessor(4096, 0, Math.max(1,channels));
+      audio.node.onaudioprocess = function(ev){
+        var out = ev.outputBuffer, o0 = out.getChannelData(0);
+        var o1 = out.numberOfChannels>1 ? out.getChannelData(1) : null;
+        for(var i=0;i<o0.length;i++){
+          var cur = audio.queue[0];
+          while(cur && cur.pos>=cur.frames){ audio.queue.shift(); cur = audio.queue[0]; }
+          if(cur){ o0[i]=cur.ch0[cur.pos]; if(o1) o1[i]=cur.ch1[cur.pos]; cur.pos++; audio.buffered--; }
+          else { o0[i]=0; if(o1) o1[i]=0; }
+        }
+      };
+    }
+    audio.node.connect(audio.ctx.destination);
+  }
+
+  var MAXBUF_FRAMES = 0;
+  async function streamLoop(){
+    var res;
+    try{
+      res = await fetch("/api/stream");
+      if(!res.ok || !res.body) throw new Error("stream HTTP "+res.status);
+    }catch(err){ showStreamError(err); haltPlaybackToIdle(); return; }
+    clearStreamError();
+    var reader = res.body.getReader();
+    audio.reader = reader;
+    var headerBufs = [], headerLen = 0, parsed = false;
+    MAXBUF_FRAMES = Math.max(24000, (world.sr||48000) * 1.5);
+    try{
+      while(!audio.stopped){
+        var step = await reader.read();
+        if(step.done) break;
+        var chunk = step.value; if(!chunk || !chunk.length) continue;
+        if(!parsed){
+          headerBufs.push(chunk); headerLen += chunk.length;
+          var all = new Uint8Array(headerLen), pos = 0;
+          headerBufs.forEach(function(b){ all.set(b, pos); pos += b.length; });
+          var hdr = parseWavHeader(all);   // throws only on a non-WAV magic
+          if(hdr){
+            var ch = (hdr.fmt && hdr.fmt.channels) ? hdr.fmt.channels : 1;
+            buildAudioGraph(ch);
+            parsed = true;
+            var pcm0 = all.subarray(hdr.dataStart);
+            if(pcm0.length) feedPCM(pcm0);
+            headerBufs = null;
+          }
+          continue;
+        }
+        feedPCM(chunk);
+        // backpressure: don't outrun the sink
+        while(audio.buffered > MAXBUF_FRAMES && !audio.stopped){ await sleep(20); }
+      }
+    }catch(err){
+      if(!audio.stopped){ showStreamError(err); }
+    }
+  }
+
+  /* ================= TRANSPORT ================= */
+  function setPlayUI(){
+    btnPlay.classList.toggle("active", state==="playing");
+    btnPlay.setAttribute("aria-pressed", state==="playing"?"true":"false");
+    btnPause.disabled = (state!=="playing");
+    btnStop.disabled  = (state==="idle");
+    btnPlay.disabled  = !world.ready;
+  }
+
+  async function startPlayback(){
+    if(!world.ready || state!=="idle") return;
+    clearStreamError();
+    // AudioContext must be created in the user-gesture; use the world sample rate.
+    try{
+      var AC = window.AudioContext || window.webkitAudioContext;
+      audio.ctx = new AC({ sampleRate: world.sr });
+    }catch(e){
+      try{ audio.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e2){ showStreamError(e2); return; }
+    }
+    audio.stopped = false; audio.tail = null; audio.buffered = 0; audio.queue = [];
+    try{ await audio.ctx.resume(); }catch(e){}
+    // load the AudioWorklet (fall back to ScriptProcessor if unavailable)
+    audio.worklet = false;
+    if(audio.ctx.audioWorklet){
+      try{
+        if(!workletURL) workletURL = URL.createObjectURL(new Blob([WORKLET_SRC], { type:"text/javascript" }));
+        await audio.ctx.audioWorklet.addModule(workletURL);
+        audio.worklet = true;
+      }catch(e){ audio.worklet = false; }
+    }
+    state = "playing"; setPlayUI();
+    // transport: start the render loop, then pull audio + telemetry
+    fetch("/api/play", { method:"POST" }).catch(noop);
+    openTelemetry();
+    streamLoop();   // async; feeds the audio graph as bytes arrive
+  }
+
+  async function resumePlayback(){
+    if(state!=="paused") return;
+    state = "playing"; setPlayUI();
+    if(audio.ctx){ try{ await audio.ctx.resume(); }catch(e){} }
+  }
+  function pausePlayback(){
+    if(state!=="playing") return;
+    state = "paused"; setPlayUI();
+    if(audio.ctx){ audio.ctx.suspend().catch(noop); }   // client-side pause only
+  }
+
+  function teardownAudio(){
+    audio.stopped = true;
+    if(audio.reader){ try{ audio.reader.cancel(); }catch(e){} audio.reader = null; }
+    if(audio.node){
+      try{ if(audio.worklet) audio.node.port.postMessage({ type:"flush" }); }catch(e){}
+      try{ audio.node.disconnect(); }catch(e){}
+      audio.node = null;
+    }
+    audio.queue = []; audio.tail = null; audio.buffered = 0;
+    if(audio.ctx){ var c = audio.ctx; audio.ctx = null; c.close().catch(noop); }
+  }
+
+  function stopPlayback(){
+    if(state==="idle"){ teardownAudio(); return; }
+    fetch("/api/stop", { method:"POST" }).catch(noop);   // transport stop
+    closeTelemetry();
+    teardownAudio();
+    state = "idle"; setPlayUI();
+    updateTape(0);
+  }
+
+  // stream failure while playing: stop audio + telemetry, return to idle (no crash)
+  function haltPlaybackToIdle(){
+    closeTelemetry();
+    teardownAudio();
+    state = "idle"; setPlayUI();
+  }
+
+  btnPlay.addEventListener("click", function(){
+    if(state==="idle") startPlayback();
+    else if(state==="paused") resumePlayback();
+  });
+  btnPause.addEventListener("click", pausePlayback);
+  btnStop.addEventListener("click", stopPlayback);
+
+  /* ================= STREAM ERROR BANNER ================= */
+  var streamErr = $("streamErr");
+  function showStreamError(err){
+    streamErr.innerHTML = "<b>Audio stream unavailable.</b> " + escapeHtml(String(err && err.message || err)) + " — the engine may not be rendering yet. Press Stop, then Play to retry.";
+    streamErr.classList.add("show");
+  }
+  function clearStreamError(){ streamErr.classList.remove("show"); streamErr.textContent = ""; }
+
+  /* ================= INIT ================= */
+  updateTape(0);
+  loadHealth().then(loadStatus).then(loadWorld);
+})();
+</script>
+</body>
+</html>

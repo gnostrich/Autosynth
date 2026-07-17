@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/user/Geodesic-Mixing/.claude/worktrees/* merge --ff-only *)",
+      "Bash(git -C /home/user/Geodesic-Mixing/.claude/worktrees/* rev-parse *)",
+      "Bash(git -C /home/user/Geodesic-Mixing/.claude/worktrees/* status *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/user/Geodesic-Mixing/scripts/ledger_hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/user/Geodesic-Mixing/scripts/disk_guard.py --threshold-gb 6 --target-gb 12"
+          }
+        ]
+      }
+    ]
+  }
+}

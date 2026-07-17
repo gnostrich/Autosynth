@@ -1,0 +1,820 @@
+\documentclass[11pt]{article}
+
+% --- packages (all ship with texlive: base + these) ---
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{float}   % [H] specifier to pin a float exactly where it appears
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black,
+            citecolor=blue!55!black]{hyperref}
+\usepackage{microtype}
+\usepackage[htt]{hyphenat}   % allow hyphenation inside \texttt (fixes long-path overfull)
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.4em}
+\usepackage[section]{placeins} % keep floats within the section that references them
+\usepackage{needspace}         % reserve space so a heading is never stranded
+
+% orphan/widow control: never leave a single line of a paragraph at a page break,
+% and never break a display equation across pages.
+\widowpenalty=10000
+\clubpenalty=10000
+\displaywidowpenalty=10000
+\brokenpenalty=10000
+\raggedbottom                  % avoid stretched interline glue; even, natural bottoms
+
+% arxiv-preprint-ish header/footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\thepage}
+\fancyhead[L]{\footnotesize\itshape Equilibrium Tape Synth --- Litepaper}
+\fancyhead[R]{\footnotesize\itshape preprint}
+
+% allow large top floats (the architecture figure) to sit at the top of a page
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\textfraction}{0.08}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\lbltag}[1]{{\scriptsize\itshape\color{black!55}#1}}
+\definecolor{boxfill}{RGB}{245,247,250}
+\definecolor{boxline}{RGB}{110,120,135}
+\definecolor{emlfill}{RGB}{238,244,238}
+
+\title{\vspace{-2.5em}\textbf{Equilibrium Tape Synth (ETS)}\\[0.35em]
+  \large A fixed free-energy model for controllable, provenance-preserving
+  corpus-based synthesis}
+\author{ETS Project \\ \small (build documentation; author line placeholder)}
+\date{Post-v1 documentation}
+
+\begin{document}
+\sloppy   % prefer inter-word stretch over overfull boxes (long code/registry ids)
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+\noindent
+The Equilibrium Tape Synth (ETS) is a musical instrument that a performer plays
+live. Instead of generating audio from scratch, it continuously rearranges small
+fragments of real recordings into an output ``tape,'' steered in real time by a
+handful of controls, and every sound it produces can be traced back to the exact
+recording it came from. Under the hood, ETS is built around a single learned
+energy function whose lowest-energy arrangements are real pieces of music; playing
+the instrument amounts to letting each new bar settle toward one of those
+low-energy arrangements while the controls gently lean the result one way or
+another. A second theme of the paper is how the system was built: a discipline for
+keeping the software honest to its written specification, using automated checks
+that must themselves be shown to catch deliberate mistakes, an independent
+adversarial reviewer, and an append-only log of every design decision and
+experiment. We report what works and what does not --- including one central
+test, of whether the learned model has the geometric structure we had
+conjectured, that did not pass, and which we report as-is rather than tuning it
+until it did.
+\end{abstract}
+
+\noindent\textbf{Contributions.}
+\begin{enumerate}[label=(\roman*)]
+\item a single free-energy functional $F$ over \emph{unit-resolved} couplings whose
+  low-energy configurations are real tracks, fit by convex logistic NCE against a
+  fixed, pre-registered family of self-generated negatives (no external data);
+\item an exact, learned-content-free control law --- a Gibbs tilt whose per-lane
+  scales are \emph{derived} from equilibrium fluctuations (a
+  fluctuation--dissipation identity), so the six-lane panel adds no free constant;
+\item a \emph{faithfulness discipline} that is the real deliverable: one authority
+  ($F$), a two-state (enforced/pending) invariant manifest with checks proven to
+  bite, an adversarial auditor, and an append-only registry that records a caught
+  fidelity breach and a failed headline gate as first-class results.
+\end{enumerate}
+
+\medskip\noindent\textbf{Authorities.} \code{ets-spec-v0.md} (functional \S5,
+invariants \S14, panel \S8, render \S11); \code{ets-connector-v0.md} (Layer-0 tilt
+map); \code{REGISTRY.jsonl} (build history, honest numbers). Where those and this
+paper disagree, they win. Every figure below is traced to a committed source or
+results artifact.
+
+\clearpage
+\section{Architecture overview}
+
+ETS is a pipeline from real audio to a committed output tape. Each stage has a
+concrete job and a formal object, and the pipeline is organized so that exactly
+one stage is a decision --- the minimization of $F$ --- while every other stage is
+deterministic mechanism, a read-only instrument, or a pure application of an
+already-decided result. Figure~\ref{fig:machine} shows the runtime as a single
+data-flow diagram; the stages, in order, are: ingestion (beat clock, filterbank,
+unitization) $\to$ the fixed model (self-sizing anchors) $\to$ $F$ and its
+settlement $\to$ the writer/tape $\to$ rendering, with an optional external
+mastering stage downstream.
+
+\definecolor{trkA}{RGB}{29,158,117}
+\definecolor{trkB}{RGB}{110,102,205}
+\definecolor{trkC}{RGB}{206,86,46}
+\definecolor{anchorc}{RGB}{133,79,11}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.92\linewidth}{!}{%
+\begin{tikzpicture}[
+  font=\small, >=Latex,
+  anc/.style={circle, draw=anchorc, fill=orange!18, minimum size=6mm,
+    inner sep=0, line width=0.45pt},
+  knob/.style={circle, draw=black!55, fill=black!4, minimum size=6mm,
+    inner sep=0, line width=0.45pt},
+  mtr/.style={circle, draw=black!60, minimum size=5mm, inner sep=0,
+    line width=0.55pt},
+  txl/.style={align=left, text=black!78},
+  txs/.style={txl, font=\footnotesize},
+  flow/.style={-{Latex[length=2mm]}, line width=0.8pt, black!70},
+]
+% ---- 1 input tracks (channel strips) ----
+\node[txl] at (0.4,9.75)[anchor=west]{\textbf{1\ \ input tracks}: band-split
+  channel strips (real audio, each on its own beat clock)};
+\foreach \x/\c in {0.4/trkA, 3.9/trkB, 7.4/trkC}{
+  \foreach \y in {9.30,9.02,8.74}{
+     \draw[rounded corners=1pt, draw=\c!62!black, fill=\c!14, line width=0.35pt]
+        (\x,\y) rectangle ++(3.0,0.22);
+  }
+  \fill[\c!72!black] (\x+0.5,9.33) rectangle ++(0.7,0.16);
+  \fill[\c!72!black] (\x+1.7,9.05) rectangle ++(0.8,0.16);
+  \fill[\c!72!black] (\x+1.0,8.77) rectangle ++(0.6,0.16);
+}
+% ---- 2 transport plan pi -> anchors ----
+\foreach \sx/\sy/\ax/\w/\o in {%
+   1.5/8.74/3.2/1.6/0.55, 2.7/9.10/4.1/1.0/0.35, 1.9/8.74/5.0/2.4/0.70,
+   5.0/9.10/4.1/1.2/0.40, 5.7/8.74/5.9/2.0/0.62,
+   8.5/9.10/6.8/1.0/0.35, 9.2/8.74/5.9/1.8/0.55, 8.9/8.74/6.8/0.8/0.30}{
+   \draw[line width=\w pt, black!55, opacity=\o] (\sx,\sy) -- (\ax,7.30);}
+\node[txs] at (0.2,8.10)[anchor=west]{\textbf{2\ \ transport plan $\pi$}\\
+  line weight $\propto$ routed mass;\\coupling only via anchors (I-2)};
+\foreach \x in {3.2,4.1,5.0,5.9,6.8}{\node[anc] at (\x,7.0){};}
+\node[anc, draw=black!45, fill=none, dashed] at (7.7,7.0){\footnotesize$+$};
+\node[txs] at (8.15,7.0)[anchor=west]{\textbf{role anchors} (hub):\\self-sizing,
+  $M{=}5$ on the v0 corpus};
+% ---- 3 energy landscape F(pi) ----
+\node[txs] at (0.2,6.15)[anchor=west]{\textbf{3\ \ energy $F(\pi)$}};
+\draw[flow] (5.0,6.68) -- (5.0,6.28)
+   node[midway,right,txs]{settle in the anchor field};
+\draw[line width=1.15pt, black!78, smooth] plot coordinates
+   {(3.3,6.15)(4.1,5.42)(4.9,5.02)(5.4,4.94)(6.1,5.18)(6.9,5.72)(7.7,6.22)};
+\draw[line width=1.0pt, trkC, dashed, smooth] plot coordinates
+   {(3.3,6.32)(4.1,5.78)(4.9,5.38)(5.6,5.08)(6.3,5.00)(7.0,5.20)(7.7,5.70)};
+\fill[magenta!68!black] (5.4,4.94) circle (2.6pt);
+\node[txs] at (5.55,4.72)[anchor=west]{current bar};
+\node[txs, text=trkC!85!black] at (7.15,5.98)[anchor=west]{dashed:\\panel tilt};
+% ---- settle -> ink (right L-path) ----
+\draw[flow] (7.75,5.02) -- (9.55,5.02) -- (9.55,1.30);
+\node[txs] at (9.72,3.3)[anchor=west,rotate=-90]{settle $\to$ ink, per bar};
+% ---- 4 panel ----
+\draw[rounded corners=3pt, draw=black!45, line width=0.5pt] (0.4,2.35) rectangle (8.05,4.05);
+\node[txs] at (0.6,3.82)[anchor=west]{\textbf{4\ \ six-lane panel}};
+\foreach \x/\lab in {1.2/region,2.4/density,3.6/contin.,4.8/gauge,6.0/novelty,7.2/temp}{
+   \node[knob] at (\x,3.30){}; \draw[line width=0.7pt] (\x,3.30)--++(0,0.30);
+   \node[txs] at (\x,2.92)[anchor=north]{\lab};}
+\draw[flow] (4.4,4.05) -- (4.4,4.90) node[midway,left,txs]{tilt jack (I-1)};
+% ---- meters read upward ----
+\foreach \x/\lab in {0.7/slide,1.55/loop,2.4/EOC}{
+   \node[mtr] at (\x,1.60){}; \node[txs] at (\x,1.96)[anchor=south]{\lab};
+   \draw[flow, black!55] (\x,1.00) -- (\x,1.37);}
+\node[txs] at (2.95,1.60)[anchor=west]{read-only meters (I-5)};
+% ---- 6 provenance tape ----
+\node[txs] at (0.4,0.55)[anchor=west]{\textbf{6}\ \ provenance\\tape};
+\foreach \i/\c in {0/trkA,1/trkC,2/trkB,3/trkA,4/trkB,5/trkC,6/trkA,7/trkC,
+   8/trkB,9/trkA,10/trkB,11/trkC,12/trkA,13/trkC,14/trkB,15/trkA}{
+   \fill[\c, fill opacity=0.82] ({3.0+\i*0.40},0.15) rectangle ++(0.36,0.80);}
+\draw[line width=1.2pt, orange!85!black] ({3.0+16*0.40},0.15) rectangle ++(0.36,0.80);
+\node[txs] at (3.0,-0.18)[anchor=west]{cell colour $=$ source track $\bullet$
+  frontier $=$ bar being inked $\bullet$ committed ink never revisited (I-7, I-12)};
+\end{tikzpicture}}
+\caption{The ETS runtime as the machine's own data flow (a redraw of the
+project's schematic with its informal labels made precise). \textbf{(1)}~$N$ input
+tracks, each a stack of band-split channel strips of real audio on its own beat
+clock. \textbf{(2)}~The transport plan $\pi$ (line weight proportional to routed
+coupling mass) connects units to a small set of self-sizing role anchors; no track
+couples to another except through the anchors (I-2), and the anchor count is
+derived, not set ($M{=}5$ on the v0 corpus; the dashed slot marks the self-sizing
+law). \textbf{(3)}~The free energy $F(\pi)$; the marked point is the coupling for
+the current bar settling to its minimum, and the dashed curve is $F$ after the
+panel's tilt. \textbf{(4)}~The six control lanes enter the settlement through a
+single tilt jack (I-1): a knob reshapes $F$, it does not override the settled
+result. Each bar is settled and then inked onto the \textbf{(6)}~provenance tape,
+whose cell colour records the source track (I-12) and whose committed cells are
+never revisited (I-7). The read-only meters \emph{slide}, \emph{loop}, and
+\emph{EOC} report upward from the tape (I-5). Term map: bowl/landscape $=F(\pi)$;
+marked point $=$ the current-bar coupling; fan $=$ the transport plan $\pi$; hub
+$=$ the role anchors. At v1, \emph{slide} and \emph{loop} are the split two-jack
+pair; the single conflated drift jack of the original schematic was deleted in the
+Stage-0/1 meter split.}
+\label{fig:machine}
+\end{figure}
+
+There are two orthogonal control paths, and only two: (i) the six \textbf{CV
+lanes} enter the writer through a \emph{single jack}, the h-transform tilt (I-1);
+(ii) \textbf{clamps} --- committed tape, ``this unit at bar 33'', and knob leans
+as clamped role-space mass --- are all the same boundary-condition species (I-7,
+generalized by the connector). No third intervention mechanism exists. The
+desktop runtime is two processes (\S\ref{sec:control}): an \textsc{engine} (Python
+core, streaming writer, audio) and a \textsc{panel} (PySide6/Qt) over OSC on
+localhost; killing the panel does not affect the engine, and any OSC/MIDI
+controller can replace the panel.
+
+\section{Ingestion, gauge, and the fixed model}
+
+\paragraph{Ingestion.} Audio is resampled to 44.1\,kHz, beat-tracked
+(\code{beat\_this==1.1.0}) to a tatum/beat/bar grid, and decomposed by a fixed
+8-band log-spaced filterbank --- deliberately \emph{not} a separator, because
+``a separator is a second authority pre-deciding roles before $F$ does'' (spec
+\S2.3). The raised-cosine masks form a \emph{partition of unity}
+(\code{ingestion/filterbank.py}: \code{N\_FFT=2048}, \code{HOP=512},
+\code{FMIN=40\,Hz}); the per-band ISTFTs sum back to the input to numerical
+precision, which makes the G0 reconstruction identity a coverage/scheduling test
+rather than a lossy-model test.
+
+\paragraph{Gauge (spec \S3).} Per track the gauge group is
+transposition~$\times$~beat-phase~$\times$~loudness~$\times$~timbre-basis. All
+cross-track communication is invariant under independent per-track gauge action;
+\emph{no coordinate crosses a track boundary} (I-2: descriptor arrays are private,
+the sole combiner refuses a cross-track pair, pitch-class cost is
+transposition-quotiented, metrical cost is circular). Microtiming deviation is
+\emph{not} gauge --- it is intrinsic groove content that must survive, and it is
+exactly what $T_1$'s phase charge later prices.
+
+\paragraph{The fixed model (self-sizing anchors, spec \S4).} We call the
+inference-time model \emph{fixed} in the precise sense that, after training, the
+role anchors and their pairwise cost matrix $D$, their masses $a$, the channel
+gains $B$, the metrical-slot targets $\theta$, and the calibrated weights
+\code{LAMBDA} are all held constant; nothing in the runtime updates them (the spec
+calls this the world-freeze). All cross-track traffic
+factors through free-support barycenter \emph{anchors} in role space; there is no
+direct pairwise track coupling. Roles are compared across tracks by a
+Gromov--Wasserstein distance~\cite{memoli2011gw,peyre2019cot}, which is defined
+between metric-measure spaces and so needs no shared coordinate system --- exactly
+the property I-2 requires. The anchor count is not a hyperparameter --- it is
+\emph{derived} as the balanced-truncation effective rank (participation ratio
+$(\sum w)^2/\sum w^2$) of the cross-track GW role-affinity operator
+$e^{-D_{\mathrm{role}}/\sigma}$ (\code{anchors.py:effective\_rank}). On the v0
+world this is $M=5$ (eff\_rank $\approx 5.354$, $\sigma \approx 0.553$). The
+supports $(D,a,B,\theta)$ are then settled as the GW barycenter at that count.
+Anchors hold \emph{only} support and mass --- no accumulator, EMA, or momentum
+(I-3, structurally scanned).
+
+\emph{Note.} The effective-rank rule is a \emph{re-derivation after a wall}:
+the first sizing rule (a GW transport-residual growth criterion) provably failed
+to dissociate role-diverse from same-role corpora and grew with $N$, and was
+rejected; the current rule reads the spec's own ``McMillan degree of \emph{traffic}
+/ Hankel mass / balanced truncation'' language as a spectral rank
+(\code{RETRO\_AUDIT.md}). The wall was reported and $F$ was re-posed, not
+patched.
+
+\section{The energy-based model}
+
+The central object is a single free-energy functional $F$; the system has no
+training loss distinct from it (invariant I-4). ETS is therefore an
+energy-based model~\cite{lecun2006tutorial,du2019implicit} in the standard sense:
+$F$ is the energy, a scalar temperature $T_s$ sets the sampling width, and control
+is an exponential tilt in a set of sufficient statistics $\varphi$. Real tracks are
+the low-energy configurations of $F$; their rearrangements are not.
+
+\subsection{$F$ over the unit-resolved coupling}
+
+$F$ ranges over couplings $\pi$ (unit $\rightarrow$ role $\rightarrow$ metrical
+slot), channel gains $B$, anchor supports/masses $(D,a)$, and gauge sections $g$.
+Crucially, \emph{$F$ is posed on the full unit-resolved $\pi$}, not on its
+role-occupancy marginal $O[k,s]=\sum_{\text{units}}\pi$. A term may use the
+marginal \emph{only where it provably factors through it}; a term that needs the
+fiber (which real unit sits where) reads $\pi$ directly (Table~\ref{tab:terms}).
+
+\begin{table}[htbp]
+\centering
+\caption{The five terms of $F$ (\code{functional/f.py}, rev-r1).}
+\label{tab:terms}
+\small
+\begin{tabular}{@{}c >{\raggedright\arraybackslash}p{0.37\linewidth}
+  l >{\raggedright\arraybackslash}p{0.29\linewidth}@{}}
+\toprule
+Term & Meaning & Posed on & Reads \\
+\midrule
+$T_1$ & GW transport \emph{plus} a circular metrical phase-displacement charge
+      & full-$\pi$ & GW via prototypes; charge via the unit fiber \\
+$T_2$ & mass conservation (unbalanced-OT gen.-KL of $O$ vs $a\theta$)
+      & marginal $O$ & written factorization proof \\
+$T_3$ & spectral masking (collision $\sum E^2-\text{self}$, $E=O^\top B$)
+      & marginal $O$ & written factorization proof \\
+$T_4$ & unit-successor run-continuation (Doob $h$-transform)
+      & full-$\pi$ & $\pi$'s fiber; not expressible over $O$ \\
+$T_5$ & per-\emph{section} gauge-fixing (global transpose/phase), never per-unit
+      & gauge & neither $\pi$ nor $O$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \textbf{phase-displacement charge} assigns a cost to metrical displacement
+(groove). For each placed unit it charges the circular distance between the unit's
+\emph{intrinsic} metrical coordinate $x_u$ and the phase of the slot it occupies,
+quotiented by a single per-section global phase shift $\delta$ (a global
+beat-phase shift is free gauge; a per-unit displacement is charged). The
+$\delta$-quotient is solved in closed form,
+\begin{equation}
+  \min_{\delta}\ \sum_u m_u\big(1-\cos 2\pi(x_u-\delta)\big)
+  \;=\; 1-\Big|\textstyle\sum_u m_u\, e^{\,i 2\pi x_u}\Big|
+  \qquad(\text{masses normalized}),
+  \label{eq:phase}
+\end{equation}
+which is exactly $0$ when every unit sits at its own intrinsic slot up to one
+global shift (a real track's groove) and strictly positive for incoherent
+displacement. $T_4$ rewards output-adjacent slots holding genuine \emph{source}
+successors: a grid-shuffle re-deals content so almost no adjacency survives; a
+cross-track graft inserts units that are no track's successor, so the run breaks.
+Both fiber terms are gauge-invariant by construction (I-2). Holonomy, drift,
+novelty, and any meter appear \emph{nowhere} in $F$ (I-5, I-14; enforced by an AST
+scan that bites on a \code{holonomy\_drift} identifier and on any \code{ets.meters}
+import in the $F$ path).
+
+\subsection{The Gibbs measure and the Layer-0 tilt}
+
+The equilibrium measure over an arrangement $a$, with control applied, is
+\begin{equation}
+  p(a)\ \propto\ \exp\!\Big(-\tfrac{F(a)}{T_s} + \sum_i \lambda_i\,\varphi_i(a)\Big),
+  \qquad \lambda_i = \frac{u_i}{\sigma_{\varphi_i}}
+  \qquad(\text{connector Layer 0}).
+  \label{eq:gibbs}
+\end{equation}
+Here $T_s$ is the \emph{temperature} (sampling looseness around the settled
+optimum; it carries no $\varphi$); the $\varphi_i$ are five gauge-invariant
+arrangement statistics (region, density, continuity, gauge-move magnitude,
+novelty) computable from the candidate arrangement alone (\code{connector/phi.py}).
+The tilt is not a bolt-on: it is the \emph{Doob conditioning} the settlement
+inherits when the panel's boundary measure is clamped. Two of the five $\varphi$
+(region, density) are linear in $O$ and enter the O-block; continuity and novelty
+live on the fiber block; gauge on the (v0-frozen) gauge block. Run-time knobs move
+$\lambda$ and $T_s$, never $F$'s term weights (I-9).
+
+\subsection{Contrastive (NCE) training and the KILL condition}
+
+The weights \code{LAMBDA} are fit \emph{once}, at corpus time, by a convex
+logistic NCE~\cite{gutmann2010nce} (spec \S6, \code{training/nce.py}). The
+condition is: \emph{each real track is an equilibrium of $F$; its rearrangements
+are not}. There is \emph{no
+external ``bad music'' data anywhere} (I-6): the comparison class is generated
+internally by disarranging each real track's own units, drawn only from a fixed,
+pre-registered scramble family (Table~\ref{tab:scramble}). Because $F$ is linear in
+the weights and $\varphi$ is computed at the frozen \code{LAMBDA}-free world, the
+NCE objective is \emph{convex} with an exact gradient --- no circularity. The fit
+uses seeds $\{1,2,3\}$; held-out validity is measured on \emph{disjoint} seeds
+$\{4,5\}$, so no fit metric is a gate metric (I-5).
+
+\begin{table}[htbp]
+\centering
+\caption{The fixed pre-registered scramble family (the only negatives).}
+\label{tab:scramble}
+\small
+\begin{tabular}{@{}l >{\raggedright\arraybackslash}p{0.50\linewidth} l@{}}
+\toprule
+Scramble & What it breaks & Arity \\
+\midrule
+grid-shuffle & metrical placement (re-deal real units within a band) & Track$\rightarrow$Track \\
+phase-rotate & the single gauge-phase frame (incoherent \emph{per-band} rotation) & Track$\rightarrow$Track \\
+role-permute & role assignment (derange anchor columns of the pure-GW coupling) & (Track, world)$\rightarrow$Arr. \\
+cross-track-swap & anchor-mediated cross-track coherence (swap anchor rows) & (Track$^2$, world)$\rightarrow$Arr. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The KILL, then rev-r1 (the decisive negative result).} The \emph{first}
+$F$ was posed on the occupancy \emph{marginal} $O$. It \textbf{failed}: on the marginal, $F$ could
+not separate real from grid-shuffle --- held-out separation $\approx 0.35$, a
+\emph{negative margin} --- because the marginal is blind to \emph{which} unit sits
+at \emph{which} slot (registry \code{train-nce-2026-07-13} KILL). This was ruled a
+\emph{fidelity breach}: a silent aggregate projection of $\pi$, an unfaithful
+implementation \emph{plus} a missing invariant (registry
+\code{fidelity-breach-2026-07-13}). Per the wall protocol it was reported, not
+patched: no \code{LAMBDA} was emitted, the referee was left incorruptible, and $F$
+was re-posed on the full unit-resolved fiber (rev-r1). A new invariant, \textbf{I-15}
+(no premature aggregation / structure-deleting projection), was added to forbid the
+class. The re-posed $F$ (fork C: richer fiber + gauge-aligned groove target)
+\textbf{passed} (Table~\ref{tab:sep}; \code{training\_results.json}, registry
+\code{train-nce-revr1-2026-07-13}).
+
+\begin{table}[htbp]
+\centering
+\caption{Held-out per-member separation, rev-r1 fork C (disjoint seeds $\{4,5\}$).}
+\label{tab:sep}
+\small
+\begin{tabular}{@{}l c c@{}}
+\toprule
+Family member & held-out separation & median margin \\
+\midrule
+grid-shuffle      & \textbf{1.00}  & 18.79 \\
+role-permute      & \textbf{0.95}  & 1.07 \\
+phase-rotate      & \textbf{1.00}  & 6.02 \\
+cross-track-swap  & \textbf{0.975} & 7.33 \\
+\midrule
+\textbf{overall min} & \textbf{0.95} $\ge$ 0.90 (pre-registered) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+(logistic loss $0.0908$, grad-norm $0.0024$, 240 pairs.) The emitted weights, now
+\emph{frozen} and read live by the writer (I-9), are
+\[
+  \code{LAMBDA} = \{\,T_2\!:\!4.9923,\ T_3\!:\!0.8023,\ T_4\!:\!10.4577,\
+  T_{1p}\!:\!8.7581,\ T_5\!:\!0.1\,\},
+\]
+with $T_1$'s GW transport as the reference scale (weight~1). $T_5=0.1$ is a
+run-time gauge baseline, \emph{not} corpus-identifiable (a global section-gauge
+move is orthogonal to every rearrangement, so it carries no contrastive signal).
+An independent audit re-ran the fit and reproduced \code{LAMBDA} bit-exactly to 16
+digits.
+
+\subsection{Settlement as certified I-projections}
+
+Minimization is block-coordinate I-projections (\code{functional/solver.py}):
+Sinkhorn~\cite{cuturi2013sinkhorn} on $\pi$-blocks, exponentiated-gradient (mirror
+descent) on $B$-blocks, unbalanced multiplicative updates on masses, a closed-form
+Gromov--Wasserstein barycenter~\cite{peyre2016gw} on $D$, exact minimization on the
+gauge block. The certificate is a \emph{Lyapunov
+$F$-descent guard}: every block step is accepted \emph{only} if $F$ does not
+increase, so the $F$-trajectory is monotone non-increasing and the run stops at
+$|\Delta F| < \text{tol}$. The accept/reject decision reads $F$ and nothing else
+--- no second objective, no meter (I-4/I-14, verified by parsing \code{batch\_solve}
+and confirming the guard compares $F_{\mathrm{cand}}/F_{\mathrm{cur}}$). In
+streaming mode the batch Lyapunov certificate becomes a per-step frontier
+$F$-descent plus a \emph{bounded-state} certificate: state growth on stationary
+input is a broken instrument --- halt and report (I-8).
+
+\section{The control surface}
+\label{sec:control}
+
+Six CV lanes, exhaustive (spec \S8); a seventh requires a spec revision
+(Table~\ref{tab:lanes}).
+
+\begin{table}[htbp]
+\centering
+\caption{The six lanes, their $\varphi$ statistics (\code{connector/phi.py}), and
+v0 status.}
+\label{tab:lanes}
+\small
+\begin{tabular}{@{}c l >{\raggedright\arraybackslash}p{0.28\linewidth}
+  >{\raggedright\arraybackslash}p{0.20\linewidth}@{}}
+\toprule
+\# & Lane & $\varphi$ statistic & v0 status \\
+\midrule
+1 & REGION TILT (XY / channel strips) & $\varphi_{\text{region}}$: mass by anchor role & armed ($\sigma$ per anchor) \\
+2 & DENSITY & $\varphi_{\text{density}}$: bar scheduled mass & \textbf{disarmed} ($\sigma{=}0$ at $u{=}0$) \\
+3 & CONTINUITY $\leftrightarrow$ RECOMB. & $\varphi_{\text{cont}}$: source-successor count & armed ($\sigma\approx 0.301$) \\
+4 & GAUGE STIFFNESS & $\varphi_{\text{gauge}}$: frame-move magnitude & \textbf{disarmed} ($\sigma{=}0$, frozen frame) \\
+5 & NOVELTY PRESSURE & $\varphi_{\text{novelty}}$: $1/\Delta$ recency reuse & armed ($\sigma\approx 0.330$) \\
+6 & TEMPERATURE & \emph{(no $\varphi$)}: settlement sharpness & armed \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The knob-scaling law is derived, not hand-set.} Each lane's scale is
+$\lambda_i = u_i/\sigma_{\varphi_i}$, where $\sigma_{\varphi_i}$ is the
+\emph{equilibrium fluctuation} of $\varphi_i$ under the \emph{untilted} writer,
+measured by a registered calibration pass at world-freeze
+(\code{calibration/sigma\_phi.json}). The derivation is
+fluctuation--dissipation: with $p_u \approx p_0\, e^{\lambda\varphi}$ one has
+$d\langle\varphi\rangle/d\lambda|_0 = \mathrm{Var}_0(\varphi)$, so
+$\lambda = u/\sigma$ gives $d\langle\varphi\rangle/du|_0 = \sigma$ --- \emph{one
+knob unit $=$ one equilibrium-$\sigma$ lean}. $\sigma$ is the unique normalizer
+with this property and makes the tilt invariant to any rescaling of $\varphi$. No
+hand-set $\lambda$ scale exists in the runtime. The calibration ensemble was 7495
+bars (the corpus bar count --- the evidence scale, not a hand constant),
+$s_{\text{phase}}=8$.
+
+\paragraph{Two lanes are disarmed at v0.} The untilted writer settles by a
+deterministic MAP descent on a bar-periodic anchor field, so $\varphi_{\text{density}}$
+(an $O$-marginal) is \emph{pinned} constant ($\sigma=0$ exactly), and the single
+identity-gauge section makes $\varphi_{\text{gauge}}\equiv 0$. Rather than invent a
+floor, the loader marks these lanes \code{identifiable=false}: $u$ still transmits,
+but no tilt is applied and the engine surfaces the state (\code{WorldNotCalibrated}
+on a lean into an uncalibrated world). This is a theorem about degenerate
+exponential families reported as a wall, not an error-hiding branch.
+
+\paragraph{Two processes over OSC (spec \S12).} The \textsc{engine}
+(\code{ets/engine}) owns the fixed model, the streaming writer, and audio
+(\code{sounddevice}, lazy, headless-graceful). The \textsc{panel}
+(\code{ets/panel}, PySide6/Qt) is a pure control surface: six lanes, XY vector pad,
+meter jacks as LEDs, patch-cable feedback metaphor, MIDI CC learn. IPC is OSC over
+localhost (\code{python-osc}); no web technology anywhere in the runtime (I-13,
+enforced by an import scan that even distinguishes the runtime's own
+\code{ets.panel} from the forbidden HoloViz \code{panel}). Control latency is a
+\emph{declared} $L$ bars measured by buffer math on the host (desktop: $L=2$ bars,
+$T_{\text{prod}}$ mean $0.568$\,s $< T_{\text{bar}}\,1.486$\,s;
+\code{latency\_desktop.json}); an underrun inside $L\cdot T_{\text{bar}}$ is a WALL
+--- there is no degraded-quality fallback.
+
+\paragraph{Meter jacks.} Read-only, never in any objective/gradient/settlement
+(I-5). The conflated DRIFT jack was split into two shadow meters --- \code{slide}
+(per-bar displacement of the settled gauge frame, in $F$'s own quotient) and
+\code{loop} (a per-committed-bar transplant of the G2 loop-defect integrator) ---
+then the old conflated jack was \emph{deleted} after a registered one-shot
+regression showed it is exactly informationless on every producible trace (residual
+$0.0$ at machine precision, registry \code{conflation-regression-stage1}).
+
+\section{The faithfulness discipline}
+
+Faithfulness --- agreement between the implementation and its specification --- is
+enforced by executable checks and process rules rather than asserted.
+
+\paragraph{Two-state invariant manifest} (\code{tests/invariants/manifest.py}).
+Every invariant I-1..I-15 carries exactly one of two statuses --- \textsc{enforced}
+(an executable check that raises on violation) or \textsc{pending} (the guarded
+feature does not exist yet). There is \emph{no third state}: \textsc{pending} never
+means ``we chose not to check,'' and no invariant may be absent or vacuously
+satisfied. When a feature lands, its invariant moves to \textsc{enforced} \emph{in
+the same change} or the auditor rejects the diff. Current state: \textbf{14 of 15
+enforced}; only \textbf{I-10 (thin planner) is pending}, because the planner is not
+built. The checks are aggressively non-vacuous --- each proves it \emph{bites}
+against a planted mutant (a choosing render, an accumulator field, an
+$\eta{\cdot}$KL tether, a web import, an EOC-forked settlement guard).
+Table~\ref{tab:inv} lists all fifteen.
+
+\begin{table}[htbp]
+\centering
+\caption{The 15 invariants and enforcement state (spec \S14 + connector I-15).}
+\label{tab:inv}
+\small
+\begin{tabular}{@{}c l c@{}}
+\toprule
+ & Invariant & Enforced \\
+\midrule
+I-1 & single tilt jack --- no control path but the h-transform tilt & \checkmark \\
+I-2 & gauge law --- no coordinate crosses a track boundary & \checkmark \\
+I-3 & no pressure accumulator / duplicate smoothing & \checkmark \\
+I-4 & one $F$ --- no training loss distinct from $F$ & \checkmark \\
+I-5 & meters never in objective/gradient/settlement & \checkmark \\
+I-6 & no external negatives; scramble family fixed in PREREG & \checkmark \\
+I-7 & all interventions are clamped cells; no recovery modes & \checkmark \\
+I-8 & streaming stability; halt on state growth (stationary input) & \checkmark \\
+I-9 & run-time controls are tilt parameters only; $F$ weights frozen & \checkmark \\
+\textbf{I-10} & \textbf{planner stateless, external, thin} & \textbf{pending} \\
+I-11 & rendering applies, never chooses & \checkmark \\
+I-12 & provenance --- every sample traces to (track, unit, transform) & \checkmark \\
+I-13 & no browser/web tech in the runtime & \checkmark \\
+I-14 & Hankel/holonomy are instruments; no fork of $F$'s authority & \checkmark \\
+I-15 & no premature aggregation / structure-deleting projection & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Builder/auditor adversarial pair.} Implementation is done by an
+\code{ets-builder} agent and must be paired with a read-only \code{ets-auditor};
+no gate runs and no merge happens without an auditor PASS. The auditor reports
+verdicts and never fixes code.
+
+\paragraph{Prereg-commit-before-run, append-only registry.} Every gate's
+hypothesis, procedure, null, and kill condition is appended to \code{PREREG.md} and
+committed \emph{before} the run; \code{REGISTRY.jsonl} is append-only. Corrections
+are new entries, never edits.
+
+\paragraph{Operating slogan.} \emph{Walls are information, patches are sabotage,
+silent divergence is the breach class.} A wall (a failed gate, a non-identifiable
+scale, an unmeetable deadline) is surfaced and owned; the failure mode the
+discipline exists to catch is a \emph{silent} divergence between what the spec
+defines and what the code does.
+
+\subsection*{Case study --- the fidelity breach (the discipline working)}
+
+The most instructive event in the build is a \emph{fidelity breach caught before
+delivery} (registry \code{fidelity-breach-2026-07-13}). An early implementation
+silently collapsed the unit-resolved coupling $\pi$ to its marginal $O$ --- a
+structure-deleting conversion shim. The spec defines $\pi$ as unit-resolved
+(\S2/\S5); the implementation aggregated without presenting the divergence. It was
+caught not by luck but by the \emph{pre-registered exam}: the fixed scramble family
+correctly refused to separate (grid-shuffle held-out $\approx 0.35$, negative
+margin), the KILL condition fired, and --- critically --- no \code{LAMBDA} was
+emitted and the wall was surfaced pre-delivery. Remediation: (1) $F$ re-posed on
+the full fiber; (2) a new invariant \textbf{I-15} with two teeth --- a term-input
+contract in \code{f.py} behaviorally verified against an $O$-preserving $\pi$
+rearrangement, and a referee-non-degeneracy check that the scored corpus-time
+feature \emph{must} consume a unit-resolved fiber. The incident is logged
+\code{logged-permanent-no-relitigation}. The episode is evidence that the exam
+functions as intended: the check designed to catch an unfaithful implementation
+caught one, and the remediation left a permanent guard (I-15) behind it.
+
+\section{Related work}
+
+ETS is a \emph{conjunction} of established primitives, and its positioning claim is
+deliberately narrow: the novelty is the combination and the discipline, not any one
+mechanism. We state the prior art plainly (mirroring the project's own
+``occupancy ledger,'' spec \S16).
+
+\paragraph{Corpus-based and concatenative synthesis.} Assembling output from real
+segmented source units, chosen by descriptor proximity, is the concatenative /
+corpus-based tradition --- CataRT and the surrounding
+survey~\cite{schwarz2006catart,schwarz2007corpus}. ETS shares the ``play real
+grains'' commitment but differs in what \emph{chooses}: not nearest-neighbour in a
+descriptor space but the equilibrium of a single functional, with placement
+carrying settled mass and full provenance. Mashup systems such as
+AutoMashUpper~\cite{davies2014automashupper} pre-decide alignment by
+harmonic/rhythmic ``mashability''; ETS instead routes all cross-track traffic
+through self-sized anchors and lets $F$, not a similarity score, set the coupling.
+
+\paragraph{Energy-based models and contrastive estimation.} The energy-as-model
+framing and its training are classical~\cite{lecun2006tutorial,du2019implicit};
+noise-contrastive estimation~\cite{gutmann2010nce} is our estimator, specialized so
+that the negatives are the corpus's \emph{own} disarrangements (no external data,
+I-6) and the fit is convex in the weights. Unlike a typical deep EBM, $F$ here is a
+transparent optimal-transport free energy with named terms, and no run-time control
+edits its weights (I-9).
+
+\paragraph{Optimal transport for audio and music.} Sinkhorn-regularized
+OT~\cite{cuturi2013sinkhorn,peyre2019cot} and Gromov--Wasserstein
+matching/averaging~\cite{memoli2011gw,peyre2016gw} are the computational backbone of
+the world and the settlement. OT has been used directly on audio, e.g.\ spectral
+transport for portamento/morphing~\cite{henderson2019audiotransport}; ETS uses OT
+one level up --- on beat-clocked \emph{unit clouds} and their role geometry --- and
+turns the transport plan into a schedule of real units rather than an interpolated
+spectrum.
+
+\paragraph{Neural audio codecs and controllable synthesis.} Contemporary systems
+tokenize audio with learned codecs~\cite{zeghidour2021soundstream,defossez2022encodec}
+and generate with language models over those tokens~\cite{copet2023musicgen}, or
+control synthesis through differentiable DSP~\cite{engel2020ddsp}. ETS occupies a
+different point: it has \emph{no decoder and no learned readout} --- the tape node's
+coupling \emph{is} the output and the render only applies it (I-11/I-12) --- and its
+single learned object is the frozen scalar-weight vector \code{LAMBDA}, everything
+else being derived mechanism or read-only instrument. The trade is explicit: ETS
+buys faithfulness and provenance at the cost of the open-ended generative range a
+codec-plus-LM enjoys.
+
+\section{Limitations: what is real versus pending}
+
+Table~\ref{tab:status} records, for each component, whether it is implemented and
+verified, a declared approximation, or not yet built, as of v1.
+
+\begin{table}[htbp]
+\centering
+\caption{Status ledger. Declared approximations and unpassed gates are reported,
+not rounded up.}
+\label{tab:status}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{0.40\linewidth} l p{0.34\linewidth}@{}}
+\toprule
+Item & Status & Note \\
+\midrule
+Ingestion $\rightarrow$ world $\rightarrow$ $F$ $\rightarrow$ writer $\rightarrow$ render
+  & \textsc{real} & deterministic pure render (H-8 receipt) \\
+Anchor self-sizing (eff.\ rank of traffic) & \textsc{real} & $M=5$ on v0 corpus; G1 passed \\
+Contrastive NCE fit of \code{LAMBDA} (rev-r1) & \textsc{real} & min held-out sep $0.95\ge0.90$; audit-reproduced bit-exactly \\
+14/15 invariants enforced & \textsc{real} & only I-10 pending \\
+Two-process engine+panel over OSC, MIDI CC learn & \textsc{real} & headless-graceful; $L=2$ bars declared \\
+\textbf{G0} ingestion/reconstruction & \textbf{pass} & recon rel-L2 $\approx 1.16\!\times\!10^{-8}$ \\
+\textbf{G1} anchor double dissociation & \textbf{pass} & diversity gap 2.04; SAME 2.38 $<$ NULL 3.30 $<$ DIVERSE 4.43; flat-in-$N$ \\
+\textbf{G2} holonomy above calibrated null & \textbf{did not pass} & $\kappa_{\text{real}}/\kappa_{\text{null}}\approx0.45$; reported as-is, no retune \\
+REGION / CONTINUITY / NOVELTY / TEMPERATURE lanes & \textsc{armed} & derived $\sigma_\varphi$ scales \\
+DENSITY / GAUGE lanes & \textsc{disarmed} & $\sigma_\varphi=0$ at $u{=}0$; $\lambda$ undefined, no tilt, surfaced \\
+Greedy fiber realization & \textsc{declared approx} & uncertified vs a joint fiber settlement; PASS-legal with declaration \\
+Streaming temperature sampler & \textsc{declared approx} & per-slot Laplace 2nd-order + orthant clip ($\sim0.11$ std bias, $\sim13\%$ clip at $T_s{=}1$) \\
+$\text{mass}=\sqrt{e[b]}$ settled-mass render & \textsc{declared approx} & exact on schedule; adjacent-band crossover leakage ($\sim{+}0.15$--$0.20$ worst case) \\
+\textbf{I-10 planner} & \textbf{pending} & closed-loop form thesis (G3--G6) untested \\
+Mono & \textsc{declared v0} & stereo restoration is real future scope, not a patch \\
+External output master & \textsc{outside model} & opt-in comp$\rightarrow$R128$\rightarrow$limiter; pure render byte-identical by default \\
+$u{=}0$ dynamic range / near-silence & \textsc{open finding} & wide per-bar mass $+$ global peak-normalize; no extrinsic AGC (structure-deleting class) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{G2 in detail (the dissociation that did not hold).} G2 tests whether the
+fixed model's role geometry carries \emph{holonomy} (loop-defect curvature) above a
+residual-conditioned null --- the dissociation that would support the conjecture
+that musical structure is real geometric curvature, at a demanding $20\times$
+target. It \textbf{failed} (\code{g2\_results.json}): real median curvature came in
+\emph{below} the null ($\kappa_{\text{real}}/\kappa_{\text{null}}\approx0.45$),
+dominance over null p95/p99 both false, \code{signal\_present\_above\_null=false}.
+Real curvature \emph{did} clear the solver floor
+($\kappa_{\text{real}}/\kappa_{\text{floor}}\approx2.0$), but not the
+residual-conditioned null. Per the pre-registered kill condition this is reported
+as-is, with no null-swap and no retune. Two consequences stated plainly:
+(i)~the strong ``curvature $=$ structure'' claim is \emph{unsupported at v0};
+(ii)~the instrument survives as a read-only meter (\code{loop}) regardless. The
+pairwise-blindness and closed-loop \emph{form} theses (G3--G6) depend on the
+planner, which is not built (I-10 pending), so they remain untested.
+
+\section{Conclusion}
+
+ETS synthesizes music by minimizing a single fixed free-energy functional $F$
+whose low-energy configurations are real tracks, with a causal writer that
+commits one bar at a time and control applied as an exponential tilt whose gains
+are derived from equilibrium fluctuations. Its output is a sequence of real source
+units with complete provenance rather than a synthesized waveform. Its second and
+more general contribution is a construction method: a single authority ($F$), a
+two-state invariant manifest with executable checks tested to fail on planted
+violations, an adversarial auditor, and an append-only decision log in which a
+caught fidelity breach and a failed dissociation gate are recorded as results. The
+limitations listed here --- 14 of 15 invariants enforced, two control lanes
+disarmed, one uncertified realization step, a failed G2, and an unbuilt planner ---
+are reported as first-class results rather than omitted.
+
+\vspace{1em}
+\noindent\rule{\linewidth}{0.4pt}\\[0.3em]
+{\footnotesize All figures are from the committed sources named inline
+(\code{ets-spec-v0.md}, \code{ets-connector-v0.md}, \code{REGISTRY.jsonl}) and the
+results artifacts \code{g0\_results.json}, \code{g1\_results.json},
+\code{g2\_results.json}, \code{training\_results.json}, \code{latency\_desktop.json},
+and \code{ets/calibration/sigma\_phi.json}. This document is post-v1 documentation;
+it modifies no source and affects no workflow.}
+
+{\small
+\begin{thebibliography}{99}
+\setlength{\itemsep}{1pt}
+\setlength{\parskip}{0pt}
+
+\bibitem{lecun2006tutorial}
+Y.~LeCun, S.~Chopra, R.~Hadsell, M.~Ranzato, and F.-J.~Huang.
+\newblock A tutorial on energy-based learning.
+\newblock In \emph{Predicting Structured Data}. MIT Press, 2006.
+
+\bibitem{du2019implicit}
+Y.~Du and I.~Mordatch.
+\newblock Implicit generation and generalization in energy-based models.
+\newblock \emph{arXiv:1903.08689}, 2019.
+
+\bibitem{gutmann2010nce}
+M.~Gutmann and A.~Hyv\"arinen.
+\newblock Noise-contrastive estimation: a new estimation principle for
+  unnormalized statistical models.
+\newblock In \emph{Proc.\ AISTATS} (PMLR~9), pp.~297--304, 2010.
+
+\bibitem{cuturi2013sinkhorn}
+M.~Cuturi.
+\newblock Sinkhorn distances: lightspeed computation of optimal transportation
+  distances.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+  2013. \emph{arXiv:1306.0895}.
+
+\bibitem{peyre2019cot}
+G.~Peyr\'e and M.~Cuturi.
+\newblock Computational optimal transport.
+\newblock \emph{Foundations and Trends in Machine Learning}, 11(5--6), 2019.
+  \emph{arXiv:1803.00567}.
+
+\bibitem{memoli2011gw}
+F.~M\'emoli.
+\newblock Gromov--Wasserstein distances and the metric approach to object
+  matching.
+\newblock \emph{Foundations of Computational Mathematics}, 11(4):417--487, 2011.
+
+\bibitem{peyre2016gw}
+G.~Peyr\'e, M.~Cuturi, and J.~Solomon.
+\newblock Gromov--Wasserstein averaging of kernel and distance matrices.
+\newblock In \emph{Proc.\ ICML} (PMLR~48), pp.~2664--2672, 2016.
+
+\bibitem{henderson2019audiotransport}
+T.~Henderson and J.~Solomon.
+\newblock Audio transport: a generalized portamento via optimal transport.
+\newblock In \emph{Proc.\ Int.\ Conf.\ on Digital Audio Effects (DAFx)}, 2019.
+  \emph{arXiv:1906.06763}.
+
+\bibitem{schwarz2006catart}
+D.~Schwarz, G.~Beller, B.~Verbrugghe, and S.~Britton.
+\newblock Real-time corpus-based concatenative synthesis with CataRT.
+\newblock In \emph{Proc.\ Int.\ Conf.\ on Digital Audio Effects (DAFx)}, 2006.
+
+\bibitem{schwarz2007corpus}
+D.~Schwarz.
+\newblock Corpus-based concatenative synthesis.
+\newblock \emph{IEEE Signal Processing Magazine}, 24(2):92--104, 2007.
+
+\bibitem{davies2014automashupper}
+M.~E.~P.~Davies, P.~Hamel, K.~Yoshii, and M.~Goto.
+\newblock AutoMashUpper: automatic creation of multi-song music mashups.
+\newblock \emph{IEEE/ACM Trans.\ Audio, Speech, and Language Processing},
+  22(12), 2014.
+
+\bibitem{engel2020ddsp}
+J.~Engel, L.~Hantrakul, C.~Gu, and A.~Roberts.
+\newblock DDSP: differentiable digital signal processing.
+\newblock In \emph{Int.\ Conf.\ on Learning Representations (ICLR)}, 2020.
+  \emph{arXiv:2001.04643}.
+
+\bibitem{zeghidour2021soundstream}
+N.~Zeghidour, A.~Luebs, A.~Omran, J.~Skoglund, and M.~Tagliasacchi.
+\newblock SoundStream: an end-to-end neural audio codec.
+\newblock \emph{arXiv:2107.03312}, 2021.
+
+\bibitem{defossez2022encodec}
+A.~D\'efossez, J.~Copet, G.~Synnaeve, and Y.~Adi.
+\newblock High fidelity neural audio compression.
+\newblock \emph{arXiv:2210.13438}, 2022.
+
+\bibitem{copet2023musicgen}
+J.~Copet, F.~Kreuk, I.~Gat, T.~Remez, D.~Kant, G.~Synnaeve, Y.~Adi, and
+  A.~D\'efossez.
+\newblock Simple and controllable music generation.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+  2023. \emph{arXiv:2306.05284}.
+
+\end{thebibliography}
+}
+
+\end{document}
+</content>

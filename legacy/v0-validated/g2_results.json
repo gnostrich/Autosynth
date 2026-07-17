@@ -1,0 +1,46 @@
+{
+  "gate": "G2",
+  "instrument": "triangle loop-defect holonomy of role-space GW traffic (meters.holonomy.loop_defect); ratio r=d3/max_edge_2loop, curvature kappa=r-1; eps=0.050; costs RMS-normalized",
+  "n_tracks": 20,
+  "n_triangles": 1140,
+  "solver_floor_first": {
+    "world": "gauge-copy of track_00 (identical geometry, homogeneous mass)",
+    "median_2loop": 0.4268376799469184,
+    "median_ratio": 1.0465764697216535,
+    "kappa_floor": 0.046576469721653524
+  },
+  "real": {
+    "median_2loop_edge_floor": 0.493468063277003,
+    "median_ratio": 1.0933555615583959,
+    "kappa_real": 0.09335556155839586,
+    "ratio_p50_p90_max": [
+      1.0933555615583959,
+      1.9796353309329975,
+      2.4159058922940773
+    ]
+  },
+  "residual_conditioned_null": {
+    "world": "flat Euclidean (noisy views of one latent config), masses resampled from pooled real proto masses, latent_dim=8",
+    "calibrated_eta": 0.001,
+    "calib_status": "clamped_low",
+    "target_2loop": 0.493468063277003,
+    "achieved_2loop": 0.5849489625089042,
+    "median_ratio": 1.2057943287946296,
+    "kappa_null": 0.20579432879462956,
+    "ratio_p95_p99": [
+      1.5329029640470049,
+      1.6229169283535547
+    ]
+  },
+  "separation": {
+    "kappa_real_over_kappa_null": 0.453635248865898,
+    "kappa_real_over_kappa_floor": 2.004350310667497,
+    "robust_z_vs_null": -1.1387187790764215,
+    "dominance_median_real_gt_null_p95": false,
+    "dominance_median_real_gt_null_p99": false
+  },
+  "target_separation": 20.0,
+  "G2_pass_strong_20x": false,
+  "signal_present_above_null": false,
+  "prereg": "PREREG.md G2; registry g2-holonomy-2026-07-13"
+}

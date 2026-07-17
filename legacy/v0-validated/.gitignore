@@ -1,0 +1,18 @@
+# Local data artifacts — never tracked
+corpus_real/
+renders/
+reference_sets/
+*.npz
+*.pkl
+*.wav
+*.flac
+*.mp3
+.chansplit_cache/
+.mixcache/
+__pycache__/
+.pytest_cache/
+debug/
+corpus/
+cache/
+.claude/worktrees/
+samples/

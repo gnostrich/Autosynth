@@ -1,0 +1,32 @@
+[
+  {
+    "name": "ls_driving",
+    "seed": 131,
+    "seconds": 360.0,
+    "knobs": "ls_driving.json"
+  },
+  {
+    "name": "ls_spacious",
+    "seed": 147,
+    "seconds": 360.0,
+    "knobs": "ls_spacious.json"
+  },
+  {
+    "name": "ls_shifting",
+    "seed": 159,
+    "seconds": 360.0,
+    "knobs": "ls_shifting.json"
+  },
+  {
+    "name": "ls_deep",
+    "seed": 171,
+    "seconds": 360.0,
+    "knobs": "ls_deep.json"
+  },
+  {
+    "name": "ls_ascend",
+    "seed": 188,
+    "seconds": 360.0,
+    "knobs": "ls_ascend.json"
+  }
+]

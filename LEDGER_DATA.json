@@ -1,0 +1,59 @@
+{
+  "_comment": "Curated both-axes facts for LEDGER.md. Documents only. Append/edit the narrative facts here; the per-edit trail is auto-appended from VERSION_LEDGER.jsonl by scripts/build_ledger.py (invoked by the every-edit hook).",
+  "architectures": [
+    {
+      "version": "v0-validated",
+      "location": "legacy/v0-validated/ (immutable snapshot)",
+      "marker": "commit 6eabf6d, tag v0-validated-revr1",
+      "driving_directive": "racer-C rev-r1: real-tracks-are-equilibria separation",
+      "audit": "PASS — min held-out separation 0.95 >= 0.90"
+    },
+    {
+      "version": "v1-stable",
+      "location": "repo root (founding architecture, embedded)",
+      "marker": "commit 05a4468, tag v1-stable",
+      "driving_directive": "live synth (engine + panel/OSC), rev-r1 F on unit-resolved fiber, drift-meter split (slide/loop), external mastering, bank cache + float16",
+      "audit": "14/15 invariants enforced (I-10 planner PENDING); 232 tests green"
+    },
+    {
+      "version": "v2",
+      "location": "architecture-v2/ (clean canonical layout: machine + instances/)",
+      "marker": "tag pre-panel-relabel-2026-07-16 (immutable pre-change marker of v1)",
+      "driving_directive": "ETS directive — panel relabeling (display layer only): face labels + tooltips; no engine/OSC/registry/F symbol touched",
+      "audit": "PASS (display-only, verified independently + builder-confirmed): ONLY ets/panel/widget.py differs from the v1 machine; one _FACE alias map; all internal/OSC/F symbols intact (none renamed); six-lane + tolerance exhaustiveness laws hold; py_compile OK; 43 panel/harness tests pass (18 full-run failures are pre-existing/environmental, identical against the pristine baseline). Two display-layer nuances, both in-scope: disarmed lanes render setEnabled(False) (directive rule 4); the face resolver is total so the alias never becomes a second enforcement channel"
+    },
+    {
+      "version": "v3",
+      "location": "architecture-v3/ (full-fork of v2 machine + relabel)",
+      "marker": "tag pre-arch-v3-2026-07-16 (immutable pre-change marker)",
+      "driving_directive": "ETS directive — architecture-v3 temperature-sampler fix (Bugs 1 & 2): one coordinated exam-gated A (sampling-ensemble sigma recalibration) + B (derived-threshold StreamHalt) + C (mirror-geometry temperature sampler). Root cause report: reports/2026-07-16-steering-divergence-and-silences.md",
+      "audit": "PREREG committed (prereg-arch-v3-temperature-sampler-2026-07-16); BUILD PENDING (builder to implement A+B+C; auditor PASS + 6 acceptance criteria before merge)"
+    }
+  ],
+  "instances": [
+    {
+      "name": "psytech",
+      "architecture": "v1",
+      "role": "CANONICAL DEFAULT corpus — ships initialized in the machine (embedded world+LAMBDA+sigma_phi); a user swaps it for their own corpus",
+      "corpus": "first corpus (jungle/psy/house)",
+      "location": "repo root (embedded/founding); pointer at instantiations/psytech/",
+      "world_content_hash": "777b2edbd659",
+      "world_M": 5,
+      "lambda": {"T2": 4.9923, "T3": 0.8023, "T4": 10.4577, "T1p": 8.7581, "T5": 0.1},
+      "gates": "G0/G1/G2 receipts present; separation PASS (rev-r1)",
+      "renders": "samples/ (earlier deliveries)"
+    },
+    {
+      "name": "futuregarage",
+      "architecture": "v1 (full fork)",
+      "role": "worked example of a user swapping the default corpus for their own",
+      "corpus": "deep/atmospheric halftime, 25 tracks",
+      "location": "instantiations/futuregarage/ (lives once, under v1; not duplicated into later versions)",
+      "world_content_hash": "863316226e18",
+      "world_M": 5,
+      "lambda": {"T2": 5.0328, "T3": 1.0209, "T4": 10.8174, "T1p": 8.8686, "T5": 0.1},
+      "gates": "NCE separation exam: held-out min sep 0.98 PASS (all four scramble families); armed lanes region/continuity/novelty",
+      "renders": "6 x 300s mastered clips delivered (abyss, tide, aphotic, thermocline, nocturne, current)"
+    }
+  ]
+}

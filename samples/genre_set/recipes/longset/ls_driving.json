@@ -1,0 +1,90 @@
+{
+ "events": [
+  {
+   "bar": 0,
+   "lane": "temperature",
+   "value": 0.12
+  },
+  {
+   "bar": 0,
+   "lane": "continuity",
+   "value": 2.6
+  },
+  {
+   "bar": 0,
+   "lane": "region",
+   "value": [
+    1.7,
+    0.45,
+    0.45,
+    0.45,
+    0.9
+   ]
+  },
+  {
+   "bar": 32,
+   "lane": "region",
+   "value": [
+    0.5,
+    0.5,
+    1.6,
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "bar": 56,
+   "lane": "novelty",
+   "value": 1.0
+  },
+  {
+   "bar": 72,
+   "lane": "region",
+   "value": [
+    0.5,
+    1.7,
+    0.5,
+    0.8,
+    0.5
+   ]
+  },
+  {
+   "bar": 104,
+   "lane": "continuity",
+   "value": 3.0
+  },
+  {
+   "bar": 112,
+   "lane": "region",
+   "value": [
+    1.5,
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ]
+  },
+  {
+   "bar": 148,
+   "lane": "region",
+   "value": [
+    0.5,
+    0.5,
+    0.5,
+    1.6,
+    0.5
+   ]
+  },
+  {
+   "bar": 176,
+   "lane": "region",
+   "value": [
+    0.9,
+    0.5,
+    0.5,
+    0.5,
+    1.6
+   ]
+  }
+ ]
+}

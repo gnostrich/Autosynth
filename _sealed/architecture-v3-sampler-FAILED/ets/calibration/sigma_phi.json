@@ -1,0 +1,266 @@
+{
+  "instrument": "sigma-phi-untilted-2026-07-15",
+  "artifact": "ets/calibration/sigma_phi.json",
+  "regenerate": "python3 scripts/run_sigma_phi.py",
+  "scaling_law": "lambda_i = u_i / sigma_phi_i (connector Layer 0). FDT: d<phi>/du|_0 = sigma, so one knob unit = one equilibrium-sigma lean of phi_i.",
+  "estimator": "sample std (ddof=1) of per-bar phi_i over the UNTILTED (u=0) SAMPLING writer at T_s=1, pooled over INDEPENDENT short seeded streams (seeds 0..N-1); ensemble size set by measured sigma-convergence and capped at the registered corpus bar count R; no burn-in discarded; per-observable bar autocorrelation recorded",
+  "identifiability_rule": "identifiable := sigma > 0.0 exactly; zeros recorded honestly with notes, NO floor",
+  "lanes": {
+    "1": "region",
+    "2": "density",
+    "3": "continuity",
+    "4": "gauge",
+    "5": "novelty",
+    "6": null
+  },
+  "phi": {
+    "region": {
+      "lane": 1,
+      "sigma": [
+        0.2671858896449582,
+        0.37957005644657477,
+        0.32654228774604477,
+        0.21388287346279955,
+        0.19451425831418465
+      ],
+      "mean": [
+        0.5150307958113186,
+        0.785059876094385,
+        0.6291087693668791,
+        0.264663043083529,
+        0.21195097949773128
+      ],
+      "identifiable": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "lag1_autocorr": [
+        0.646844414672757,
+        0.6691628517316714,
+        0.6605087987171984,
+        0.6971114831485709,
+        0.7154973267939023
+      ]
+    },
+    "density": {
+      "lane": 2,
+      "sigma": 0.2823704440877133,
+      "mean": 2.405813463853841,
+      "identifiable": true,
+      "lag1_autocorr": 0.008228278740970445
+    },
+    "continuity": {
+      "lane": 3,
+      "sigma": 4.303151745513734,
+      "mean": 58.21411764705882,
+      "identifiable": true,
+      "lag1_autocorr": 0.04354241075705352
+    },
+    "gauge": {
+      "lane": 4,
+      "sigma": 0.0,
+      "mean": 0.0,
+      "identifiable": false,
+      "lag1_autocorr": NaN,
+      "note": "NOT IDENTIFIABLE at u=0 (R3-style): the untilted writer emits a single identity-gauge section, so no frame move exists and phi_gauge is identically 0 over the sampling ensemble. Temperature samples the O-block, not the (v0-frozen) gauge frame, so this stays structurally zero. Same structure as training's T5 (not corpus-identifiable). No floor is invented; a GAUGE STIFFNESS scale requires a writer whose gauge sections can move (frame-move traffic), to be measured then."
+    },
+    "novelty": {
+      "lane": 5,
+      "sigma": 0.24259297627129361,
+      "mean": 0.065646968425968,
+      "identifiable": true,
+      "lag1_autocorr": 0.5764738371685956
+    }
+  },
+  "before_after": {
+    "note": "Fix A re-derivation: O-block sigma moved from the u=0 MAP batch ensemble (pathologically pinned) to the untilted T_s=1 SAMPLING ensemble the engine runs. Knob feel changes (less hair-trigger): larger sigma_region => smaller lambda=u/sigma at the same knob throw. A logged, legitimate v3 behavior difference, NOT a clamp on lambda or O.",
+    "region_sigma": {
+      "map": [
+        0.03393608125359827,
+        0.00632681476683843,
+        0.0,
+        0.032498035630830584,
+        0.04674987119234111
+      ],
+      "sampling": [
+        0.2671858896449582,
+        0.37957005644657477,
+        0.32654228774604477,
+        0.21388287346279955,
+        0.19451425831418465
+      ]
+    },
+    "density_sigma": {
+      "map": 0.0,
+      "sampling": 0.2823704440877133,
+      "armed_under_sampling": true
+    },
+    "continuity_sigma": {
+      "map": 0.6636873977437328,
+      "sampling": 4.303151745513734
+    },
+    "novelty_sigma": {
+      "map": 1.398674189256965,
+      "sampling": 0.24259297627129361
+    }
+  },
+  "ensemble": {
+    "kind": "per-bar arrangements, untilted SAMPLING writer (u=0, T_s=1), pooled over independent short seeded streams",
+    "method_note": "Re-derivation of the ensemble DRAW (not the estimand): a single R-bar stream has per-bar cost growing ~O(committed) (fiber threader), so R=corpus-bar-count is O(R^2)/impractical. Independent short streams keep the flat per-bar regime and sample the SAME per-bar equilibrium law \u2014 EXACTLY so for the O-block (bar-periodic mode + i.i.d. temperature draw), and to run/recency steady-state (reached within a few bars) for the fiber. Same estimand, size justified by convergence + capped at the registered R.",
+    "T_s": 1.0,
+    "n_streams": 17,
+    "stream_len_bars": 50,
+    "seeds": "0..16",
+    "R_registered_cap": 7495,
+    "size_capped_at_R": false,
+    "convergence": {
+      "tol": 0.03,
+      "window": 6,
+      "curve_tail": [
+        [
+          100,
+          0.3518698248538889
+        ],
+        [
+          150,
+          0.1072256969803993
+        ],
+        [
+          200,
+          0.2673615989487562
+        ],
+        [
+          250,
+          0.0881972068083412
+        ],
+        [
+          300,
+          0.05863886854787693
+        ],
+        [
+          350,
+          0.06825796322172997
+        ],
+        [
+          400,
+          0.09269066406939508
+        ],
+        [
+          450,
+          0.02842285328464139
+        ],
+        [
+          500,
+          0.04292279108897685
+        ],
+        [
+          550,
+          0.04250923730534244
+        ],
+        [
+          600,
+          0.04979011369092413
+        ],
+        [
+          650,
+          0.01660786455523922
+        ],
+        [
+          700,
+          0.02052577503349977
+        ],
+        [
+          750,
+          0.029078017362076845
+        ],
+        [
+          800,
+          0.03499149381619476
+        ],
+        [
+          850,
+          0.02497216235553489
+        ]
+      ]
+    },
+    "bars_per_track": [
+      293,
+      339,
+      320,
+      273,
+      248,
+      261,
+      340,
+      238,
+      244,
+      191,
+      317,
+      387,
+      589,
+      262,
+      393,
+      565,
+      352,
+      360,
+      560,
+      963
+    ],
+    "s_phase": 8,
+    "out_tatum_len": 8192,
+    "sr": 44100,
+    "settle_certificate": {
+      "converged": true,
+      "monotone": true
+    },
+    "n_bars": 850
+  },
+  "world": {
+    "hash": "777b2edbd659f71e51d986f970e45362e36a02a477bd20e99e4f507237c5ffd2",
+    "M": 5,
+    "build": "ets.writer.build_world_from_tracks(tracks, seed=0, sigma=None->median)",
+    "info": {
+      "effective_rank": 5.35423786294598,
+      "n_anchors": 5.0,
+      "sigma": 0.5532324477839268,
+      "role_dist_mean": 0.6097090799944409,
+      "F_final": 227.2784364996448,
+      "F_monotone": 1.0
+    },
+    "lambda": {
+      "T2": 4.9923137910018385,
+      "T3": 0.8023184886520748,
+      "T4": 10.457681912759295,
+      "T5": 0.1,
+      "T1p": 8.758101446990384
+    },
+    "cache": {
+      "files": {
+        "track_00.npz": "2e370377f0302cf8f9a52a764f4b2c7df3c44fd0175dd669d7943e095e59e580",
+        "track_01.npz": "d3f10a6c0330a6180c9fd879acb37fe596f9cc3a54c54fd87a8a780321af94bd",
+        "track_02.npz": "64f853bc2e32f49b5527c64a9d2f0f4a44724b2bf2ffebca84091f1fe4b4eced",
+        "track_03.npz": "29353f7ff24152f98fbd92324a5dc5d0f77c4917943cbd4623fa4becd801adc2",
+        "track_04.npz": "c36da93eb0314b5283a1e1065f52cb24b940fd482918e0b35970efb4165b1c72",
+        "track_05.npz": "a0cfe22d6306b0c5c637eeae6fccf0cc97ed517caa920fb2a7d0af55284fc300",
+        "track_06.npz": "92345e6eb648be10f6feb51d89218a0975db25ceab3cfabde2acdd0f620d070e",
+        "track_07.npz": "eaea2ec529793945284dd3a57f8ba94a6df395153de37e011b8ea117b084030a",
+        "track_08.npz": "8b8da909579796a3a1bcf3ba3643a4580f3333a69366464f0f5b876eae041265",
+        "track_09.npz": "e7c7161185373b1064ef206c8bb5f57f2b24b486c92a00df4e5828776addb533",
+        "track_10.npz": "e59e6b4c92bab3db0417175fe626011b3782ee15a11b186ee95ed050b98c5597",
+        "track_11.npz": "8c0b6bd0008d309f809b3bddc1766c2b2f47bc2d197289dddf9374f2b3a3df55",
+        "track_12.npz": "1b3646cc6e98135614a28efde60859269051355b7658ec12402971019831845b",
+        "track_13.npz": "db32822c4133fc0b73a2d406d8ca35261b64962f8c9f65cabe6fe8e92c1610fd",
+        "track_14.npz": "e8957339b51bf404be251b35312fdb5f53d5796ed7366b0d86b9d7b8c5840122",
+        "track_15.npz": "b634e97172b033813c19d5577b647d9f0fdaf0d804f47c6442a74410a81d71bc",
+        "track_16.npz": "57548e9eeb87c172344fd3e0f641f3c5bbf31dc7b0f0ed0759793954f8d6f3b0",
+        "track_17.npz": "89b8e060e95fe9133def96a00b23a8d3dbdf66c1d8f25b357ed3ea535c80f54f",
+        "track_18.npz": "27ef5234789d49823fa9f39a445c170f48d4ec8c07f06ad84674bd691ed8ca54",
+        "track_19.npz": "62d8a0006b224d6ba54a4d19165dd95ca38bc7f5c6f15c65d723dfe1b6bd2428"
+      },
+      "hash": "7b2565808e9dae0676e6b4e260028ea42c6c613a030de62b4596a763d84bd018"
+    }
+  },
+  "ts": "2026-07-16"
+}

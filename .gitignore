@@ -16,3 +16,15 @@ corpus/
 cache/
 .claude/worktrees/
 samples/
+
+# legacy snapshots are FULLY tracked (H-1): negate the data excludes for them
+!legacy/**
+*.etsworld
+
+# Python build artifacts
+*.egg-info/
+build/
+dist/
+
+# environment disk-guard runtime log (not project content)
+disk_guard.log
