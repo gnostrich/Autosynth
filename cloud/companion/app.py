@@ -68,7 +68,8 @@ class Companion:
     def __init__(self, cloud_url: str = "inproc",
                  session_dir: Optional[str] = None,
                  play_world: Optional[str] = None, seed: int = 0,
-                 registry: "Optional[WorldRegistry]" = None) -> None:
+                 registry: "Optional[WorldRegistry]" = None,
+                 surface_demo: bool = True) -> None:
         # ``cloud_url`` is the ONLY outbound target. "inproc" runs the service
         # in-process (offline / tests); otherwise an https base URL (Railway).
         self.cloud_url = cloud_url
@@ -100,16 +101,23 @@ class Companion:
         self.opened_set_id: Optional[str] = None
         # playable world for the INSTRUMENT (default: the repo's founding world).
         self.seed = int(seed)
-        if play_world is None:
-            # prefer the COMMITTED self-contained demo (embedded audio, no external
-            # files) so a fresh clone plays out of the box; fall back to a local
-            # corpus.etsworld if present (dev machines).
+        if play_world is None and surface_demo:
+            # LOCAL / fresh-clone path (R5): prefer the COMMITTED self-contained demo
+            # (embedded audio, no external files) so a fresh clone plays out of the
+            # box; fall back to a local corpus.etsworld if present (dev machines).
+            #
+            # HOSTED path (surface_demo=False, set by the Hub for public deploys per
+            # OPEN_ENDS #16(c)): the founding demo is NOT surfaced on the site — the
+            # initial Play state is EMPTY until the user opens a shared set from
+            # Explore or (keyed) trains their own world. play_world stays None so the
+            # demo engine never even spins up (a memory win too — no boot-time load).
             for _name in ("demo.etsworld", "corpus.etsworld"):
                 cand = _REPO_ROOT / _name
                 if cand.exists():
                     play_world = str(cand)
                     break
-        # remember the demo/founding world so reset() can revert to it.
+        # remember the demo/founding world so reset() can revert to it. On the hosted
+        # path this is None -> reset reverts to the honest EMPTY state, not the demo.
         self._demo_world = play_world
         self.play_world = play_world
         self._is_trained = False       # True once the seam repoints to the user's world
@@ -418,6 +426,12 @@ class Hub:
         self._play_world = play_world
         self.seed = int(seed)
         self.public = bool(public)
+        # HOSTED-surface demo policy (OPEN_ENDS #16(c)): the founding demo is surfaced
+        # ONLY on non-public (local / fresh-clone, R5) runs. On the PUBLIC hosted site
+        # no session auto-loads the demo — the initial Play state is empty until a
+        # shared set is opened or a keyed user trains. An explicit ``play_world``
+        # (tests / a pinned deploy) always wins, so this only governs the default.
+        self._surface_demo = not self.public
         self.access_keys = set(k for k in (access_keys or []) if k)
         if max_loaded is None:
             max_loaded = int(os.environ.get("ETS_MAX_LOADED_WORLDS", "2"))
@@ -437,7 +451,7 @@ class Hub:
     def _make_session(self, session_dir) -> "Companion":
         comp = Companion(cloud_url=self.cloud_url, session_dir=str(session_dir),
                          play_world=self._play_world, seed=self.seed,
-                         registry=self.registry)
+                         registry=self.registry, surface_demo=self._surface_demo)
         comp.public = self.public
         return comp
 
@@ -629,8 +643,19 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/world":
             p = self.hub.playable_for(session)
-            info = p.world_info() if p is not None else {
-                "ready": False, "reason": "no playable world loaded"}
+            if p is None:
+                # HONEST EMPTY STATE (OPEN_ENDS #16(c)): no world is loaded. The demo
+                # is not surfaced on the hosted site, so a fresh session plays nothing
+                # until it opens a shared set from Explore or (keyed) trains its own.
+                # The reason is tailored to what THIS session can do so the FE can
+                # point the right way; ``loaded:false`` distinguishes this from a world
+                # that exists but is still warming up (never conflated with "loading").
+                reason = ("no set loaded — train your own, or open a shared set "
+                          "from Explore" if self._can_train(session)
+                          else "no set loaded — open a shared set from Explore")
+                info = {"ready": False, "loaded": False, "reason": reason}
+            else:
+                info = p.world_info()
             info["public"] = getattr(session, "public", False)
             info["opened_set_id"] = session.opened_set_id
             # KEYED-TRAIN: expose the owner predicate so the FE shows Train for keyed

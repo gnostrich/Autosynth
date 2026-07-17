@@ -716,3 +716,19 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` cloud/tests/test_web_field_payload.py (2026-07-17T18:14:48+00:00)
 - `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T18:15:09+00:00)
 - `Edit` cloud/PREREG-web-field.md (2026-07-17T18:17:40+00:00)
+
+### at `ad1d3a5`
+- `Edit` cloud/companion/app.py (2026-07-17T19:35:41+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T19:35:51+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T19:35:59+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T19:36:03+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T19:36:14+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T19:36:24+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T19:36:33+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T19:36:46+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T19:36:52+00:00)
+
+### at `aa7ae92`
+- `Write` cloud/tests/test_no_demo_surface.py (2026-07-17T19:39:12+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T19:39:28+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T19:39:43+00:00)

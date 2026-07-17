@@ -46,14 +46,22 @@ class _ServerProc:
     interpreter, so the in-process import-graph invariants (test_mvp_d) stay
     order-independent — the render gate never pollutes another test's sys.modules."""
 
-    def __init__(self, tmp_path):
+    def __init__(self, tmp_path, public=False):
         self.port = _free_port()
         self.url = "http://127.0.0.1:%d" % self.port
+        argv = [sys.executable, "-m", "cloud.companion", "--cloud-url", "inproc",
+                "--host", "127.0.0.1", "--port", str(self.port),
+                "--session-dir", str(tmp_path / "sess")]
+        if public:
+            # PUBLIC (hosted) bind, kept on loopback for the test. In public mode the
+            # founding demo is NOT surfaced (OPEN_ENDS #16(c)) -> the empty Play state.
+            argv.append("--public")
+        import os
+        env = dict(os.environ)
+        env.pop("ETS_ACCESS_KEYS", None)   # keyless: no access wall in commit-1 scope
         self.proc = subprocess.Popen(
-            [sys.executable, "-m", "cloud.companion", "--cloud-url", "inproc",
-             "--host", "127.0.0.1", "--port", str(self.port),
-             "--session-dir", str(tmp_path / "sess")],
-            cwd=str(_ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            argv, cwd=str(_ROOT), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     def wait_healthy(self, timeout=30):
         deadline = time.time() + timeout
@@ -147,6 +155,51 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
             page.screenshot(path=str(shot), full_page=True)
             assert shot.exists() and shot.stat().st_size > 0
             print(f"[render-smoke] screenshot: {shot}")
+            browser.close()
+    finally:
+        server.close()
+
+
+def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
+    """OPEN_ENDS #16(c) render smoke: a PUBLIC (hosted) keyless visitor lands on the
+    app (NOT the access page), the Play pane shows the HONEST empty-state text
+    (pointer to Explore), and the field canvas renders empty — no fabricated squares,
+    no noise preview. The instrument stays NOT-ready until a set is opened/trained."""
+    server = _ServerProc(tmp_path, public=True)
+    try:
+        server.wait_healthy()
+        with sync_playwright() as p:
+            browser = _launch(p)
+            page = browser.new_page(viewport={"width": 1200, "height": 900})
+            page.goto(server.url, wait_until="load", timeout=30000)
+            # the APP is served, not the access wall (keyless-public serves index).
+            page.wait_for_selector("#tabs", timeout=15000)
+            assert page.query_selector("#panePlay") is not None, "not the app page"
+
+            # the Play pane shows the empty-state text (from /api/world ready:false,
+            # loaded:false) — polled in, so wait for it to appear.
+            page.click("#tabPlay")
+            page.wait_for_function(
+                "() => { const el = document.getElementById('instLock');"
+                " return el && /No set loaded/i.test(el.innerText); }",
+                timeout=20000)
+            lock_text = page.eval_on_selector("#instLock", "el => el.innerText")
+            assert "No set loaded" in lock_text, lock_text
+            assert "Explore" in lock_text, lock_text
+
+            # the instrument is NOT ready -> the field is never initialised/drawn, so
+            # the canvas carries no fabricated squares (empty field = empty).
+            cls = page.eval_on_selector("#instrument", "el => el.className")
+            assert "ready" not in cls.split(), f"instrument must be un-ready: {cls!r}"
+
+            # the field canvas element still EXISTS and is laid out (honest empty
+            # surface, not a removed one).
+            assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
+
+            shot = tmp_path / "fe_public_empty_state.png"
+            page.screenshot(path=str(shot), full_page=True)
+            assert shot.exists() and shot.stat().st_size > 0
+            print(f"[render-smoke] empty-state screenshot: {shot}")
             browser.close()
     finally:
         server.close()
