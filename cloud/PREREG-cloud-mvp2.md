@@ -180,6 +180,16 @@ Railway. Folder-drop (OS file manager → mounted volume, browser never touches 
 bytes) is retained as a max-sealed FALLBACK for power users, not the default. Either
 way only stage-3 leaves, through the one whitelist guard.
 
+**Front-end hosting decision (2026-07-17):** the web UI is served by the **LOCAL
+container itself** on localhost — NOT by Vercel, NOT by Railway. Rationale: the UI
+only functions while talking to the local container (audio + data live there), so a
+public FE URL would have nothing to connect to from any other machine — hosting it
+publicly buys nothing for single-user. So: no Vercel and no Railway-for-FE in the
+near term; **Railway hosts ONLY the anchor-fit training endpoint.** A hosted FE
+(Railway static site OR Vercel — either works) is deferred to the **multi-user TBD**,
+where many users load one shared UI bundle and each points it at their own local
+container. Until then the container is the sole FE origin.
+
 **Auth decision (2026-07-17):** MVP-2 ships **SINGLE-USER** first. Auth = one shared
 bearer secret: the operator sets a token in the Railway service env; the local
 container sends it on every POST /train; the service rejects requests without it.
