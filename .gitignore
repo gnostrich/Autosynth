@@ -25,3 +25,6 @@ samples/
 *.egg-info/
 build/
 dist/
+
+# environment disk-guard runtime log (not project content)
+disk_guard.log
