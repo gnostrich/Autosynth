@@ -929,59 +929,80 @@
 
   /* ================= TRAIN ================= */
   var resultWrap = $("resultWrap"), resultEl = $("result"), resultBadge = $("resultBadge"), resultMeta = $("resultMeta");
-  trainBtn.addEventListener("click", function(){
-    trainBtn.disabled = true; var old = trainBtn.textContent; trainBtn.textContent = "training…";
-    resultWrap.style.display = "none";
-    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({}) })
-      .then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); })
-      .then(function(res){
-        var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
-        if(j.ok){
-          resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
-          resultMeta.textContent = "cloud training returned + receipt verified";
-          var r = j.receipt || {};
-          var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
-          var msg;
-          if(j.playback === "live"){
-            // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
-            // the companion repointed the player at the user's trained world.
-            // Compute ARMED from the ACTUAL disarmed set (never hardcode "armed"):
-            // on a small/degenerate corpus region itself can disarm.
-            var dis = (j.sigma_phi_disarmed || []).map(function(l){ return l === "cont" ? "continuity" : l; });
-            var ALL = ["region", "continuity", "novelty", "density", "gauge"];
-            var armed = ALL.filter(function(l){ return dis.indexOf(l) < 0; });
-            msg = "\nYour trained world is now LIVE below — play and steer it." +
-                  "\nTraining also measured a σ_φ calibration for your corpus." +
-                  (dis.length ? "\nDisarmed at u=0 (measured σ=0, no tilt — same as the" +
-                     " founding world): " + dis.join(", ") + ".  Armed: " + armed.join(", ") + "." : "");
-            if(dis.indexOf("region") >= 0){
-              msg += "\n⚠ REGION steering is DISARMED on this corpus — the pads / XY will not" +
-                     " change the terrain. Use more, longer, more varied tracks to arm it.";
-            }
-          } else if(j.playback === "error"){
-            // BUILD + verify + σ_φ succeeded; an UNEXPECTED failure bringing it live is
-            // surfaced honestly; the calibrated demo world stays live meanwhile.
-            msg = "\nYour world was BUILT, VERIFIED, and CALIBRATED (it references your" +
-                  " local audio), but bringing it live hit an unexpected error; the demo" +
-                  " world stays live.\nError: " + (j.playback_error || "unknown");
-          } else {
-            // .npz geometry-only verify path
-            msg = "\n(geometry-only verify: receipt confirmed; the instrument keeps" +
-                  " playing the founding demo world.)";
-          }
-          resultEl.textContent = "trained world → " + j.world + msg + "\n" + lines.join("\n");
-          // loadWorld() re-reads /api/world; the instHint reflects whatever is
-          // actually PLAYING (the demo world unless the trained world went live).
-          loadWorld();
-        } else {
-          resultBadge.className = "badge err"; resultBadge.textContent = "failed";
-          resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
+  // Render a finished training result (success or failure) into the panel.
+  function renderTrainResult(j){
+    resultWrap.style.display = "block"; trainBtn.textContent = "Train on cloud"; trainBtn.disabled = false;
+    if(j.ok){
+      resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
+      resultMeta.textContent = "cloud training returned + receipt verified";
+      var r = j.receipt || {};
+      var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
+      var msg;
+      if(j.playback === "live"){
+        // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
+        // the companion repointed the player at the user's trained world.
+        // Compute ARMED from the ACTUAL disarmed set (never hardcode "armed"):
+        // on a small/degenerate corpus region itself can disarm.
+        var dis = (j.sigma_phi_disarmed || []).map(function(l){ return l === "cont" ? "continuity" : l; });
+        var ALL = ["region", "continuity", "novelty", "density", "gauge"];
+        var armed = ALL.filter(function(l){ return dis.indexOf(l) < 0; });
+        msg = "\nYour trained world is now LIVE below — play and steer it." +
+              "\nTraining also measured a σ_φ calibration for your corpus." +
+              (dis.length ? "\nDisarmed at u=0 (measured σ=0, no tilt — same as the" +
+                 " founding world): " + dis.join(", ") + ".  Armed: " + armed.join(", ") + "." : "");
+        if(dis.indexOf("region") >= 0){
+          msg += "\n⚠ REGION steering is DISARMED on this corpus — the pads / XY will not" +
+                 " change the terrain. Use more, longer, more varied tracks to arm it.";
         }
-      }).catch(function(e){
-        trainBtn.textContent = old; trainBtn.disabled = false;
-        resultWrap.style.display = "block"; resultBadge.className = "badge err"; resultBadge.textContent = "error";
-        resultEl.textContent = String(e);
-      });
+      } else if(j.playback === "error"){
+        msg = "\nYour world was BUILT, VERIFIED, and CALIBRATED (it references your" +
+              " audio), but bringing it live hit an unexpected error; the demo" +
+              " world stays live.\nError: " + (j.playback_error || "unknown");
+      } else {
+        msg = "\n(geometry-only verify: receipt confirmed; the instrument keeps" +
+              " playing the founding demo world.)";
+      }
+      resultEl.textContent = "trained world → " + (j.world || "your corpus") + msg +
+                             (lines.length ? "\n" + lines.join("\n") : "");
+      loadWorld();
+    } else {
+      resultBadge.className = "badge err"; resultBadge.textContent = "failed";
+      resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
+    }
+  }
+
+  trainBtn.addEventListener("click", function(){
+    trainBtn.disabled = true; trainBtn.textContent = "training…";
+    resultWrap.style.display = "none";
+    var done = false, startT = Date.now();
+    function finish(j){ if(done) return; done = true; if(poll) clearInterval(poll); renderTrainResult(j); }
+
+    // ROBUST COMPLETION (do NOT depend on the /api/train request surviving):
+    // a cold container can train for MINUTES, and the platform edge cuts an idle
+    // HTTP request at ~60s — so the request may drop while the server keeps going.
+    // We therefore POLL /api/world for the trained world going live (and pull the
+    // receipt from /api/status), which is the source of truth. The request below is
+    // a fast-path bonus, not the completion signal.
+    var poll = setInterval(function(){
+      if(done) return;
+      fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); }).then(function(w){
+        if(done) return;
+        if(w && w.is_trained){
+          fetch("/api/status", { credentials:"same-origin" }).then(function(r){ return r.json(); })
+            .then(function(s){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"),
+                                        receipt:(s && s.last_receipt) || {}, sigma_phi_disarmed:(w.disarmed||[]) }); })
+            .catch(function(){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"), receipt:{} }); });
+        } else if(Date.now() - startT > 12*60*1000){
+          finish({ ok:false, error:"Training is taking longer than expected — it may still be running on the server. Reload the page in a minute to check." });
+        }
+      }).catch(function(){ /* transient; keep polling */ });
+    }, 8000);
+
+    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" },
+                          credentials:"same-origin", body:JSON.stringify({}) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if(j && (j.ok === true || j.ok === false)) finish(j); })   // fast path
+      .catch(function(){ /* dropped by the edge on a long train — the poller wins, NOT an error */ });
   });
 
   /* ================= INSTRUMENT ENABLE / LOCK ================= */
