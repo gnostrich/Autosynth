@@ -467,3 +467,9 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T07:24:48+00:00)
 - `Edit` OPEN_ENDS.md (2026-07-17T07:25:02+00:00)
 - `Edit` cloud/tests/test_mvp2_companion.py (2026-07-17T07:26:10+00:00)
+
+### at `247a66c`
+- `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T07:31:01+00:00)
+- `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T07:31:06+00:00)
+- `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T07:31:15+00:00)
+- `Edit` release-manifest.json (2026-07-17T07:31:48+00:00)

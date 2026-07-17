@@ -39,7 +39,7 @@ does not move that; only the deferred divergence/sampler work (local engine) can
   │   BROWSER   │◀──────────────────────────────────────────── │    VERCEL    │
   │ (control +  │                                               │ (static host)│
   │   speaker)  │                                               └──────────────┘
-  │             │   audio PCM + telemetry over localhost WS
+  │             │   audio PCM (HTTP) + telemetry (SSE) over localhost
   │             │◀────────────────────────────┐
   └─────────────┘                             │
         │ gesture (region-tilt taps, transport)│
@@ -48,7 +48,7 @@ does not move that; only the deferred divergence/sampler work (local engine) can
   │  LOCAL COMPANION  (on the operator's machine)      │────────────────▶│ RAILWAY  │
   │  = engine-v1 render + recipes + LAMBDA + exam      │  (cost+mass)    │ mvp1     │
   │  holds raw audio + recipes; renders PCM locally    │◀────────────────│ anchor-  │
-  │  exposes a localhost web/WS API to the browser     │  world+receipt  │ fit only │
+  │  exposes a localhost HTTP API to the browser       │  world+receipt  │ fit only │
   └──────────────────────────────────────────────────┘                  └──────────┘
 ```
 
@@ -58,7 +58,7 @@ does not move that; only the deferred divergence/sampler work (local engine) can
   only). No audio or recipe byte ever touches Vercel or Railway.
 - **Local companion** = a headless wrapper over the `architecture-v6` engine. It is
   the ONLY thing that holds raw audio + recipes, runs the NCE LAMBDA fit + exam, and
-  renders PCM. It streams rendered PCM to the browser over a localhost websocket
+  renders PCM. It streams rendered PCM to the browser over a localhost HTTP stream
   (the browser is a *speaker* playing bytes the local machine rendered — not a
   decoder). It sends stage-3 jobs to Railway for the anchor-fit and verifies the
   returned receipts locally (reusing the mvp1 client guard).

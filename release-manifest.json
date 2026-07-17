@@ -33,6 +33,17 @@
     "deploy": "LIVE on Railway (project 'thorough-serenity', service Geodesic-Mixing) at https://geodesic-mixing-production.up.railway.app — deployed from a code-only build context (ets/ + cloud/ only; no corpus/worlds/samples uploaded). Single-user bearer gate ACTIVE (ETS_TRAIN_TOKEN): unauthenticated /train -> 401; authorized real stage-3 job -> 200 + verifiable receipt (end-to-end confirmed 2026-07-17). /health probe green.",
     "deploy_verified": {"health": "200", "unauth_train": "401", "authorized_train": "200 + receipt verified", "roundtrip_s": 0.58}
   },
+  "deployment_mvp2": {
+    "id": "cloud-mvp2",
+    "location": "cloud/companion/",
+    "title": "sealed local companion + browser instrument (drag-drop ingest, guarded cloud train, live play/steer)",
+    "status": "built",
+    "auditor": "phase 1 PASS; phase 2 FAIL->fixed->PASS-WITH-NOTES (2026-07-17)",
+    "run": "python -m cloud.companion --cloud-url https://geodesic-mixing-production.up.railway.app  (set ETS_TRAIN_TOKEN); open http://localhost:8770",
+    "boundary": "loopback-only server; drag-drop ingest stays local (never forwarded); only stage-3 crosses to Railway via the whitelist encoder; render is LOCAL (no cloud decoder); region-tilt is the sole engine-control gesture (door held); eardrum cap on every produced bar; browser makes zero external calls",
+    "seam": "the instrument plays the FOUNDING demo world (steerable live); playing a freshly cloud-trained corpus needs the local build_index seam (ingest->tracks->realization index) — NOT wired, disclosed in UI + /api/world is_trained:false + prereg",
+    "engine": "runs on architecture-v6 ets (engine-v1 + live cap); arch-v6 pinned first on sys.path (verified under the -m import order)"
+  },
   "also_available": {
     "instances": ["futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"],
     "ui_history": ["ui-v1 (founding panel)", "ui-v2 (architecture-v2, knob naming)", "ui-v3 (architecture-v4, instrument surface)", "ui-v4 (architecture-v5, interaction fixes)"],
