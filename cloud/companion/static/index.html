@@ -909,25 +909,33 @@
     trainNote.style.color = "var(--danger)";
   }
   function handleFiles(list){
+    // Upload with bounded CONCURRENCY (not one-at-a-time) and refresh the file list
+    // as each lands, so a corpus of multi-MB tracks goes up in parallel and the user
+    // sees live "uploading X/N" progress + files appearing instead of a silent stall.
     var arr = Array.prototype.slice.call(list); if(!arr.length) return;
     trainNote.style.color = "";
-    var errMsg = null;
-    var chain = Promise.resolve();
-    arr.forEach(function(f){ chain = chain.then(function(){
-      if(errMsg) return null;                 // stop after the first rejection
-      return upload(f).then(function(res){
-        if(res.code === 401){ reauth(401); errMsg = "session expired — re-enter your access key"; return null; }
-        if(res.code >= 400 || (res.j && res.j.ok === false)){
-          errMsg = (res.j && res.j.error) || ("upload rejected (" + res.code + ")");
-        }
-        return null;
-      });
-    }); });
-    // reconcile from server truth (some files may have stored before a rejection),
-    // then surface any honest error message.
-    chain.then(function(){ return loadStatus(); }).then(function(){
-      if(errMsg) showUploadError(errMsg);
-    }).catch(noop);
+    var total = arr.length, completed = 0, next = 0, active = 0, errMsg = null;
+    var CONC = 4;
+    trainNote.textContent = "uploading 0/" + total + "…";
+    function done(){ loadStatus().then(function(){ if(errMsg) showUploadError(errMsg); }).catch(noop); }
+    function pump(){
+      while(active < CONC && next < arr.length && !errMsg){
+        var f = arr[next++]; active++;
+        upload(f).then(function(res){
+          if(res.code === 401){ reauth(401); errMsg = "session expired — re-enter your access key"; }
+          else if(res.code >= 400 || (res.j && res.j.ok === false)){
+            errMsg = errMsg || (res.j && res.j.error) || ("upload rejected (" + res.code + ")");
+          }
+        }).catch(noop).then(function(){
+          active--; completed++;
+          if(!errMsg) trainNote.textContent = "uploading " + completed + "/" + total + "…";
+          loadStatus();                                  // files appear as they land
+          if(active === 0 && (errMsg || completed >= total)){ done(); }
+          else if(!errMsg){ pump(); }
+        });
+      }
+    }
+    pump();
   }
 
   drop.addEventListener("click", function(){ picker.click(); });
