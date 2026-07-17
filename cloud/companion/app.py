@@ -218,41 +218,318 @@ class Companion:
                 "is_trained": False}
 
 
-class _Handler(BaseHTTPRequestHandler):
-    companion: Companion = None  # set on the server instance below
+# --- PUBLIC-mode per-visitor session policy (bounds + access gate) -----------
+# These apply ONLY in public (hosted) mode. Local loopback mode keeps the single
+# shared Companion with no cookies, no caps, no key gate (the local user is trusted).
+_SID_COOKIE = "ets_sid"                     # opaque per-visitor session id (cookie)
+_SID_RE = re.compile(r"\A[0-9a-f]{32}\Z")   # sids are 16-byte hex; anything else is foreign
+_COOKIE_MAX_AGE = 86400                     # cookie lifetime (s); server TTL below is separate
+_SESSION_TTL_SEC = 30 * 60                  # evict a session idle this long (bounds disk+mem)
+_MAX_SESSION_BYTES = 100 * 1024 * 1024      # total upload bytes per session (100 MB)
+_MAX_SESSION_FILES = 12                     # file-count cap per session
+_MAX_GLOBAL_TRAINS = 2                      # concurrent trainings across the whole box
 
-    def _send(self, code: int, body: bytes, ctype="application/octet-stream"):
+
+def _gate_html(configured: bool) -> str:
+    """The MINIMAL public 'enter your access key' page (served by GET / to a caller
+    with no key-authorized session). It is NOT the instrument. When the box has no
+    keys configured it fails CLOSED with an honest 'access not configured' message
+    and no working form. Same-origin POST /api/auth only; no external calls."""
+    body = ('<p class="msg">Access is not configured on this server.</p>'
+            '<p class="sub">The operator must set <code>ETS_ACCESS_KEYS</code>.</p>'
+            if not configured else
+            '<form id="f" autocomplete="off">'
+            '<input id="k" type="password" placeholder="access key" aria-label="access key" '
+            'autocomplete="off" spellcheck="false">'
+            '<button id="go" type="submit">Enter</button>'
+            '<p class="err" id="e"></p></form>'
+            '<script>'
+            'var f=document.getElementById("f"),k=document.getElementById("k"),'
+            'e=document.getElementById("e");'
+            'f.addEventListener("submit",function(ev){ev.preventDefault();e.textContent="";'
+            'fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},'
+            'body:JSON.stringify({key:k.value})}).then(function(r){return r.json().then('
+            'function(j){return{s:r.status,j:j};});}).then(function(res){'
+            'if(res.j&&res.j.ok){location.href="/";}else{e.textContent=(res.j&&res.j.error)'
+            '||("rejected ("+res.s+")");}}).catch(function(){e.textContent="network error";});'
+            '});</script>')
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<title>ETS — access</title><style>'
+        'html,body{margin:0;height:100%;background:#0E1214;color:#EAF1EF;'
+        'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}'
+        '.wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;}'
+        '.card{width:min(360px,100%);background:linear-gradient(180deg,#151C1F,#1A2225);'
+        'border:1px solid #253230;border-radius:16px;padding:28px;box-shadow:0 18px 40px -18px #000;}'
+        'h1{font-size:17px;margin:0 0 4px;}h1 b{color:#4FE0AE;}'
+        '.tag{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#5E6B68;'
+        'font-weight:600;margin-bottom:20px;}'
+        'input{width:100%;box-sizing:border-box;padding:11px 12px;border-radius:9px;'
+        'background:#0F1517;border:1px solid #253230;color:#EAF1EF;font:inherit;margin-bottom:12px;}'
+        'input:focus{outline:none;border-color:#1EB98A;}'
+        'button{width:100%;padding:11px;border-radius:10px;border:1px solid #4FE0AE;'
+        'background:#4FE0AE;color:#06110d;font:inherit;font-weight:650;cursor:pointer;}'
+        '.err{color:#E86A6A;font-size:12px;min-height:16px;margin:10px 0 0;}'
+        '.msg{color:#EAF1EF;font-size:14px;}.sub{color:#8A9794;font-size:12px;}'
+        'code{color:#E8A24C;}</style></head><body><div class="wrap"><div class="card">'
+        '<h1><b>ETS</b> — Equilibrium Tape Synth</h1>'
+        '<div class="tag">hosted · access required</div>' + body +
+        '</div></div></body></html>')
+
+
+class SessionRegistry:
+    """PUBLIC-mode per-visitor Companion registry. Each browser session (keyed by
+    the ``ets_sid`` cookie) gets its OWN Companion with its OWN ``session_dir`` under
+    ``base_dir/<sid>/`` and its OWN player state — no cross-visitor collision. Idle
+    sessions are evicted on a TTL (deleting their dir + dropping their player) to
+    bound disk + memory. This object exists ONLY in public mode; local loopback mode
+    keeps the single shared Companion with no cookies and no registry.
+
+    Access gate: a session is usable only once it is KEY-AUTHORIZED against
+    ``access_keys`` (from ``ETS_ACCESS_KEYS``). Empty keys => fail CLOSED (nobody is
+    authorized). A new key is minted by adding it to the ``ETS_ACCESS_KEYS`` env var
+    — no code change is needed to add or revoke keys."""
+
+    def __init__(self, cloud_url: str = "inproc", base_dir: Optional[str] = None,
+                 seed: int = 0, access_keys=(), ttl: float = _SESSION_TTL_SEC,
+                 max_global_trains: int = _MAX_GLOBAL_TRAINS) -> None:
+        self.cloud_url = cloud_url
+        self.base_dir = Path(base_dir) if base_dir else (_REPO_ROOT / "cache" / "companion_sessions")
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.seed = int(seed)
+        self.access_keys = tuple(k for k in (access_keys or ()) if k)
+        self.ttl = float(ttl)
+        self.max_global_trains = int(max_global_trains)
+        self._sessions: dict = {}      # sid -> {"comp", "seen", "training", "auth"}
+        self._active_trains = 0
+        self._lock = threading.Lock()
+
+    @property
+    def configured(self) -> bool:
+        """True iff at least one access key is set. False => the gate is CLOSED."""
+        return bool(self.access_keys)
+
+    # --- session resolution + TTL eviction ---------------------------------
+    def get_or_create(self, sid: Optional[str]):
+        """Return ``(companion, new_sid_or_None, authorized)`` for ``sid``. Mints a
+        fresh session (dir + Companion) when the caller has no valid one. Sweeps and
+        evicts idle sessions on every call so disk + memory stay bounded."""
+        now = time.monotonic()
+        with self._lock:
+            self._evict_locked(now)
+            rec = self._sessions.get(sid) if sid else None
+            if rec is not None:
+                rec["seen"] = now
+                return rec["comp"], None, bool(rec["auth"])
+            new_sid = secrets.token_hex(16)
+            comp = Companion(cloud_url=self.cloud_url,
+                             session_dir=str(self.base_dir / new_sid), seed=self.seed)
+            comp.public = True
+            self._sessions[new_sid] = {"comp": comp, "seen": now,
+                                       "training": False, "auth": False}
+            return comp, new_sid, False
+
+    def _evict_locked(self, now: float) -> None:
+        dead = []
+        for sid, rec in self._sessions.items():
+            if rec["training"]:
+                continue                       # never evict a session mid-train
+            player = getattr(rec["comp"], "_player", None)
+            if player is not None and player.is_playing():
+                rec["seen"] = now              # actively streaming: keep alive
+                continue
+            if now - rec["seen"] > self.ttl:
+                dead.append(sid)
+        for sid in dead:
+            self._drop(self._sessions.pop(sid)["comp"])
+
+    @staticmethod
+    def _drop(comp: "Companion") -> None:
+        player = getattr(comp, "_player", None)
+        if player is not None:
+            try:
+                player.stop()
+            except Exception:
+                pass
+        shutil.rmtree(comp.session_dir, ignore_errors=True)
+
+    # --- access gate (public mode; constant-time key compare) --------------
+    def key_valid(self, key) -> bool:
+        """Constant-time membership test of ``key`` in the configured keys. Iterates
+        ALL keys (no early-out) so timing never leaks which key matched. Keys are
+        opaque strings and are NEVER logged."""
+        if not key or not self.access_keys:
+            return False
+        ok = False
+        for k in self.access_keys:
+            if hmac.compare_digest(str(key), k):
+                ok = True
+        return ok
+
+    def authorize(self, sid: Optional[str], key) -> bool:
+        """Bind ``sid`` to authorized iff ``key`` is valid. Returns success."""
+        if not self.key_valid(key):
+            return False
+        with self._lock:
+            rec = self._sessions.get(sid)
+            if rec is None:
+                return False
+            rec["auth"] = True
+        return True
+
+    # --- training caps (per-session single + small global cap) -------------
+    def acquire_train(self, sid: Optional[str]):
+        """Reserve a training slot: at most ONE per session and ``max_global_trains``
+        across the box. Returns ``(ok, http_code, error_or_None)``."""
+        with self._lock:
+            rec = self._sessions.get(sid)
+            if rec is None:
+                return False, 409, "session expired — reload the page"
+            if rec["training"]:
+                return False, 409, "a training is already running for your session"
+            if self._active_trains >= self.max_global_trains:
+                return False, 429, "the box is busy training other sessions — try again shortly"
+            rec["training"] = True
+            self._active_trains += 1
+            return True, 200, None
+
+    def release_train(self, sid: Optional[str]) -> None:
+        with self._lock:
+            rec = self._sessions.get(sid)
+            if rec is not None:
+                rec["training"] = False
+            if self._active_trains > 0:
+                self._active_trains -= 1
+
+    # --- per-session upload caps -------------------------------------------
+    def check_ingest(self, comp: "Companion", incoming_len: int):
+        """Enforce the per-session upload caps (byte total + file count). Returns
+        ``(ok, http_code, error_or_None)``."""
+        names = comp.session_files()
+        if len(names) >= _MAX_SESSION_FILES:
+            return False, 409, f"file limit reached ({_MAX_SESSION_FILES} files max per session)"
+        used = 0
+        for n in names:
+            p = comp.session_dir / n
+            if p.exists():
+                used += p.stat().st_size
+        if used + int(incoming_len or 0) > _MAX_SESSION_BYTES:
+            mb = _MAX_SESSION_BYTES // (1024 * 1024)
+            return False, 413, f"upload limit reached ({mb} MB max per session)"
+        return True, 200, None
+
+
+class _Handler(BaseHTTPRequestHandler):
+    # Bound per server via ``type(...)`` in ``serve``. Exactly ONE is set:
+    #   * LOCAL  mode: ``single_companion`` (the shared, trusted, uncapped box).
+    #   * PUBLIC mode: ``registry`` (per-visitor sessions + caps + access gate).
+    registry: "SessionRegistry" = None
+    single_companion: Companion = None
+
+    # --- per-request session resolution (public) / single companion (local) --
+    def _resolve(self) -> None:
+        """Bind ``self._comp`` (the Companion for THIS request), ``self._sid`` and
+        ``self._authorized``. LOCAL mode: the single shared companion, no cookie, no
+        gate (the local user is trusted). PUBLIC mode: the caller's per-visitor
+        session (minted + Set-Cookie on first contact), plus its key-auth state."""
+        self._pending_cookie = None
+        self._sid = None
+        self._authorized = True             # local mode: always allowed
+        if self.registry is None:
+            self._comp = self.single_companion
+            return
+        sid = self._read_sid()
+        comp, new_sid, authorized = self.registry.get_or_create(sid)
+        self._sid = new_sid or sid
+        self._authorized = bool(authorized)
+        if new_sid is not None:
+            self._pending_cookie = new_sid
+        self._comp = comp
+
+    def _read_sid(self) -> Optional[str]:
+        raw = self.headers.get("Cookie", "")
+        if not raw:
+            return None
+        try:
+            jar = SimpleCookie(raw)
+        except Exception:
+            return None
+        m = jar.get(_SID_COOKIE)
+        val = m.value if m is not None else None
+        return val if (val and _SID_RE.match(val)) else None
+
+    def _emit_cookie(self) -> None:
+        sid = getattr(self, "_pending_cookie", None)
+        if sid:
+            self.send_header(
+                "Set-Cookie",
+                f"{_SID_COOKIE}={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={_COOKIE_MAX_AGE}")
+
+    def _public_gate_ok(self, path: str) -> bool:
+        """PUBLIC-mode key gate. Everything under /api/* requires a key-authorized
+        session EXCEPT the platform liveness probe ``/api/health`` (no data, no
+        compute — Railway's healthcheckPath must answer un-authed or the deploy
+        restart-loops; mirrors the cloud service's 'health never gated' invariant)
+        and the ``/api/auth`` handshake itself. Returns True if the request may
+        proceed, else emits a 401 and returns False."""
+        if self.registry is None:
+            return True
+        if path in ("/api/health", "/api/auth"):
+            return True
+        if self._authorized:
+            return True
+        self._json(401, {"ok": False, "error": "unauthorized — enter your access key",
+                         "auth_required": True})
+        return False
+
+    def _send(self, code: int, body: bytes, ctype="application/octet-stream",
+              no_store: bool = False):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if no_store:
+            self.send_header("Cache-Control", "no-store")
+        self._emit_cookie()
         self.end_headers()
         self.wfile.write(body)
 
     def _json(self, code: int, obj: dict):
-        self._send(code, json.dumps(obj).encode(), "application/json")
+        # no-store so per-session API responses are never served from a stale cache.
+        self._send(code, json.dumps(obj).encode(), "application/json", no_store=True)
 
     # --- GET ----------------------------------------------------------------
     def do_GET(self):  # noqa: N802
+        self._resolve()
         path = self.path.split("?", 1)[0].rstrip("/")
         if path in ("", "/"):
+            # PUBLIC: an un-authorized visitor gets the minimal access-key gate, not
+            # the instrument. LOCAL: always the instrument (no gate).
+            if self.registry is not None and not self._authorized:
+                self._send(200, _gate_html(self.registry.configured).encode(),
+                           "text/html; charset=utf-8", no_store=True)
+                return
             self._serve_static("index.html", "text/html; charset=utf-8")
             return
         if path == "/api/health":
-            self._json(200, {"ok": True, "service": "ets-companion", "cloud": self.companion.cloud_url})
+            cloud = self._comp.cloud_url if self._comp is not None else self.registry.cloud_url
+            self._json(200, {"ok": True, "service": "ets-companion", "cloud": cloud})
+            return
+        if not self._public_gate_ok(path):
             return
         if path == "/api/status":
             self._json(200, {
-                "session_dir": str(self.companion.session_dir),
-                "files": self.companion.session_files(),
-                "world": str(self.companion.world_path) if self.companion.world_path.exists() else None,
-                "last_receipt": self.companion.last_receipt,
+                "session_dir": str(self._comp.session_dir),
+                "files": self._comp.session_files(),
+                "world": str(self._comp.world_path) if self._comp.world_path.exists() else None,
+                "last_receipt": self._comp.last_receipt,
             })
             return
         if path == "/api/world":
-            p = self.companion.player()
+            p = self._comp.player()
             info = p.world_info() if p is not None else {
                 "ready": False, "reason": "no playable world loaded"}
-            info["public"] = getattr(self.companion, "public", False)
+            info["public"] = getattr(self._comp, "public", False)
             self._json(200, info)
             return
         if path == "/api/stream":
@@ -288,41 +565,76 @@ class _Handler(BaseHTTPRequestHandler):
             return "text/css"
         return "application/octet-stream"
 
+    def _drain(self, length: int) -> None:
+        """Consume (and discard, in bounded chunks) an unwanted request body so the
+        connection stays usable after a rejection — never buffering it whole."""
+        remaining = int(length or 0)
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 65536))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+
     # --- POST ---------------------------------------------------------------
     def do_POST(self):  # noqa: N802
+        self._resolve()
         path = self.path.split("?", 1)[0].rstrip("/")
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length else b""
+        comp = self._comp
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        pub = self.registry is not None
 
-        # PUBLIC (hosted) mode is a play/steer-the-demo deployment only. The
-        # corpus surfaces (upload, train, reset) write shared container state and
-        # need the ingest deps that aren't in the hosted image — so refuse them
-        # cleanly here (503) rather than expose a broken/abusable surface. They
-        # work in the LOCAL app. The FE hides these controls when world.public.
-        if getattr(self.companion, "public", False) and path in (
-                "/api/ingest", "/api/train", "/api/reset"):
-            self._json(503, {"ok": False, "error": "not available in the hosted "
-                             "demo — run the companion locally to train your own "
-                             "audio", "public": True})
+        # PUBLIC access handshake: validate the access key (constant-time) and bind
+        # THIS session to authorized. Fails CLOSED when no keys are configured. The
+        # session cookie is set here (or was already set on the gate page load).
+        if pub and path == "/api/auth":
+            body = self.rfile.read(length) if length else b""
+            key = None
+            if body:
+                try:
+                    key = json.loads(body.decode()).get("key")
+                except Exception:
+                    key = None
+            if not self.registry.configured:
+                self._json(503, {"ok": False, "error": "access not configured on this server"})
+                return
+            if self.registry.authorize(self._sid, key):
+                self._json(200, {"ok": True, "authorized": True})
+            else:
+                self._json(401, {"ok": False, "error": "invalid access key"})
+            return
+
+        # PUBLIC key gate on every other POST (auth-required). LOCAL: always passes.
+        if not self._public_gate_ok(path):
+            self._drain(length)
             return
 
         if path == "/api/ingest":
-            # LOCAL-ONLY: store bytes, never forward. Filename via X-Filename.
+            # Store the dropped bytes in THIS session's dir; never forward (CS-1).
+            # PUBLIC: enforce the per-session upload caps BEFORE buffering the body,
+            # so an oversized/too-many upload is rejected without holding it in RAM.
+            if pub:
+                ok, code, err = self.registry.check_ingest(comp, length)
+                if not ok:
+                    self._drain(length)
+                    self._json(code, {"ok": False, "error": err})
+                    return
+            body = self.rfile.read(length) if length else b""
             fn = self.headers.get("X-Filename", "drop.bin")
-            entry = self.companion.ingest_bytes(fn, body)
-            self._json(200, {"ok": True, "ingested": entry,
-                             "files": self.companion.session_files()})
+            entry = comp.ingest_bytes(fn, body)
+            self._json(200, {"ok": True, "ingested": entry, "files": comp.session_files()})
             return
 
+        body = self.rfile.read(length) if length else b""
+
         if path == "/api/reset":
-            # account-free "new corpus": clear session + world, LOCAL-ONLY
-            out = self.companion.reset()
-            self._json(200, {**out, "files": self.companion.session_files()})
+            # account-free "new corpus": clear THIS session + revert to the demo.
+            out = comp.reset()
+            self._json(200, {**out, "files": comp.session_files()})
             return
 
         # --- instrument control: region-tilt is the ONLY engine-bound gesture ---
         if path == "/api/steer":
-            p = self.companion.player()
+            p = comp.player()
             if p is None:
                 self._json(409, {"ok": False, "error": "no playable world"})
                 return
@@ -336,7 +648,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
             return
         if path == "/api/play":
-            p = self.companion.player()
+            p = comp.player()
             if p is None:
                 self._json(409, {"ok": False, "error": "no playable world"})
                 return
@@ -344,7 +656,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "playing": True})
             return
         if path == "/api/stop":
-            p = self.companion.player()
+            p = comp.player()
             if p is not None:
                 p.stop()
             self._json(200, {"ok": True, "playing": False})
@@ -357,8 +669,15 @@ class _Handler(BaseHTTPRequestHandler):
                     params = json.loads(body.decode())
                 except Exception:
                     params = {}
+            # PUBLIC: reserve a training slot (1 per session, small global cap) so a
+            # single box can't be swamped; a clean 4xx when the cap bites.
+            if pub:
+                ok, code, err = self.registry.acquire_train(self._sid)
+                if not ok:
+                    self._json(code, {"ok": False, "error": err})
+                    return
             try:
-                out = self.companion.run_train(
+                out = comp.run_train(
                     seed=int(params.get("seed", 0)),
                     sweeps=int(params.get("sweeps", 8)),
                     sigma=params.get("sigma", None))
@@ -368,6 +687,9 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:       # decode/verify/transport
                 self._json(502, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
                 return
+            finally:
+                if pub:
+                    self.registry.release_train(self._sid)
             self._json(200, out)
             return
 
@@ -375,7 +697,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     # --- streaming helpers (chunked; no Content-Length) ---------------------
     def _stream_audio(self):
-        p = self.companion.player()
+        p = self._comp.player()
         if p is None:
             self._send(409, b"no playable world", "text/plain")
             return
@@ -383,6 +705,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "audio/wav")
         self.send_header("Cache-Control", "no-store")
+        self._emit_cookie()
         self.end_headers()
         try:
             for chunk in p.stream_chunks():
@@ -392,14 +715,14 @@ class _Handler(BaseHTTPRequestHandler):
             pass  # client closed the audio stream
 
     def _stream_telemetry(self):
-        import time
-        p = self.companion.player()
+        p = self._comp.player()
         if p is None:
             self._send(409, b"no playable world", "text/plain")
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
+        self._emit_cookie()
         self.end_headers()
         try:
             while True:
@@ -445,19 +768,35 @@ def _require_loopback(host: str) -> str:
 
 
 def serve(cloud_url: str = "inproc", host: str = "127.0.0.1", port: int = 8770,
-          session_dir: Optional[str] = None, public: bool = False) -> ThreadingHTTPServer:
+          session_dir: Optional[str] = None, public: bool = False,
+          access_keys=()) -> ThreadingHTTPServer:
     """Start the companion. Returns the (already-serving is caller's job) server;
     callers in tests use ``server_close`` to stop.
 
-    ``public`` selects the bind policy. When False (default), the host is passed
-    through ``_require_loopback`` — loopback only, the unchanged local default.
-    When True (public mode, Railway deploy only), a non-loopback host such as
-    0.0.0.0 is allowed as-is; the guard is not weakened, it is a separate path
-    reached only by the explicit opt-in."""
+    ``public`` selects both the bind policy AND the access model:
+
+    * LOCAL (``public=False``, default): the host is passed through
+      ``_require_loopback`` (loopback only, unchanged) and a SINGLE shared
+      ``Companion`` serves the trusted local user — no cookies, no caps, no key gate.
+    * PUBLIC (``public=True``, Railway deploy only): 0.0.0.0 is allowed as-is (the
+      guard is a separate path, not weakened) and a ``SessionRegistry`` gives each
+      key-authorized visitor an isolated per-session Companion with upload/training
+      caps. ``access_keys`` (from ``ETS_ACCESS_KEYS``) are the only credentials that
+      can open a session; empty => the gate is CLOSED (nobody gets in)."""
     host = host if public else _require_loopback(host)
+    if public:
+        reg = SessionRegistry(cloud_url=cloud_url, base_dir=session_dir,
+                              access_keys=access_keys)
+        handler = type("_BoundHandler", (_Handler,),
+                       {"registry": reg, "single_companion": None})
+        httpd = ThreadingHTTPServer((host, port), handler)
+        httpd.registry = reg
+        httpd.companion = None
+        return httpd
     comp = Companion(cloud_url=cloud_url, session_dir=session_dir)
-    comp.public = bool(public)   # play/steer-only hosted mode: gates ingest/train/reset
-    handler = type("_BoundHandler", (_Handler,), {"companion": comp})
+    comp.public = False
+    handler = type("_BoundHandler", (_Handler,),
+                   {"registry": None, "single_companion": comp})
     httpd = ThreadingHTTPServer((host, port), handler)
     httpd.companion = comp
     return httpd
@@ -494,13 +833,25 @@ def main(argv=None) -> int:
     else:
         port = int(os.environ.get("ETS_COMPANION_PORT", "8770"))
 
+    # Access keys (PUBLIC mode only): comma-separated opaque strings in
+    # ETS_ACCESS_KEYS. A new key is minted simply by ADDING it to this env var and
+    # restarting — no code change. Empty/unset in public mode => the gate is CLOSED
+    # (fail closed: nobody is authorized). Keys are never logged.
+    access_keys = [k.strip() for k in os.environ.get("ETS_ACCESS_KEYS", "").split(",")
+                   if k.strip()]
+
     httpd = serve(cloud_url=args.cloud_url, host=host, port=port,
-                  session_dir=args.session_dir, public=public)
+                  session_dir=args.session_dir, public=public, access_keys=access_keys)
     args.host, args.port = host, port  # for the log line below
     if public:
         print("[companion] PUBLIC MODE (Railway deploy) — binding a non-loopback listener")
+        n = len(access_keys)
+        print(f"[companion] access gate: {'CLOSED (no ETS_ACCESS_KEYS set)' if n == 0 else f'{n} key(s) configured'}")
     print(f"[companion] UI + API on http://{args.host}:{args.port}  (cloud={args.cloud_url})")
-    print(f"[companion] session dir: {httpd.companion.session_dir}")
+    if httpd.companion is not None:
+        print(f"[companion] session dir: {httpd.companion.session_dir}")
+    else:
+        print(f"[companion] per-visitor session base: {httpd.registry.base_dir}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

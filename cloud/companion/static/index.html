@@ -838,12 +838,10 @@
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
-        // Hosted (public) deploy = play/steer the demo only. Hide the upload/train/
-        // reset controls (they 503 server-side there) so nothing broken is shown.
-        if(w.public){
-          var ss=document.getElementById("sourceSection"); if(ss) ss.style.display="none";
-          var ts=document.getElementById("trainSection"); if(ts) ts.style.display="none";
-        }
+        // Hosted (public) deploy now supports upload-your-own-tracks per visitor
+        // (R6 phase 2): the Source Audio + Train + New corpus controls stay VISIBLE
+        // in both modes. The demo world is playable immediately; Train switches this
+        // session's instrument to the user's own world.
         enableInstrument();
         // Honest steer state: a disarmed region means taps settle no differently.
         instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
@@ -882,19 +880,36 @@
   function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]; }); }
 
   function upload(file){
+    // same-origin: the session cookie is sent automatically. Return {code, j} so
+    // caller can surface honest server-side rejections (e.g. per-session caps).
     return fetch("/api/ingest", {
-      method:"POST",
+      method:"POST", cache:"no-store",
       headers:{ "X-Filename": file.name, "Content-Type":"application/octet-stream" },
       body:file
-    }).then(function(r){ return r.json(); });
+    }).then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); });
+  }
+  function showUploadError(msg){
+    trainNote.textContent = msg;
+    trainNote.style.color = "var(--danger)";
   }
   function handleFiles(list){
     var arr = Array.prototype.slice.call(list); if(!arr.length) return;
+    trainNote.style.color = "";
+    var errMsg = null;
     var chain = Promise.resolve();
-    arr.forEach(function(f){ chain = chain.then(function(){ return upload(f); }); });
-    chain.then(function(last){
-      var files = (last && last.files) || null;
-      if(files){ renderIngestFiles(files); renderLibrary(files); }
+    arr.forEach(function(f){ chain = chain.then(function(){
+      if(errMsg) return null;                 // stop after the first rejection
+      return upload(f).then(function(res){
+        if(res.code >= 400 || (res.j && res.j.ok === false)){
+          errMsg = (res.j && res.j.error) || ("upload rejected (" + res.code + ")");
+        }
+        return null;
+      });
+    }); });
+    // reconcile from server truth (some files may have stored before a rejection),
+    // then surface any honest error message.
+    chain.then(function(){ return loadStatus(); }).then(function(){
+      if(errMsg) showUploadError(errMsg);
     }).catch(noop);
   }
 

@@ -174,6 +174,11 @@ class StreamPlayer:
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
+    def is_playing(self) -> bool:
+        """True while the produce loop is armed. Read-only; the session registry
+        uses it to avoid evicting a session whose audio is actively streaming."""
+        return self._playing.is_set()
+
     def stop(self):
         self._playing.clear()
         # drain
