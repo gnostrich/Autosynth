@@ -377,3 +377,5 @@
 {"head": "45e52a1", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-17T08:35:03+00:00"}
 {"head": "45e52a1", "path": "cloud/tests/test_mvp2_companion.py", "tool": "Edit", "ts": "2026-07-17T08:36:01+00:00"}
 {"head": "45e52a1", "path": "release-manifest.json", "tool": "Edit", "ts": "2026-07-17T08:37:06+00:00"}
+{"head": "f2ffc7b", "path": "cloud/run_companion.sh", "tool": "Write", "ts": "2026-07-17T09:09:45+00:00"}
+{"head": "f2ffc7b", "path": "cloud/LOCAL_DEPLOY.md", "tool": "Write", "ts": "2026-07-17T09:09:59+00:00"}

@@ -529,3 +529,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/static/index.html (2026-07-17T08:35:03+00:00)
 - `Edit` cloud/tests/test_mvp2_companion.py (2026-07-17T08:36:01+00:00)
 - `Edit` release-manifest.json (2026-07-17T08:37:06+00:00)
+
+### at `f2ffc7b`
+- `Write` cloud/run_companion.sh (2026-07-17T09:09:45+00:00)
+- `Write` cloud/LOCAL_DEPLOY.md (2026-07-17T09:09:59+00:00)

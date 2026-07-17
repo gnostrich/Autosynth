@@ -68,8 +68,14 @@ class Companion:
         # playable world for the INSTRUMENT (default: the repo's founding world).
         self.seed = int(seed)
         if play_world is None:
-            cand = _REPO_ROOT / "corpus.etsworld"
-            play_world = str(cand) if cand.exists() else None
+            # prefer the COMMITTED self-contained demo (embedded audio, no external
+            # files) so a fresh clone plays out of the box; fall back to a local
+            # corpus.etsworld if present (dev machines).
+            for _name in ("demo.etsworld", "corpus.etsworld"):
+                cand = _REPO_ROOT / _name
+                if cand.exists():
+                    play_world = str(cand)
+                    break
         # remember the demo/founding world so reset() can revert to it.
         self._demo_world = play_world
         self.play_world = play_world
