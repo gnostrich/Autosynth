@@ -564,3 +564,6 @@
 {"head": "a6fa0bd", "path": "cloud/companion/static/access.html", "tool": "Edit", "ts": "2026-07-17T20:49:17+00:00"}
 {"head": "a6fa0bd", "path": "cloud/companion/static/access.html", "tool": "Edit", "ts": "2026-07-17T20:49:18+00:00"}
 {"head": "a6fa0bd", "path": "cloud/tests/test_fe_render_smoke.py", "tool": "Edit", "ts": "2026-07-17T20:49:32+00:00"}
+{"head": "300173d", "path": "cloud/tests/test_web_field.py", "tool": "Edit", "ts": "2026-07-17T20:52:04+00:00"}
+{"head": "300173d", "path": "cloud/tests/test_public_keyed_gate.py", "tool": "Edit", "ts": "2026-07-17T20:52:16+00:00"}
+{"head": "300173d", "path": "cloud/tests/test_visitor_tier.py", "tool": "Edit", "ts": "2026-07-17T20:52:17+00:00"}

@@ -43,9 +43,15 @@ _NODE = shutil.which("node")
 
 def _inline_js() -> str:
     html = _INDEX.read_text()
-    m = re.search(r"<script>(.*)</script>", html, re.S)
-    assert m, "no inline <script> found in index.html"
-    return m.group(1)
+    # index.html carries more than one inline <script> (the ambient-chrome prism block
+    # + the main app). Return the MAIN app script — the one holding the FIELD logic —
+    # rather than a greedy span across both (which would swallow a literal </script>).
+    blocks = re.findall(r"<script>(.*?)</script>", html, re.S)
+    assert blocks, "no inline <script> found in index.html"
+    for b in blocks:
+        if "FIELD PURE LOGIC" in b:
+            return b
+    return max(blocks, key=len)
 
 
 def _pure_logic_block() -> str:

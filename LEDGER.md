@@ -772,3 +772,8 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/static/access.html (2026-07-17T20:49:17+00:00)
 - `Edit` cloud/companion/static/access.html (2026-07-17T20:49:18+00:00)
 - `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T20:49:32+00:00)
+
+### at `300173d`
+- `Edit` cloud/tests/test_web_field.py (2026-07-17T20:52:04+00:00)
+- `Edit` cloud/tests/test_public_keyed_gate.py (2026-07-17T20:52:16+00:00)
+- `Edit` cloud/tests/test_visitor_tier.py (2026-07-17T20:52:17+00:00)

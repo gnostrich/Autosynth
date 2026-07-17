@@ -77,7 +77,7 @@ def test_public_keyed_anon_is_visitor_tier_no_access_wall(tmp_path, monkeypatch)
         # / serves the app, not the access page.
         code, body = _req(url + "/")
         assert code == 200, code
-        assert b"Equilibrium Tape Synth" in body, "should serve the app"
+        assert b'id="tabs"' in body, "should serve the app"   # app-only marker (post-rebrand)
         assert b"access-controlled" not in body, "no access wall for keyless visitors"
         # read routes work without a token; can_train is FALSE for the visitor.
         code, sbody = _req(url + "/api/status")
