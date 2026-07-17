@@ -278,6 +278,13 @@
     font-size: var(--fs-micro); letter-spacing:.06em; color: var(--muted);
   }
   .field-status.settling{ color: var(--accent); }
+  .field-legend{
+    display:flex; flex-wrap:wrap; gap: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-2); font-size: var(--fs-micro);
+  }
+  .field-legend .leg{ display:inline-flex; align-items:center; gap:6px; color: var(--muted); max-width:220px; }
+  .field-legend .leg-sw{ width:11px; height:11px; border-radius:3px; flex:0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); }
+  .field-legend .leg-nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family: var(--font-mono); }
   .instrument .inst-inner{ transition: filter .2s ease, opacity .2s ease; }
   .instrument:not(.ready) .inst-inner{ filter: blur(1.6px); opacity:.42; pointer-events:none; user-select:none; }
   .inst-lock{
@@ -560,7 +567,7 @@
       <!-- STAGED PROGRESS — lit ONLY from real /api/status stage transitions (§4A).
            No timer-driven fake progress: rows light as the backend reports them. -->
       <div class="stages" id="trainStages" aria-live="polite">
-        <div class="stage" data-stage="ingest"><span class="dot2"></span>ingest (local)</div>
+        <div class="stage" data-stage="ingest"><span class="dot2"></span>ingest</div>
         <div class="stage" data-stage="stage3"><span class="dot2"></span>stage-3 encode</div>
         <div class="stage" data-stage="cloud_fit"><span class="dot2"></span>cloud anchor-fit <span class="hb" style="display:none" id="fitHb"></span></div>
         <div class="stage" data-stage="verify"><span class="dot2"></span>verify receipt</div>
@@ -618,6 +625,7 @@
             <span class="hint">hover + scroll = bias · Ctrl+scroll / pinch = zoom · fill = settled telemetry</span>
           </div>
           <div class="field-wrap">
+            <div class="field-legend" id="fieldLegend" aria-label="Track legend — colour and name of each source track"></div>
             <canvas id="fieldCanvas" class="field-canvas" role="application"
               aria-label="The field — every square is a role, glowing by its live settled weight (the engine's answer, never your input echoed back). Scroll to bias it; the engine re-settles."></canvas>
             <div class="field-status" id="fieldStatus" aria-live="polite"></div>
@@ -875,6 +883,9 @@
         world.isTrained = !!w.is_trained;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
         enableInstrument();
+        // STATIC per-world field telemetry (profiles + unit pools + honest names):
+        // the TRACK and UNIT grains of the ladder. Absent -> flat role fallback.
+        fieldApplyStatic(w);
         // Honest steer state: a disarmed region means taps settle no differently.
         instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
           + (world.openedSetId ? " · shared set" : "")
@@ -1057,13 +1068,24 @@
      self-sizing is present and correctly refuses (no sub-structure telemetry).
      ========================================================================== */
 
-  /* ===== FIELD PURE LOGIC (test-extractable: bias/steer math + noise floor) =====
-     Kept as free functions with no DOM/canvas refs so the harness can run them in
-     node for the soft-saturation + envelope + participation-ratio checks. */
+  /* ===== FIELD PURE LOGIC (test-extractable: full ladder model + bias/steer math) =====
+     Free functions with NO DOM/canvas refs so the harness runs them in node: the
+     participation-ratio floor, the TRACK->ROLE->UNIT square TREE built purely from a
+     telemetry-state object `st` (mirrors ui-v6/ets/instrument/field.py's FieldModel),
+     hit-testing, the legend, and the composite region vector. `st` fields:
+       roleact   [float]                      per-role settled activity (/api/telemetry roles)
+       nowplaying {track_id: float}            per-track live activity (/api/telemetry)
+       profiles  {track_id: [float]*M}         per-track anchor-mass profile (/api/world, static)
+       unitPools {role: [{unit_id,track_id,band,profile:[float]*M}]}  (/api/world, static)
+       names     {track_id: str}               honest per-track display name (/api/world, static)
+       bias      {keyStr: float}               operator INPUT (the ring); never a fill. */
   var FIELD_SAFE_MAG   = 1.0;    // = architecture-v6/ets/panel/envelope.SAFE_REGION_MAGNITUDE
                                  //   (the cap clamp_region enforces on the wire); pinned by test.
   var FIELD_BIAS_LIMIT = 1.0;    // soft-saturation stop for the operator bias (± envelope)
   var FIELD_BIAS_STEP  = 0.125;  // bias accumulated per wheel notch
+
+  function fieldClamp01(v){ v = +v || 0; return v < 0 ? 0 : (v > 1 ? 1 : v); }
+  function fieldKeyStr(key){ return JSON.stringify(key); }
 
   // Participation-ratio noise-floor criterion — the SAME (Σw)²/Σw² that self-sized
   // the anchor count M (architecture-v6/ets/functional/anchors.py::effective_rank),
@@ -1078,58 +1100,216 @@
   // effective sub-modes (round(PR) >= 2, the same rounding the anchor count uses).
   function fieldClearsFloor(w){ return Math.round(fieldParticipationRatio(w)) >= 2; }
 
-  // Accumulate scroll bias on role r, SOFT-saturating at ±FIELD_BIAS_LIMIT. The stop
-  // is a saturation of the INPUT; the region lane is an exponential tilt, so even the
-  // full down-stop re-weights and never mutes (WEB-FIELD-B). NEVER a mute path.
-  function fieldAddBias(bias, r, delta){
-    var b = (bias[r] || 0) + delta;
-    if(b >  FIELD_BIAS_LIMIT) b =  FIELD_BIAS_LIMIT;
-    if(b < -FIELD_BIAS_LIMIT) b = -FIELD_BIAS_LIMIT;
-    bias[r] = b;
-    return b;
+  // truncate-middle a long filename so head+tail stay legible (legend + labels).
+  function fieldTruncMiddle(s, max){
+    s = String(s == null ? "" : s);
+    if(s.length <= max) return s;
+    var keep = max - 1, head = Math.ceil(keep/2), tail = Math.floor(keep/2);
+    return s.slice(0, head) + "…" + s.slice(s.length - tail);
+  }
+  function fieldTrackName(st, t){
+    var n = st.names && st.names[t];
+    return (n !== undefined && n !== null && n !== "") ? String(n) : ("track " + t);
   }
 
-  // The composite region LEAN all current square biases add up to, scaled to the
-  // safe envelope. Each role square leans along its OWN axis e_r, so
-  // region[r] = bias[r]·FIELD_SAFE_MAG and |region[r]| <= FIELD_SAFE_MAG = the wire
-  // cap. This is the ONLY thing the field hands toward the engine; it goes out
-  // through the EXISTING region path (POST /api/steer -> set_region -> clamp_region).
-  function fieldRegionVector(bias, M){
-    var out = new Array(M);
-    for(var r=0;r<M;r++){ out[r] = (bias[r] || 0) * FIELD_SAFE_MAG; }
+  // ---- the square tree (built ONLY from telemetry `st`; FIELD-E, no fabrication) ----
+  // A square: {kind, key, label, track, settled, bias, expandable, nChildren}. `settled`
+  // is the engine's answer (fill); `bias` the operator input (ring). nChildren is the
+  // REAL interactive child count the expanded view will show (operator hard rule):
+  // never a padded/placeholder count — real or absent.
+  function fieldMkSquare(kind, key, label, track, settled, bias, expandable, nChildren){
+    return { kind:kind, key:key, label:label, track:track,
+             settled:fieldClamp01(settled), bias:(bias||0),
+             expandable:!!expandable, nChildren:(nChildren|0) };
+  }
+  function fieldTrackIds(st){
+    var ids = {};
+    for(var t in (st.profiles||{})) ids[t] = 1;
+    for(var t in (st.nowplaying||{})) ids[t] = 1;
+    return Object.keys(ids).map(Number).sort(function(a,b){ return a-b; });
+  }
+  function fieldTrackSquares(st){
+    return fieldTrackIds(st).map(function(t){
+      var p = st.profiles && st.profiles[t];
+      var exp = p ? fieldClearsFloor(p) : false;
+      var kids = exp ? fieldRolesOfTrack(st, t).length : 0;   // REAL child count
+      var key = ["track", t];
+      return fieldMkSquare("track", key, fieldTrackName(st, t), t,
+        (st.nowplaying && st.nowplaying[t]) || 0,
+        st.bias[fieldKeyStr(key)] || 0, exp && kids >= 1, kids);
+    });
+  }
+  function fieldRoleSquare(st, r){
+    var key = ["role", r];
+    var lvl = (st.roleact && r >= 0 && r < st.roleact.length) ? st.roleact[r] : 0;
+    var pool = (st.unitPools && st.unitPools[r]) || [];
+    var w = [];                                     // sub-structure: unit load on THIS role
+    for(var i=0;i<pool.length;i++){
+      var pr = pool[i].profile; if(pr && pr.length > r) w.push(pr[r]);
+    }
+    var exp = fieldClearsFloor(w);
+    var kids = exp ? fieldUnitSquares(st, r).length : 0;      // REAL child count = pool size
+    return fieldMkSquare("role", key, "R"+r, null, lvl,
+      st.bias[fieldKeyStr(key)] || 0, exp && kids >= 1, kids);
+  }
+  function fieldRoleSquaresFlat(st){
+    var out = [], n = (st.roleact ? st.roleact.length : 0);
+    for(var r=0;r<n;r++) out.push(fieldRoleSquare(st, r));
     return out;
   }
-  /* ===== END FIELD PURE LOGIC ===== */
+  function fieldRolesOfTrack(st, t){
+    var p = st.profiles && st.profiles[t];
+    if(!p || !fieldClearsFloor(p)) return [];
+    var kEff = Math.min(p.length, Math.round(fieldParticipationRatio(p)));
+    var order = p.map(function(v,i){ return i; })
+                 .sort(function(a,b){ return p[b] - p[a]; })
+                 .slice(0, kEff)
+                 .sort(function(a,b){ return a - b; });
+    return order.map(function(r){ return fieldRoleSquare(st, r); });
+  }
+  function fieldUnitSquares(st, role){
+    var pool = (st.unitPools && st.unitPools[role]) || [];
+    return pool.map(function(u){
+      var tid = u.track_id|0, uid = u.unit_id|0;
+      var key = ["unit", role, uid, tid];
+      return fieldMkSquare("unit", key, "u"+uid, tid,
+        (st.nowplaying && st.nowplaying[tid]) || 0,      // disclosed track-grain fill
+        st.bias[fieldKeyStr(key)] || 0, false, 0);       // units are ATOMIC
+    });
+  }
+  function fieldChildren(st, key){
+    if(key[0] === "track") return fieldRolesOfTrack(st, key[1]);
+    if(key[0] === "role")  return fieldUnitSquares(st, key[1]);
+    return [];                                           // unit: atomic
+  }
+  // the squares of the CURRENT zoom view (stack = array of keys). Root: TRACK squares
+  // if the world named any (profiles/nowplaying), else the honest flat ROLE field.
+  function fieldCurrentSquares(st, stack){
+    if(!stack || !stack.length){
+      var ts = fieldTrackSquares(st);
+      return ts.length ? ts : fieldRoleSquaresFlat(st);
+    }
+    return fieldChildren(st, stack[stack.length - 1]);
+  }
+  function fieldBreadcrumb(st, stack){
+    var root = fieldTrackSquares(st).length ? "TRACKS" : "ROLES";
+    if(!stack || !stack.length) return root;
+    var parts = ["TRACKS"];
+    for(var i=0;i<stack.length;i++){
+      var k = stack[i];
+      parts.push(k[0] === "track" ? fieldTrackName(st, k[1]) : ("R"+k[1]));
+    }
+    return parts.join(" › ");
+  }
+  // the TRACK LEGEND: one entry per track the world named, 1:1 with the payload
+  // (FIELD-E). No entry without a payload track; name = honest display name.
+  function fieldLegendEntries(st){
+    return fieldTrackIds(st).map(function(t){
+      return { track: t, name: fieldTrackName(st, t) };
+    });
+  }
 
-  var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus");
-  var fieldCtx = fieldCanvas ? fieldCanvas.getContext("2d") : null;
-  var fieldSettled = [];    // FILL brightness store — WRITTEN ONLY by fieldApplySettled
-  var fieldBias = [];       // operator BIAS store (the ring) — written by the wheel handler
-  var fieldHover = -1;      // hovered square index (wheel targeting only; inert)
-  var fieldPending = false; // a bias gesture awaiting the engine's re-settlement
-  // Per-role sub-structure weight vectors. The web telemetry (/api/telemetry,
-  // /api/world) emits NO per-role sub-feed, so this stays empty and every role
-  // square is atomic; the PR floor then refuses to drill. If the bridge ever emits
-  // sub-structure, drilling arms automatically by the same criterion.
-  var FIELD_SUBSTRUCTURE = {};
-  function fieldSubVector(k){ return FIELD_SUBSTRUCTURE[k] || []; }
-
-  function fieldCount(){ return fieldSettled.length; }   // squares derive from telemetry
+  // ---- grid + hit-testing (pure) ----
   function fieldGrid(n){
     var cols = Math.max(1, Math.ceil(Math.sqrt(n)));
     var rows = Math.max(1, Math.ceil(n / cols));
     return { rows:rows, cols:cols };
   }
-  function fieldSquareAt(x, y){
-    var n = fieldCount(); if(n === 0) return -1;
+  // the square INDEX at (x,y) in a W×H box holding n squares, or -1. Empty grid cells
+  // (index >= n) return -1 — a non-entity is NOT a hit-target (operator hard rule:
+  // never bias/hover/affordance an empty padded cell; real or absent).
+  function fieldHitIndex(x, y, W, H, n){
+    if(n <= 0) return -1;
     var g = fieldGrid(n);
-    var w = fieldCanvas.clientWidth / g.cols, h = fieldCanvas.clientHeight / g.rows;
+    var w = W / g.cols, h = H / g.rows;
     if(w <= 0 || h <= 0) return -1;
     var c = Math.floor(x / w), r = Math.floor(y / h);
     if(c < 0 || c >= g.cols || r < 0 || r >= g.rows) return -1;
     var k = r * g.cols + c;
     return (k >= 0 && k < n) ? k : -1;
   }
+
+  // Accumulate scroll bias on a square (key -> keyStr), SOFT-saturating at
+  // ±FIELD_BIAS_LIMIT. The stop is a saturation of the INPUT; the region lane is an
+  // exponential tilt, so even the full down-stop re-weights and never mutes
+  // (WEB-FIELD-B). NEVER a mute path. `bias` is the keyStr->value ledger.
+  function fieldAddBias(bias, keyStr, delta){
+    var b = (bias[keyStr] || 0) + delta;
+    if(b >  FIELD_BIAS_LIMIT) b =  FIELD_BIAS_LIMIT;
+    if(b < -FIELD_BIAS_LIMIT) b = -FIELD_BIAS_LIMIT;
+    if(Math.abs(b) < 1e-9) delete bias[keyStr]; else bias[keyStr] = b;
+    return b;
+  }
+
+  // the region-space DIRECTION a square's bias leans toward, each from ENGINE-EMITTED
+  // data (no fabricated join): a ROLE is its own axis e_r; a TRACK leans along its
+  // anchor-mass profile; a UNIT leans along its anchor profile (peak-normalized). K=M.
+  function fieldDirection(st, key, K){
+    var v = null;
+    if(key[0] === "role"){
+      var r = key[1]|0; if(r < 0 || r >= K) return null;
+      var d0 = new Array(K); for(var i=0;i<K;i++) d0[i] = 0; d0[r] = 1; return d0;
+    } else if(key[0] === "track"){
+      v = st.profiles && st.profiles[key[1]];
+    } else {                                            // ["unit", role, uid, tid]
+      var pool = (st.unitPools && st.unitPools[key[1]]) || [];
+      for(var j=0;j<pool.length;j++){
+        if((pool[j].unit_id|0) === (key[2]|0) && (pool[j].track_id|0) === (key[3]|0)){
+          v = pool[j].profile; break;
+        }
+      }
+    }
+    if(!v) return null;
+    var peak = 0; for(var i=0;i<v.length;i++){ var a = Math.abs(v[i]); if(a > peak) peak = a; }
+    if(peak <= 0) return null;
+    var d = new Array(K); for(var i=0;i<K;i++) d[i] = 0;
+    var n = Math.min(K, v.length); for(var i=0;i<n;i++) d[i] = v[i] / peak;
+    return d;
+  }
+  // The composite region LEAN across ALL grains' biases (persisting through zoom),
+  // scaled to the safe envelope then PEAK-PINNED to it (clamp_region semantics: a
+  // uniform scale preserving direction, |region[r]| <= FIELD_SAFE_MAG). This is the
+  // ONLY thing the field hands toward the engine, via the EXISTING region path
+  // (POST /api/steer -> set_region -> clamp_region). Soft-saturating, envelope-pinned.
+  function fieldRegionVector(st, K){
+    var out = new Array(K); for(var i=0;i<K;i++) out[i] = 0;
+    var bias = st.bias || {};
+    for(var ks in bias){
+      if(!bias.hasOwnProperty(ks)) continue;
+      var b = bias[ks]; if(!b) continue;
+      var d = fieldDirection(st, JSON.parse(ks), K);
+      if(!d) continue;
+      for(var i=0;i<K;i++) out[i] += b * d[i];
+    }
+    var peak = 0;
+    for(var i=0;i<K;i++){ out[i] *= FIELD_SAFE_MAG; var a = Math.abs(out[i]); if(a > peak) peak = a; }
+    if(peak > FIELD_SAFE_MAG){ var s = FIELD_SAFE_MAG / peak; for(var i=0;i<K;i++) out[i] *= s; }
+    return out;
+  }
+  /* ===== END FIELD PURE LOGIC ===== */
+
+  var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus"), fieldLegend = $("fieldLegend");
+  var fieldCtx = fieldCanvas ? fieldCanvas.getContext("2d") : null;
+  var FIELD_HEADER = 22;    // top strip reserved for the breadcrumb (grid sits below)
+  // ---- TELEMETRY-FED STORES (the engine's answer) — WRITTEN ONLY by the appliers ----
+  var fieldSettled    = [];  // per-role settled activity (fill) — WRITTEN ONLY by fieldApplySettled
+  var fieldNowPlaying = {};  // track_id -> live activity (fill) — WRITTEN ONLY by fieldApplySettled
+  var fieldProfiles   = {};  // track_id -> anchor profile (static) — WRITTEN ONLY by fieldApplyStatic
+  var fieldUnitPools  = {};  // role -> unit pool (static)          — WRITTEN ONLY by fieldApplyStatic
+  var fieldTrackNames = {};  // track_id -> honest name (static)    — WRITTEN ONLY by fieldApplyStatic
+  // ---- OPERATOR INPUT + view state (never a fill) ----
+  var fieldBias    = {};     // keyStr -> bias (the ring) — written by the wheel handler
+  var fieldStack   = [];     // zoom path (array of square keys)
+  var fieldHover   = null;   // hovered square key (wheel targeting only; inert)
+  var fieldPending = false;  // a bias gesture awaiting the engine's re-settlement
+
+  // the telemetry-state object the pure ladder functions consume (reads stores only).
+  function fieldState(){
+    return { roleact:fieldSettled, nowplaying:fieldNowPlaying, profiles:fieldProfiles,
+             unitPools:fieldUnitPools, names:fieldTrackNames, bias:fieldBias };
+  }
+  function fieldViewSquares(){ return fieldCurrentSquares(fieldState(), fieldStack); }
+  function fieldCount(){ return fieldViewSquares().length; }   // squares of the current view
   function cssVar(name){
     try{ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
     catch(e){ return "#888"; }
@@ -1138,10 +1318,49 @@
     var hue = (i * 47) % 360;                 // legible spread; role family, not a track
     return "hsl(" + hue + ",55%,58%)";
   }
+  // the SAME deterministic per-track palette the Source Library + legend use, so a
+  // track's square and its legend swatch can never disagree.
+  function fieldTrackColor(tid){
+    var n = TRACK_COLORS.length;
+    return TRACK_COLORS[(((tid|0) % n) + n) % n];
+  }
+  function fieldSquareColor(sq){
+    return (sq.track !== null && sq.track !== undefined)
+      ? fieldTrackColor(sq.track) : fieldRoleColor(sq.key[1]);
+  }
   function fieldSetStatus(msg, settling){
     if(!fieldStatus) return;
     fieldStatus.textContent = msg || "";
     fieldStatus.classList.toggle("settling", !!settling);
+  }
+  // the square at (x,y): map to the grid BELOW the header; empty grid cells are not
+  // hit-targets (fieldHitIndex returns -1 for index >= real count). Returns a square
+  // object or null — never a padded/placeholder entity.
+  function fieldSquareAt(x, y){
+    var sqs = fieldViewSquares();
+    var idx = fieldHitIndex(x, y - FIELD_HEADER, fieldCanvas.clientWidth,
+                            fieldCanvas.clientHeight - FIELD_HEADER, sqs.length);
+    return idx >= 0 ? sqs[idx] : null;
+  }
+  function fieldKeyEq(a, b){ return a && b && fieldKeyStr(a) === fieldKeyStr(b); }
+
+  // The TRACK LEGEND (swatch + real name): shown at the track-root view only, 1:1 with
+  // the payload's track ids/names (FIELD-E — no entry without a payload track).
+  function fieldRenderLegend(){
+    if(!fieldLegend) return;
+    var st = fieldState();
+    var atTrackRoot = (!fieldStack.length && fieldTrackSquares(st).length > 0);
+    if(!atTrackRoot){ fieldLegend.innerHTML = ""; fieldLegend.style.display = "none"; return; }
+    fieldLegend.style.display = "";
+    fieldLegend.innerHTML = "";
+    fieldLegendEntries(st).forEach(function(e){
+      var chip = document.createElement("span"); chip.className = "leg"; chip.title = e.name;
+      var sw = document.createElement("span"); sw.className = "leg-sw";
+      sw.style.background = fieldTrackColor(e.track);
+      var nm = document.createElement("span"); nm.className = "leg-nm";
+      nm.textContent = fieldTruncMiddle(e.name, 22);
+      chip.appendChild(sw); chip.appendChild(nm); fieldLegend.appendChild(chip);
+    });
   }
 
   function fieldDraw(){
@@ -1153,48 +1372,71 @@
     }
     fieldCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     fieldCtx.clearRect(0, 0, W, H);
-    var n = fieldCount();
+    fieldRenderLegend();
+    var st = fieldState();
+    // breadcrumb header (with a back-out affordance only when drilled in).
+    fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
+    fieldCtx.fillText(fieldBreadcrumb(st, fieldStack) +
+      (fieldStack.length ? "   (click header / Ctrl+scroll out)" : ""), 8, 15);
+    var sqs = fieldViewSquares(), n = sqs.length;
     if(n === 0){
-      fieldCtx.fillStyle = cssVar("--faint");
-      fieldCtx.font = "13px " + cssVar("--font-ui");
-      fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field", 14, 26);
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field",
+                        14, FIELD_HEADER + 20);
       return;
     }
-    var g = fieldGrid(n), cw = W / g.cols, ch = H / g.rows;
+    var g = fieldGrid(n), cw = W / g.cols, ch = (H - FIELD_HEADER) / g.rows;
     for(var k=0;k<n;k++){
+      var sq = sqs[k];
       var r = Math.floor(k / g.cols), c = k % g.cols;
-      var x = c * cw, y = r * ch;
-      var settled = Math.max(0, Math.min(1, fieldSettled[k] || 0));  // FILL = settled telemetry ONLY
-      fieldCtx.globalAlpha = 0.15 + 0.85 * settled;
-      fieldCtx.fillStyle = fieldRoleColor(k);
+      var x = c * cw, y = FIELD_HEADER + r * ch;
+      fieldCtx.globalAlpha = 0.15 + 0.85 * sq.settled;   // FILL = settled telemetry ONLY
+      fieldCtx.fillStyle = fieldSquareColor(sq);
       fieldCtx.fillRect(x+3, y+3, cw-6, ch-6);
       fieldCtx.globalAlpha = 1;
       fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
       fieldCtx.strokeRect(x+3.5, y+3.5, cw-7, ch-7);
-      if(k === fieldHover){                                          // hover highlight (inert)
+      if(fieldKeyEq(sq.key, fieldHover)){                // hover highlight (inert)
         fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 1;
         fieldCtx.strokeRect(x+4.5, y+4.5, cw-9, ch-9);
       }
-      var b = fieldBias[k] || 0;                                     // RING = operator bias input
-      if(Math.abs(b) > 1e-9){
-        fieldCtx.strokeStyle = b > 0 ? "rgb(255,200,40)" : "rgb(80,200,255)";
-        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(b));
+      if(Math.abs(sq.bias) > 1e-9){                      // RING = operator bias input
+        fieldCtx.strokeStyle = sq.bias > 0 ? "rgb(255,200,40)" : "rgb(80,200,255)";
+        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(sq.bias));
         fieldCtx.strokeRect(x+6, y+6, cw-12, ch-12);
       }
+      // LABEL: track squares show the real (truncated) name; role/unit their id.
+      var label = (sq.kind === "track") ? fieldTruncMiddle(sq.label, Math.max(6, Math.floor(cw/8)))
+                                        : sq.label;
       fieldCtx.fillStyle = cssVar("--ink"); fieldCtx.font = "11px " + cssVar("--font-mono");
-      fieldCtx.fillText("R" + k, x+8, y+18);
+      fieldCtx.fillText(label, x+8, y+18);
       fieldCtx.fillStyle = cssVar("--muted");
-      fieldCtx.fillText(Math.round(settled*100) + "", x+8, y+ch-10);
-      if(fieldClearsFloor(fieldSubVector(k))){                       // affordance only if real sub-structure
-        fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.fillText("▸", x+cw-16, y+ch-10);
+      fieldCtx.fillText(Math.round(sq.settled*100) + "", x+8, y+ch-10);
+      if(sq.expandable){                                 // ▸n = REAL child count only
+        fieldCtx.fillStyle = cssVar("--faint");
+        fieldCtx.fillText("▸"+sq.nChildren, x+cw-24, y+ch-10);
       }
     }
   }
 
-  // The telemetry applier: the SINGLE writer of the fill/brightness store. Input
-  // handlers never call it (WEB-FIELD-INV). Empty roles -> empty field (WEB-FIELD-E).
-  function fieldApplySettled(roles){
-    fieldSettled = roles.map(function(v){ return Math.max(0, Math.min(1, v)); });
+  // ---- THE TELEMETRY APPLIERS: the SOLE writers of the fill stores (WEB-FIELD-INV).
+  // Input handlers never call these. Empty telemetry -> empty field (WEB-FIELD-E).
+  function fieldApplySettled(d){
+    var roles = (d && d.roles) || [];
+    fieldSettled = roles.map(function(v){ return fieldClamp01(v); });
+    var np = (d && d.nowplaying) || {}, m = {};
+    for(var t in np){ if(np.hasOwnProperty(t)) m[t] = fieldClamp01(np[t]); }
+    fieldNowPlaying = m;
+    fieldDraw();
+  }
+  // the STATIC per-world section (/api/world): per-track profiles + per-role unit
+  // pools + honest names. These carry the TRACK and UNIT grains of the ladder; drawn
+  // as structure (expandability/direction/label), never as fill brightness.
+  function fieldApplyStatic(w){
+    fieldProfiles   = (w && w.profiles)    || {};
+    fieldUnitPools  = (w && w.unit_pools)  || {};
+    fieldTrackNames = (w && w.track_names) || {};
+    fieldStack = [];                                    // a new world resets the drill
     fieldDraw();
   }
 
@@ -1209,8 +1451,8 @@
   }
   function sendSteerNow(){
     if(!world.ready) return;
-    // build the composite region lean from the current bias ledger and emit it.
-    region = fieldRegionVector(fieldBias, fieldCount() || world.M || 0);
+    // the composite region lean across ALL grains' biases (length M), envelope-pinned.
+    region = fieldRegionVector(fieldState(), world.M || 0);
     // §4A(c): a pending "settling" cue until a telemetry frame carries the engine's
     // RE-SETTLEMENT — never echo the input as instant brightness. On a region-
     // DISARMED set (or when idle, no telemetry to clear it) show no cue.
@@ -1226,34 +1468,52 @@
     ev.preventDefault();
     if(!world.ready) return;
     var rect = fieldCanvas.getBoundingClientRect();
-    var i = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
     var notches = -ev.deltaY / 100;              // wheel up = favour (positive bias)
     if(ev.ctrlKey){                              // Ctrl+scroll / trackpad pinch = zoom
-      fieldZoom(i, notches);
+      fieldZoom(sq, notches);
       return;
     }
-    if(i < 0 || !notches) return;
-    fieldAddBias(fieldBias, i, notches * FIELD_BIAS_STEP);
+    if(!sq || !notches) return;
+    fieldAddBias(fieldBias, fieldKeyStr(sq.key), notches * FIELD_BIAS_STEP);
     sendSteerNow();
     fieldDraw();
   }
   function fieldOnMove(ev){                        // passive hover targeting ONLY — inert
     var rect = fieldCanvas.getBoundingClientRect();
-    var i = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
-    if(i !== fieldHover){ fieldHover = i; fieldDraw(); }
+    var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    var key = sq ? sq.key : null;
+    // a real tooltip on the canvas: track/unit -> source track name; role -> its id.
+    if(fieldCanvas) fieldCanvas.title = sq
+      ? ((sq.track !== null && sq.track !== undefined)
+          ? fieldTrackName(fieldState(), sq.track) : sq.label) : "";
+    if(!fieldKeyEq(key, fieldHover)){ fieldHover = key; fieldDraw(); }
   }
-  function fieldZoom(i, amount){
-    // Self-sizing drill: refuse unless the square's sub-structure clears the noise
-    // floor (round(PR) >= 2). Over the web there is no per-role sub-feed, so this
-    // always refuses honestly — depth ends at role grain.
-    if(amount > 0 && i >= 0){
-      if(fieldClearsFloor(fieldSubVector(i))){
-        /* real sub-structure would open here — none exists over the web API today */
-        fieldSetStatus("", false);
-      } else {
-        fieldSetStatus("atomic — no sub-structure telemetry over the web API", false);
-      }
+  function fieldZoom(sq, amount){
+    if(amount > 0){ fieldZoomInto(sq); } else if(amount < 0){ fieldZoomOut(); }
+  }
+  function fieldZoomInto(sq){
+    // self-sizing drill: REFUSED unless the square's sub-structure clears the noise
+    // floor (round(PR) >= 2). Atomic squares (units, or a single-mode parent) refuse.
+    if(!sq) return false;
+    if(!sq.expandable){
+      fieldSetStatus("atomic — nothing distinct inside above the noise floor", false);
+      return false;
     }
+    fieldStack.push(sq.key); fieldHover = null; fieldSetStatus("", false); fieldDraw();
+    return true;
+  }
+  function fieldZoomOut(){
+    if(!fieldStack.length) return false;
+    fieldStack.pop(); fieldHover = null; fieldSetStatus("", false); fieldDraw();
+    return true;
+  }
+  function fieldOnClick(ev){                       // click affordance: header = out; square = in
+    if(!world.ready) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    if(y < FIELD_HEADER){ fieldZoomOut(); return; }
+    fieldZoomInto(fieldSquareAt(x, y));           // refused (honestly) if atomic
   }
   var fieldPinch = 0;
   function fieldTouchDist(ev){
@@ -1264,7 +1524,7 @@
   function fieldTouchStart(ev){
     if(ev.touches && ev.touches.length === 2){ fieldPinch = fieldTouchDist(ev); }
   }
-  function fieldTouchMove(ev){                     // two-finger pinch = zoom (same honesty)
+  function fieldTouchMove(ev){                     // two-finger pinch = zoom (same self-sizing)
     if(ev.touches && ev.touches.length === 2){
       ev.preventDefault();
       var d = fieldTouchDist(ev), delta = d - fieldPinch; fieldPinch = d;
@@ -1278,7 +1538,8 @@
     if(!fieldCanvas) return;
     fieldCanvas.addEventListener("wheel", fieldOnWheel, { passive:false });
     fieldCanvas.addEventListener("pointermove", fieldOnMove);
-    fieldCanvas.addEventListener("pointerleave", function(){ fieldHover = -1; fieldDraw(); });
+    fieldCanvas.addEventListener("pointerleave", function(){ fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw(); });
+    fieldCanvas.addEventListener("click", fieldOnClick);
     fieldCanvas.addEventListener("touchstart", fieldTouchStart, { passive:false });
     fieldCanvas.addEventListener("touchmove", fieldTouchMove, { passive:false });
     fieldDraw();
@@ -1423,7 +1684,7 @@
   function applyTelemetry(d){
     var roles = d && d.roles;
     if(roles && roles.length){
-      fieldApplySettled(roles);   // FILL = settled telemetry (the ONLY brightness write)
+      fieldApplySettled(d);       // FILL = settled telemetry (roles + per-track nowplaying)
       updateMeters(roles);
     }
     if(typeof d.t === "number") updateTape(d.t);

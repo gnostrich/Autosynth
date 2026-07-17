@@ -130,6 +130,7 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
             page.click("#tabPlay")
             assert page.query_selector("#steerSurface") is not None, "field slot missing"
             assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
+            assert page.query_selector("#fieldLegend") is not None, "track legend missing"
             assert page.query_selector("#padRow") is None, "role pads still present"
             assert page.query_selector("#xyPad") is None, "XY vector pad still present"
             assert page.query_selector("#puck") is None, "XY puck still present"

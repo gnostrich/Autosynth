@@ -75,8 +75,19 @@ class StreamPlayer:
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._bar_index = 0
-        # latest read-only telemetry (roles 0..1, elapsed seconds) — for /api/telemetry
-        self.telemetry = {"roles": [0.0] * self.M, "t": 0.0, "bar": 0}
+        # latest read-only telemetry (roles 0..1, per-track nowplaying, elapsed
+        # seconds) — for /api/telemetry. `nowplaying` starts empty (no bar yet).
+        self.telemetry = {"roles": [0.0] * self.M, "t": 0.0, "bar": 0,
+                          "nowplaying": {}}
+        # STATIC per-world field telemetry (computed ONCE, here at load): the SAME
+        # read-only reductions the desktop engine emits over /ets/profiles +
+        # /ets/unitpool (ets.engine.engine.track_anchor_profiles / role_unit_pool).
+        # They read only the frozen world (fstate.B + track provenance) — no bank,
+        # no settlement, no writer, no F. Mirrors Engine.run_live's startup exactly.
+        from ets.engine.engine import track_anchor_profiles, role_unit_pool
+        self._track_profiles = track_anchor_profiles(self.world)   # {tid: (M,)}
+        self._role_pools = role_unit_pool(self.world)              # {role: [...]}
+        self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
         # set several visitors opened) can serve concurrent listeners without any
@@ -114,6 +125,44 @@ class StreamPlayer:
                 "region_armed": ("region" in armed),
                 "bar_seconds": float(self.engine.writer.bar_seconds)}
 
+    # --- STATIC per-world field telemetry (read-only, once-per-world) -------
+    def static_field(self) -> dict:
+        """The world's STATIC field telemetry as JSON-ready dicts — the web analog
+        of the desktop's /ets/profiles + /ets/unitpool feeds, from the SAME
+        reductions (computed at load in __init__):
+
+          * ``profiles``   {track_id: [float]*M}  — each source track's peak-
+            normalized anchor-mass profile (track_anchor_profiles). The TRACK
+            grain of the field ladder: fill/expandability come from these.
+          * ``unit_pools`` {role: [{unit_id, track_id, band, profile:[float]*M}]}
+            — each role's drill-in unit pool (role_unit_pool). The UNIT grain.
+          * ``track_names`` {track_id: str} — an HONEST display label per track.
+            The frozen world carries NO source filenames (embedded/synthetic
+            tracks have none), so the bridge labels tracks by WHAT THEY ARE: a
+            demo/founding world's tracks are ``"demo track N"``; a trained world's
+            tracks are ``"track N"`` here. Real ingested filenames are known only
+            to the SESSION (not the world), so the companion overrides these with
+            the true names for a session's OWN trained world (see app.py). No
+            invented names, ever.
+
+        Pure serialization of already-frozen reductions; it touches NOTHING
+        downstream (no bank, settlement, writer, render, F) and is cached, so a
+        world's static section is built once. Static."""
+        if self._static_field_cache is None:
+            profiles = {int(t): [float(x) for x in np.asarray(v).reshape(-1)]
+                        for t, v in self._track_profiles.items()}
+            pools: dict = {}
+            for role, entries in self._role_pools.items():
+                pools[int(role)] = [
+                    {"unit_id": int(uid), "track_id": int(tid), "band": int(band),
+                     "profile": [float(x) for x in np.asarray(prof).reshape(-1)]}
+                    for (uid, tid, band, prof) in entries]
+            kind = "track" if self.is_trained else "demo track"
+            names = {int(t): "%s %d" % (kind, int(t)) for t in profiles}
+            self._static_field_cache = {"profiles": profiles, "unit_pools": pools,
+                                        "track_names": names}
+        return self._static_field_cache
+
     # --- THE SINGLE ENGINE-CONTROL PATH ------------------------------------
     def set_region(self, region) -> None:
         """Set the region-tilt lane — the ONLY input that reaches settlement.
@@ -145,7 +194,7 @@ class StreamPlayer:
         """Produce ONE bar of capped PCM + role telemetry, exactly as the engine's
         live loop does. Returns (pcm_int16_bytes, roles_list)."""
         from ets.engine.engine import (bar_schedule, _playback_soft_limit,
-                                        bar_role_activity)
+                                        bar_role_activity, nowplaying_activity)
         from ets.render import render as render_schedule
         self._ensure_bank()
         u = self._current_lane()
@@ -167,9 +216,17 @@ class StreamPlayer:
             audio = audio.mean(axis=tuple(range(1, audio.ndim)))
         roles = bar_role_activity(r.rows, self._bank, self.world.fstate.B)
         roles = [float(x) for x in np.asarray(roles).reshape(-1)[:self.M]]
+        # READ-ONLY per-track nowplaying: reduce the just-produced bar's rows by
+        # source track (the SAME reduction the desktop emits on /ets/nowplaying —
+        # engine.nowplaying_activity). Reads produced rows only; adds no downstream
+        # call (audio byte-identical on/off). Keyed by track_id for the field's
+        # TRACK/UNIT square fills.
+        nowplaying = {int(tid): float(act)
+                      for tid, act in nowplaying_activity(r.rows)}
         self._bar_index = int(r.bar)
         self.telemetry = {"roles": roles, "bar": int(r.bar),
-                          "t": float(r.bar * self.engine.writer.bar_seconds)}
+                          "t": float(r.bar * self.engine.writer.bar_seconds),
+                          "nowplaying": nowplaying}
         pcm = _to_int16(audio)
         return pcm, roles
 

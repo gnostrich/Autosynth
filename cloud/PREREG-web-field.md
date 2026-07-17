@@ -1,5 +1,53 @@
 # PREREG — the WEB FIELD surface (companion FE; replaces role pads + XY vector pad)
 
+> ## REVISION 2 (2026-07-17) — FULL DRILL DEPTH ladded; role-grain sections SUPERSEDED
+>
+> The original build (commit `6603001`) shipped a **role-grain-only** web field because
+> the web API carried no track/unit telemetry. That constraint is **removed**: the data
+> existed server-side (the bridge holds the frozen world), so this revision ports the
+> desktop's SAME read-only reductions to the web and builds the **full ladder** exactly
+> per `ui-v6/ets/instrument/field.py`.
+>
+> **What is now built (superseding the "Honest data-grain statement" and walls #1 below):**
+> - **Backend, read-only, no new route / no new authority.** `/api/world` gains a STATIC
+>   per-world section from `StreamPlayer.static_field()` — `profiles` (per-track anchor-mass
+>   profile, `engine.track_anchor_profiles`), `unit_pools` (per-role drill pool,
+>   `engine.role_unit_pool`), and honest `track_names`. `/api/telemetry` frames gain
+>   per-track `nowplaying` (`engine.nowplaying_activity` over the just-produced bar's rows).
+>   These are the IDENTICAL reductions the desktop emits over `/ets/profiles`,
+>   `/ets/unitpool`, `/ets/nowplaying`; computed once at load (static) / per bar (live);
+>   zero engine-tree edits; the audio path stays byte-identical whether or not they run.
+> - **Frontend ladder** (`static/index.html`): root = **TRACK squares** (fill = nowplaying,
+>   colored per track, expandable iff `round(PR(profile)) ≥ 2`) → **ROLE squares** (the top
+>   `round(PR)` roles by profile mass; global objects) → **UNIT pool squares** (fill = the
+>   source track's nowplaying — the disclosed track-grain wall; **atomic**). Depth self-sizes
+>   per square by the participation-ratio noise floor; atomic squares refuse to drill. The
+>   composite bias across ALL grains → the one `/api/steer` region vector (each grain leans
+>   along its engine-emitted direction: role axis / track profile / unit profile), soft-
+>   saturating, envelope-pinned to `SAFE_REGION_MAGNITUDE`. Ctrl+scroll / pinch / click-to-
+>   drill zoom, breadcrumb, and the `▸n` affordance shows the **REAL** child count (never a
+>   padded grid — empty cells are inert, not hit-targets). Before profiles arrive: the
+>   honest **flat role fallback** (unchanged behavior).
+> - **Track legend** (operator addition): a color-coded swatch + **real name** per track at
+>   track zoom, plus the name in the square label/tooltip at every track-identity grain.
+>   Names come ONLY from real ingest metadata; the demo world's synthetic tracks are labeled
+>   `"demo track N"` — never invented. Same deterministic palette as the squares.
+>
+> **The ONE remaining honest wall (carried, unchanged):** the engine emits **no per-unit
+> sounding signal**, so a unit square's fill breathes with its SOURCE TRACK's `nowplaying`
+> (honest track-grain brightness at unit grain), and depth **ends at units** — there is no
+> sub-unit telemetry, and faking finer slices would violate FIELD-E. Units are atomic.
+>
+> **Invariants held:** fills from telemetry only (WEB-FIELD-INV, now covering both appliers +
+> the new handlers); single `/api/steer` lane (WEB-FIELD-D, `.set_region` one call site);
+> no fabricated squares — every id from a payload, every payload value from the world/rows
+> (WEB-FIELD-E, incl. the exact-child-count / no-placeholder-cell rule); PR floor pinned to
+> `anchors.effective_rank` (WEB-FIELD-C); envelope pin (WEB-FIELD-B). No engine-tree diffs;
+> R1–R6 / CS untouched. Harness: `cloud/tests/test_web_field.py` (22 JS/tree cases) +
+> `cloud/tests/test_web_field_payload.py` (6 backend traceability cases) + the render smoke
+> gate. Full cloud suite **97 green** (was 82). The sections below are the ORIGINAL prereg,
+> retained for provenance; their role-grain-only claims are superseded by this revision.
+
 Pre-registered BEFORE build, house style (prereg before build; auditor PASS before
 merge; walls surfaced, never patched). This ports the operator's FIELD directive —
 already built and audited on the desktop instrument (`ui-v6/PREREG-uiv6-field.md`,

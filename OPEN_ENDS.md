@@ -219,6 +219,16 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   confirmed as registered work. Railway token rotation after infra work ends.
   ddcadfb0 snapshot download (crashed-session archaeology) still optional.
 
+## 15. Session/world persistence on Railway  🟡  (found at first hosted train, 2026-07-17)
+- The ets-web service has NO volume ("volumeMounts": []): visitor sessions,
+  uploaded audio, and TRAINED WORLDS live in the container filesystem and are
+  WIPED on every deploy/restart. Tonight: operator re-drops files after the
+  beat_this image deploy; the deep-field swap will wipe again.
+- Fix: attach a Railway volume mounted at the companion session base
+  (/app/cache/companion_sessions) so trained worlds survive deploys. Needs a
+  dashboard action (volume create+attach) or API mutation; then point
+  ETS session base at the mount. Register + do after the deep-field swap.
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
