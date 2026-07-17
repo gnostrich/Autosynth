@@ -156,6 +156,29 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   IA + write PREREG for the explore/sharing layer (privacy decision (i)/(ii)/
   (iii) is the first fork in that prereg).
 
+## 12. Progress/feedback states — nothing may LOOK stalled  🟢  (recovered from crashed session, 2026-07-17)
+- Loading bars / staged progress everywhere the app currently sits silent: the
+  world-loading overlay (static lock icon today — a dead backend is visually
+  identical to a slow load; see the ets-web crash screenshot, #9), train-on-
+  cloud (real stages exist: ingest → stage-3 → cloud fit → σ_φ → world build),
+  steer round-trip feedback, and (future) Explore list loading.
+- HONESTY RULE inherits: indicators reflect REAL backend state — staged
+  progress from actual stage transitions, heartbeat + timeout + honest error
+  for backend-dead; never decorative animation faking progress.
+- Folded into the tab-IA design doc (design agent re-spin, in progress);
+  implementation is FE-only, no engine surface.
+
+## 13. Recovered fragment: additional theory-faithfulness checklist/hooks  🟡  (operator to re-state)
+- The crashed session also discussed further faithfulness checklist items /
+  hooks ("theory checklist, faithfulness hooks") beyond what is committed.
+  SPECIFICS LOST — nothing recoverable in the repo. What already exists and is
+  enforced: CLAUDE.md standing discipline, ets-auditor pass before merge,
+  builder/auditor pairing, per-edit ledger hook (build_ledger.py), FIELD-INV +
+  FIELD-A..E harness, door/outboard/byte-identical test patterns, verify-by-
+  running (cloud/tools/*_verify.py). If the discussed items exceeded this list,
+  the operator should re-state them; they will be registered and, where
+  hook-shaped, wired into the same enforcement layer.
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
