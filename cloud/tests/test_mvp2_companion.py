@@ -105,6 +105,26 @@ def test_reset_clears_the_corpus(tmp_path):
     assert comp.last_receipt is None
 
 
+def test_steer_is_the_only_settlement_input():
+    # MVP2-D (server boundary): the engine's settlement input (the region-tilt lane)
+    # is mutated ONLY via set_region, and set_region is reached ONLY from /api/steer.
+    # (play/stop are transport, not settlement control.) Static so it runs in the
+    # root-ets suite without loading the arch-v6 engine.
+    src = (Path(__file__).resolve().parents[1] / "companion" / "app.py").read_text()
+    assert src.count(".set_region(") == 1, "set_region must have exactly ONE call site"
+    steer = src.index('"/api/steer"')
+    call = src.index(".set_region(")
+    play = src.index('"/api/play"')
+    assert steer < call < play, "set_region must live inside the /api/steer handler only"
+
+
+def test_streaming_and_control_routes_present():
+    src = (Path(__file__).resolve().parents[1] / "companion" / "app.py").read_text()
+    for route in ('"/api/world"', '"/api/steer"', '"/api/play"', '"/api/stop"',
+                  '"/api/stream"', '"/api/telemetry"'):
+        assert route in src, f"missing instrument route {route}"
+
+
 def test_serve_refuses_non_loopback():
     # the sealed-box invariant is structural, not just a default: a public bind is refused.
     with pytest.raises(SystemExit):

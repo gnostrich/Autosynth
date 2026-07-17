@@ -41,7 +41,8 @@ class Companion:
     the cloud round-trip is delegated to ``cloud.client`` (the guarded path)."""
 
     def __init__(self, cloud_url: str = "inproc",
-                 session_dir: Optional[str] = None) -> None:
+                 session_dir: Optional[str] = None,
+                 play_world: Optional[str] = None, seed: int = 0) -> None:
         # ``cloud_url`` is the ONLY outbound target. "inproc" runs the service
         # in-process (offline / tests); otherwise an https base URL (Railway).
         self.cloud_url = cloud_url
@@ -50,6 +51,23 @@ class Companion:
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.world_path = self.session_dir / "world.npz"
         self.last_receipt: Optional[dict] = None
+        # playable world for the INSTRUMENT (default: the repo's founding world).
+        self.seed = int(seed)
+        if play_world is None:
+            cand = _REPO_ROOT / "corpus.etsworld"
+            play_world = str(cand) if cand.exists() else None
+        self.play_world = play_world
+        self._player = None            # lazy StreamPlayer (the LOCAL decoder)
+
+    def player(self):
+        """Lazily construct the LOCAL render bridge. Import is deferred so the
+        companion's cloud path never pulls a decoder (CS-4)."""
+        if self._player is None:
+            if not self.play_world or not Path(self.play_world).exists():
+                return None
+            from cloud.companion.engine_bridge import StreamPlayer
+            self._player = StreamPlayer(self.play_world, seed=self.seed)
+        return self._player
 
     # --- local-only ingest --------------------------------------------------
     def ingest_bytes(self, filename: str, data: bytes) -> dict:
@@ -133,6 +151,17 @@ class _Handler(BaseHTTPRequestHandler):
                 "last_receipt": self.companion.last_receipt,
             })
             return
+        if path == "/api/world":
+            p = self.companion.player()
+            self._json(200, p.world_info() if p is not None
+                       else {"ready": False, "reason": "no playable world loaded"})
+            return
+        if path == "/api/stream":
+            self._stream_audio()
+            return
+        if path == "/api/telemetry":
+            self._stream_telemetry()
+            return
         if path.startswith("/static/"):
             self._serve_static(path[len("/static/"):], self._ctype(path))
             return
@@ -180,6 +209,36 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {**out, "files": self.companion.session_files()})
             return
 
+        # --- instrument control: region-tilt is the ONLY engine-bound gesture ---
+        if path == "/api/steer":
+            p = self.companion.player()
+            if p is None:
+                self._json(409, {"ok": False, "error": "no playable world"})
+                return
+            region = []
+            if body:
+                try:
+                    region = json.loads(body.decode()).get("region", [])
+                except Exception:
+                    region = []
+            p.set_region(region)         # the SINGLE settlement input
+            self._json(200, {"ok": True})
+            return
+        if path == "/api/play":
+            p = self.companion.player()
+            if p is None:
+                self._json(409, {"ok": False, "error": "no playable world"})
+                return
+            p.start()
+            self._json(200, {"ok": True, "playing": True})
+            return
+        if path == "/api/stop":
+            p = self.companion.player()
+            if p is not None:
+                p.stop()
+            self._json(200, {"ok": True, "playing": False})
+            return
+
         if path == "/api/train":
             params = {}
             if body:
@@ -202,6 +261,43 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         self._send(404, b"not found", "text/plain")
+
+    # --- streaming helpers (chunked; no Content-Length) ---------------------
+    def _stream_audio(self):
+        p = self.companion.player()
+        if p is None:
+            self._send(409, b"no playable world", "text/plain")
+            return
+        p.start()
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            for chunk in p.stream_chunks():
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, ValueError):
+            pass  # client closed the audio stream
+
+    def _stream_telemetry(self):
+        import time
+        p = self.companion.player()
+        if p is None:
+            self._send(409, b"no playable world", "text/plain")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            while True:
+                frame = json.dumps(p.telemetry)
+                self.wfile.write(("data: " + frame + "\n\n").encode())
+                self.wfile.flush()
+                time.sleep(0.1)
+        except (BrokenPipeError, ConnectionResetError, ValueError):
+            pass  # client closed the telemetry stream
 
     def log_message(self, *_a):  # quiet
         pass
