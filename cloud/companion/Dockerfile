@@ -35,6 +35,7 @@ WORKDIR /app
 # Explicitly EXCLUDED (never copied): corpus.etsworld, corpus/, samples/,
 # instantiations/, cache/, and the other architecture-v* trees.
 COPY architecture-v6/ets/ /app/architecture-v6/ets/
+COPY architecture-v6/scripts/ /app/architecture-v6/scripts/
 COPY ets/ /app/ets/
 COPY cloud/ /app/cloud/
 COPY demo.etsworld /app/demo.etsworld
