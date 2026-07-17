@@ -26,10 +26,16 @@ RUN apt-get update \
 # python-osc (osc_io), librosa (render), scikit-learn (geometry).
 RUN pip install --no-cache-dir numpy scipy soundfile python-osc librosa scikit-learn
 
-# PHASE-2 INGEST deps (upload-your-own-tracks): torch (CPU-only wheel — much
-# smaller than the CUDA build) + beat_this for the beat clock. These add ~1.5 GB
-# and slow the build; they are what makes hosted training possible.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# PHASE-2 INGEST deps (upload-your-own-tracks): the CPU-only torch + torchaudio
+# pair + beat_this for the beat clock. torchaudio MUST be installed here from the
+# CPU wheel index alongside torch — beat_this imports torchaudio, and if it isn't
+# already present pip pulls the DEFAULT-PyPI (CUDA) torchaudio, which drags in a
+# CUDA torch and then fails at import with `libcudart.so.13: cannot open shared
+# object file` (no CUDA in this slim image). Pinning both to the CPU-verified pair
+# keeps the whole stack CPU-only and reproducible. These add ~1.5 GB / slow the
+# build; they are what makes hosted training possible.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.13.0+cpu torchaudio==2.11.0+cpu
 RUN pip install --no-cache-dir beat_this
 # BAKE the beat_this checkpoint into the image (it is NOT bundled and otherwise
 # downloads at runtime — which would stall/fail the first training on Railway).
