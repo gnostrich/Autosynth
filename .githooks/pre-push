@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# ETS faithfulness harness — pre-push / pre-merge gate (tier 2).
+# Runs the full mechanical suite (adds engine byte-verify + seam + instrument, and
+# compares the engine trees vs origin/main). Blocks the push if any check fails.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+echo "[pre-push] faithfulness_verify --tier 2 --merge"
+python "$ROOT/cloud/tools/faithfulness_verify.py" --tier 2 --merge
