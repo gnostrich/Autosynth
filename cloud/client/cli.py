@@ -110,9 +110,14 @@ def post_job(job_bytes: bytes, service: str) -> bytes:
         from cloud.service import run_job_inprocess
         return run_job_inprocess(job_bytes)
     url = service.rstrip("/") + "/train"
-    req = urllib.request.Request(url, data=job_bytes,
-                                 headers={"Content-Type": "application/octet-stream"},
-                                 method="POST")
+    headers = {"Content-Type": "application/octet-stream"}
+    # Single-user bearer secret: attach it if the local env carries one. The
+    # service enforces only when it too has ETS_TRAIN_TOKEN set, so an unset
+    # env leaves both sides open (local dev) and a set env gates production.
+    token = os.environ.get("ETS_TRAIN_TOKEN", "")
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(url, data=job_bytes, headers=headers, method="POST")
     with urllib.request.urlopen(req) as resp:
         return resp.read()
 

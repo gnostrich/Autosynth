@@ -8,6 +8,7 @@ what the same call produces locally on the same input.
 from __future__ import annotations
 
 import argparse
+import hmac
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -50,9 +51,28 @@ class _TrainHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _authorized(self) -> bool:
+        """Single-user bearer-secret gate. If ETS_TRAIN_TOKEN is set in the
+        service env, POST /train requires a matching `Authorization: Bearer
+        <token>` header (constant-time compare). If it is UNSET/empty, the
+        endpoint is open — so local dev, the in-process stand-in, and the parity
+        tests keep working unauthenticated; PRODUCTION sets the env var. This is
+        transport auth only: it does not touch the stage-3 whitelist, the
+        anchor-fit, or the no-decoder guarantee."""
+        expected = os.environ.get("ETS_TRAIN_TOKEN", "")
+        if not expected:
+            return True
+        header = self.headers.get("Authorization", "")
+        prefix = "Bearer "
+        presented = header[len(prefix):] if header.startswith(prefix) else ""
+        return bool(presented) and hmac.compare_digest(presented, expected)
+
     def do_POST(self):  # noqa: N802 (stdlib naming)
         if self.path.rstrip("/") != "/train":
             self._send(404, b"unknown endpoint (only POST /train)", "text/plain")
+            return
+        if not self._authorized():
+            self._send(401, b"unauthorized: missing/invalid bearer token", "text/plain")
             return
         length = int(self.headers.get("Content-Length", 0))
         job_bytes = self.rfile.read(length)
