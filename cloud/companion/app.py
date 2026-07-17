@@ -1,6 +1,16 @@
-"""The local companion server (MVP-2, phase 1).
+"""The companion server (MVP-2, phase 1).
 
-Endpoints (ALL bound to loopback — this is a local box, never 0.0.0.0):
+Bind policy (two modes, one code path):
+  * DEFAULT (local): loopback only (127.0.0.1 / ::1 / localhost). ``_require_loopback``
+    refuses any non-loopback host, so the local box can never be widened into a
+    public listener by a stray flag. This is the unchanged local default.
+  * PUBLIC (``ETS_PUBLIC=1`` or ``--public``): the SINGLE sanctioned public mode,
+    which exists ONLY for the hosted Railway deploy (R6: cloud-served interface,
+    no repo clone). It allows binding 0.0.0.0 and reads ``$PORT`` (Railway injects
+    it). It is an explicit, honest opt-in — never on by default, never a silent
+    widening of the loopback guard.
+
+Endpoints:
   GET  /                 -> the browser instrument UI (static)
   GET  /api/health       -> liveness
   GET  /api/status       -> session state (ingested files, last world)
@@ -383,11 +393,23 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _is_public(cli_public: bool = False) -> bool:
+    """The public-bind switch. True ONLY when explicitly opted in via ``ETS_PUBLIC``
+    (truthy env) or the ``--public`` CLI flag. This is the single sanctioned public
+    mode and exists ONLY for the hosted Railway deploy (R6); the local default stays
+    loopback. It is not a flag that bypasses the loopback guard silently — public
+    mode is a distinct, explicit code path (see ``serve``)."""
+    env = os.environ.get("ETS_PUBLIC", "").strip().lower()
+    return bool(cli_public) or env in ("1", "true", "yes", "on")
+
+
 def _require_loopback(host: str) -> str:
-    """Structurally enforce the sealed-box invariant: the companion binds LOOPBACK
-    ONLY (matches the module contract, 'never 0.0.0.0'). A non-loopback host — e.g.
-    0.0.0.0 — is refused, so the one localhost port cannot be widened into a public
-    listener by a stray flag."""
+    """Structurally enforce the LOCAL-DEFAULT invariant: outside public mode the
+    companion binds LOOPBACK ONLY (127.0.0.1 / ::1 / localhost). A non-loopback host
+    — e.g. 0.0.0.0 — is refused here, so the local box cannot be widened into a
+    public listener by a stray flag. The ONLY way to bind publicly is the explicit
+    opt-in public mode (``ETS_PUBLIC=1`` / ``--public``), which is for the hosted
+    Railway deploy only and takes a separate path that never calls this function."""
     if host == "localhost":
         return host
     try:
@@ -402,10 +424,16 @@ def _require_loopback(host: str) -> str:
 
 
 def serve(cloud_url: str = "inproc", host: str = "127.0.0.1", port: int = 8770,
-          session_dir: Optional[str] = None) -> ThreadingHTTPServer:
-    """Start the companion on loopback. Returns the (already-serving is caller's
-    job) server; callers in tests use ``server_close`` to stop."""
-    host = _require_loopback(host)
+          session_dir: Optional[str] = None, public: bool = False) -> ThreadingHTTPServer:
+    """Start the companion. Returns the (already-serving is caller's job) server;
+    callers in tests use ``server_close`` to stop.
+
+    ``public`` selects the bind policy. When False (default), the host is passed
+    through ``_require_loopback`` — loopback only, the unchanged local default.
+    When True (public mode, Railway deploy only), a non-loopback host such as
+    0.0.0.0 is allowed as-is; the guard is not weakened, it is a separate path
+    reached only by the explicit opt-in."""
+    host = host if public else _require_loopback(host)
     comp = Companion(cloud_url=cloud_url, session_dir=session_dir)
     handler = type("_BoundHandler", (_Handler,), {"companion": comp})
     httpd = ThreadingHTTPServer((host, port), handler)
@@ -418,13 +446,37 @@ def main(argv=None) -> int:
                                  description="ETS local companion (sealed on-device box)")
     ap.add_argument("--cloud-url", default=os.environ.get("ETS_CLOUD_URL", "inproc"),
                     help="cloud anchor-fit base URL (Railway), or 'inproc' for offline")
-    ap.add_argument("--host", default="127.0.0.1", help="loopback only by design")
-    ap.add_argument("--port", type=int, default=int(os.environ.get("ETS_COMPANION_PORT", "8770")))
+    ap.add_argument("--host", default=None,
+                    help="bind host (default: 127.0.0.1 local; 0.0.0.0 in public mode)")
+    ap.add_argument("--port", type=int, default=None,
+                    help="bind port (default: 8770 local; $PORT in public mode)")
+    ap.add_argument("--public", action="store_true",
+                    help="PUBLIC bind for the hosted Railway deploy ONLY (allow 0.0.0.0, "
+                         "read $PORT). Local default stays loopback; do not use locally.")
     ap.add_argument("--session-dir", default=None)
     args = ap.parse_args(argv)
 
-    httpd = serve(cloud_url=args.cloud_url, host=args.host, port=args.port,
-                  session_dir=args.session_dir)
+    public = _is_public(args.public)
+    # Bind defaults differ by mode. Public mode reads $HOST/$PORT (Railway injects
+    # $PORT); local mode stays on loopback:8770. Explicit --host/--port always win.
+    if args.host is not None:
+        host = args.host
+    elif public:
+        host = os.environ.get("HOST", "0.0.0.0")
+    else:
+        host = "127.0.0.1"
+    if args.port is not None:
+        port = args.port
+    elif public:
+        port = int(os.environ.get("PORT", os.environ.get("ETS_COMPANION_PORT", "8770")))
+    else:
+        port = int(os.environ.get("ETS_COMPANION_PORT", "8770"))
+
+    httpd = serve(cloud_url=args.cloud_url, host=host, port=port,
+                  session_dir=args.session_dir, public=public)
+    args.host, args.port = host, port  # for the log line below
+    if public:
+        print("[companion] PUBLIC MODE (Railway deploy) — binding a non-loopback listener")
     print(f"[companion] UI + API on http://{args.host}:{args.port}  (cloud={args.cloud_url})")
     print(f"[companion] session dir: {httpd.companion.session_dir}")
     try:

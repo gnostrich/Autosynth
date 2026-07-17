@@ -1,0 +1,43 @@
+# Build-context filter for cloud/companion/Dockerfile (BuildKit honors this
+# per-Dockerfile ignore file; Railway uses BuildKit). Keeps the context lean and
+# GUARANTEES no copyrighted/heavy data reaches the image alongside the narrow COPYs.
+#
+# HARD EXCLUDE — copyrighted / heavy corpus (only demo.etsworld ships):
+corpus.etsworld
+corpus/
+samples/
+instantiations/
+cache/
+
+# Other architecture-v* trees + arch-v6 non-engine data (only architecture-v6/ets ships):
+architecture-v2/
+architecture-v4/
+architecture-v5/
+architecture-v6/cache/
+architecture-v6/instances/
+architecture-v6/tests/
+
+# Frozen snapshots, reports, analysis, verification, root tests — not runtime:
+legacy/
+_sealed/
+reports/
+analysis/
+verification/
+tests/
+renders/
+reference_sets/
+
+# VCS + caches + build junk:
+.git/
+.claude/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+.pytest_cache/
+
+# Loose data blobs (worlds keep their .etsworld; demo.etsworld is copied explicitly):
+*.wav
+*.flac
+*.mp3
+*.npz
+*.pkl
