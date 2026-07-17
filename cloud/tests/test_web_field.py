@@ -252,9 +252,14 @@ def test_field_b_soft_saturation_and_envelope():
     // composite across OVERLAPPING grains (a role axis AND a track profile that also
     // loads that axis) at full bias must still stay within the envelope everywhere.
     var st = {{ roleact:[0,0,0], nowplaying:{{}}, profiles:{{0:[1,0.8,0.2]}},
-                unitPools:{{}}, names:{{}}, bias:{{}} }};
+                unitPools:{{0:[{{unit_id:5, track_id:0, band:2,
+                                 profile:[0.9,0.4,0.1]}}]}},
+                names:{{}}, bias:{{}} }};
+    // ALL THREE grains overlapping on the same axis at full bias
+    // (auditor note 2: role + track + unit in one composite).
     st.bias[JSON.stringify(["role",0])]  = 1.0;
     st.bias[JSON.stringify(["track",0])] = 1.0;
+    st.bias[JSON.stringify(["unit",0,5,0])] = 1.0;
     var reg = fieldRegionVector(st, 3);
     for(var i=0;i<reg.length;i++){{
       if(Math.abs(reg[i]) > {cap} + 1e-9){{ console.log('FAIL envelope ' + reg[i]); process.exit(1); }}

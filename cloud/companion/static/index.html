@@ -297,6 +297,26 @@
   :root[data-theme="light"] .inst-lock{ background: radial-gradient(600px 300px at 50% 30%, rgba(14,158,118,.08), transparent 70%), rgba(231,236,234,.7); }
   @media (prefers-color-scheme: light){ :root:not([data-theme]) .inst-lock{ background: radial-gradient(600px 300px at 50% 30%, rgba(14,158,118,.08), transparent 70%), rgba(231,236,234,.7); } }
   .instrument.ready .inst-lock{ display:none; }
+  /* ---------- UNLOCK-TRAINING affordance (in-app, replaces the access wall) ---------- */
+  .keymodal{
+    position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center;
+    background:rgba(6,9,12,.62); backdrop-filter:blur(3px);
+  }
+  .keymodal[hidden]{ display:none; }
+  .keycard{
+    width:min(92vw,380px); background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:22px 22px; box-shadow:0 12px 44px rgba(0,0,0,.5);
+  }
+  .keycard h3{ margin:0 0 4px; font-size:15px; }
+  .keycard p.sub{ margin:0 0 16px; color:var(--muted); font-size:12.5px; }
+  .keycard label{ display:block; font-size:11px; color:var(--muted); margin:0 0 6px; text-transform:uppercase; letter-spacing:.08em; }
+  .keycard input{
+    width:100%; box-sizing:border-box; background:var(--panel-inset); color:var(--ink);
+    border:1px solid var(--line); border-radius:9px; padding:11px 12px; font-size:14px; outline:none;
+  }
+  .keycard input:focus{ border-color:var(--accent); }
+  .keycard .krow{ display:flex; gap:10px; margin-top:14px; justify-content:flex-end; }
+  .keycard .kerr{ margin-top:10px; min-height:15px; color:#ff7a7a; font-size:12.5px; }
   .inst-lock .lk-glyph{
     width:46px; height:46px; border-radius:12px;
     background: linear-gradient(145deg, var(--panel-2), var(--panel-inset));
@@ -532,11 +552,29 @@
       <div class="spacer"></div>
       <span class="pill" id="cloudPill"><span class="tick"></span><span id="cloudTag">cloud —</span></span>
       <span class="conn"><span class="dot" id="connDot"></span><span id="connText">connecting…</span></span>
+      <button class="act ghost" id="unlockBtn" hidden style="padding:6px 12px;font-size:11px;" title="Enter your access key to unlock training and publishing">Unlock training</button>
       <button class="iconbtn" id="themeBtn" aria-label="Toggle color theme">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
         <span id="themeLbl">theme</span>
       </button>
     </header>
+
+    <!-- UNLOCK-TRAINING modal: the access-key entry moved INSIDE the app (OPEN_ENDS
+         #16). Keyless visitors play + explore with no key; entering a key here
+         upgrades the session in place (Train appears) — no separate access wall. -->
+    <div class="keymodal" id="keyModal" hidden role="dialog" aria-modal="true" aria-label="Unlock training">
+      <form class="keycard" id="keyForm" autocomplete="off">
+        <h3>Unlock training</h3>
+        <p class="sub">Enter your access key to build, train, and publish your own worlds. Playing and exploring shared sets needs no key.</p>
+        <label for="keyInput">access key</label>
+        <input id="keyInput" type="password" placeholder="access key" autocomplete="off">
+        <div class="krow">
+          <button type="button" class="act ghost" id="keyCancel">Cancel</button>
+          <button type="submit" class="act" id="keySubmit">Unlock</button>
+        </div>
+        <div class="kerr" id="keyErr" role="alert"></div>
+      </form>
+    </div>
 
     <!-- ================= TRAIN PANE (build MY world; owner-only) ================= -->
     <div class="pane" id="paneTrain" data-pane="train" role="tabpanel" aria-labelledby="tabTrain">
@@ -609,8 +647,8 @@
         <span class="lk-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
         </span>
-        <h3>Loading the founding demo world…</h3>
-        <p>Play the built-in <b>founding demo world</b> now, or ingest audio + <b>Train on cloud</b> to build, play, and steer <i>your own</i> trained world right here. Training also measures a σ_φ calibration for your corpus, so after it finishes the instrument switches to your world — live to play and steer.</p>
+        <h3>Connecting to the companion…</h3>
+        <p>Open a shared set from <b>Explore</b> to listen and steer, or ingest audio + <b>Train on cloud</b> to build, play, and steer <i>your own</i> trained world right here. Training also measures a σ_φ calibration for your corpus, so after it finishes the instrument switches to your world — live to play and steer.</p>
       </div>
 
       <div class="inst-inner">
@@ -755,7 +793,10 @@
   applyThemeLabel();
 
   /* ================= APP STATE ================= */
-  var world = { ready:false, M:0, sr:48000 };
+  // canTrain defaults FALSE (auditor note 2): the Train tab must never
+  // flash for a visitor before the first /api/world poll answers; the
+  // server's owner gate is authoritative either way.
+  var world = { ready:false, M:0, sr:48000, keyed:false, canTrain:false };
   var state = "idle";        // idle | playing | paused
   var region = [];           // last computed region vector (length M)
   var es = null;             // telemetry EventSource
@@ -787,11 +828,51 @@
     TABBTN[k].addEventListener("click", function(){ switchTab(k); });
   });
   function applyTabVisibility(pub){
-    // PUBLIC (visitor): only [Play, Explore]; Train removed from the bar entirely
-    // (never a disabled/dead tab). Reuses the same world.public signal.
+    // VISITOR (can't train): only [Play, Explore]; Train removed from the bar entirely
+    // (never a disabled/dead tab). Owners (keyed-authenticated / local) keep Train.
     TABBTN.train.hidden = !!pub;
     if(pub && currentTab === "train") switchTab("play");
   }
+
+  /* ===== UNLOCK TRAINING — the access-key entry, moved INSIDE the app (#16) ===== */
+  var unlockBtn = $("unlockBtn"), keyModal = $("keyModal"), keyForm = $("keyForm");
+  var keyInput = $("keyInput"), keyErr = $("keyErr"), keySubmit = $("keySubmit"), keyCancel = $("keyCancel");
+  function refreshUnlock(){
+    // Offer the affordance only when a key WOULD do something: the deploy is keyed
+    // and this session is still a visitor. Owners (and keyless deploys) never see it.
+    if(unlockBtn) unlockBtn.hidden = !(world.keyed && !world.canTrain);
+  }
+  function openKeyModal(){
+    if(!keyModal) return;
+    keyErr.textContent = ""; keyInput.value = ""; keyModal.hidden = false;
+    try{ keyInput.focus(); }catch(e){}
+  }
+  function closeKeyModal(){ if(keyModal) keyModal.hidden = true; }
+  if(unlockBtn) unlockBtn.addEventListener("click", openKeyModal);
+  if(keyCancel) keyCancel.addEventListener("click", closeKeyModal);
+  if(keyModal) keyModal.addEventListener("click", function(e){ if(e.target === keyModal) closeKeyModal(); });
+  if(keyForm) keyForm.addEventListener("submit", function(e){
+    e.preventDefault();
+    keyErr.textContent = ""; keySubmit.disabled = true;
+    fetch("/api/auth", { method:"POST", headers:{ "Content-Type":"application/json" },
+                         body: JSON.stringify({ key: keyInput.value }) })
+      .then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
+      .then(function(res){
+        keySubmit.disabled = false;
+        if(res.ok && res.j && res.j.ok){
+          // the server set the session cookie; UPGRADE IN PLACE — re-read state so
+          // can_train flips true and Train appears. No page/access-wall navigation.
+          closeKeyModal();
+          loadStatus(); loadWorld();
+        } else {
+          keyErr.textContent = (res.j && res.j.error) || "access denied";
+          try{ keyInput.focus(); keyInput.select(); }catch(e){}
+        }
+      }).catch(function(){
+        keySubmit.disabled = false;
+        keyErr.textContent = "could not reach the companion — try again";
+      });
+  });
 
   /* ================= HEALTH / STATUS / WORLD ================= */
   var connDot = $("connDot"), connText = $("connText"), cloudTag = $("cloudTag"), cloudPill = $("cloudPill");
@@ -845,13 +926,23 @@
       _overlay("slow", "still loading — taking longer than expected",
         "The render can be genuinely slow (this sandbox is ~100x slower than hardware). This is not a failure — the heartbeat above is live.");
     } else {
-      _overlay("", "loading the demo world…",
-        "The heartbeat is live: it stops the instant the companion goes quiet, so a frozen page can’t be mistaken for a working one. Or open <b>Train</b> to build your own world.");
+      _overlay("", "loading the world…",
+        "The heartbeat is live: it stops the instant the companion goes quiet, so a frozen page can’t be mistaken for a working one. Or open <b>Explore</b> to pick a set, or <b>Train</b> to build your own.");
     }
   }
   function setOverlayDead(){
     _overlay("dead", "lost the companion backend",
       "It may have crashed or restarted — the heartbeat has stopped. Retrying automatically…");
+  }
+  // EMPTY STATE (OPEN_ENDS #16(c)): no world is loaded and the founding demo is NOT
+  // surfaced on the site. Honest text + a pointer to Explore (and Train, for owners) —
+  // never a fake preview, never noise, and the field underneath stays empty (no
+  // fabricated squares: the instrument is not `.ready`, so the field isn't drawn).
+  function setOverlayEmpty(reason){
+    var sub = world.canTrain
+      ? "Nothing is loaded yet. Open a shared set from <b>Explore</b> to listen and steer, or ingest audio and <b>Train</b> your own world."
+      : "Nothing is loaded yet. Open a shared set from <b>Explore</b> to listen and steer.";
+    _overlay("empty", "No set loaded", sub);
   }
 
   function loadStatus(){
@@ -877,7 +968,12 @@
       // fall back to !public for older payloads. The tab set follows can_train:
       // keyless-public visitors get [Play, Explore]; owners (keyed or local) get Train.
       world.canTrain = (w.can_train !== undefined) ? !!w.can_train : !w.public;
+      world.keyed = !!w.keyed;
       applyTabVisibility(!world.canTrain);
+      // UNLOCK affordance (OPEN_ENDS #16): a keyless VISITOR on a KEYED deploy can
+      // enter a key to become an owner. Shown only when there is a key to enter
+      // (keyed) AND this session is not already an owner (!canTrain).
+      refreshUnlock();
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
@@ -895,8 +991,13 @@
         refreshPublishBox();
       } else {
         world.ready = false;
-        // backend answered but the world isn't ready yet: loading vs slow, never dead.
-        setOverlayLoading();
+        // Two honest ready:false cases, never conflated:
+        //   loaded===false -> NO world is loaded (OPEN_ENDS #16(c): the founding demo
+        //     is not surfaced on the site). Show the EMPTY STATE (honest text + a
+        //     pointer to Explore / Train), NOT a fake "loading" spinner.
+        //   otherwise -> a world exists but is still warming up: loading vs slow.
+        if(w && w.loaded === false){ setOverlayEmpty(w.reason); }
+        else { setOverlayLoading(); }
       }
     }).catch(function(){
       // /api/world itself failed: treat as backend trouble; the health poll owns the

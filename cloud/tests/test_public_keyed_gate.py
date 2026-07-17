@@ -9,7 +9,8 @@ gate and the FE tab/publish visibility.
 All five (public × keyed) combos, engine-free (asserted via /api/status + the POST
 gate — never /api/world, so no engine import enters this interpreter):
 
-  P+K anon    -> gated routes 401 (auth wall), NOT 503; / serves the access page.
+  P+K anon    -> VISITOR TIER (OPEN_ENDS #16): NO access wall; / serves the app;
+                 read routes 200; owner POSTs 401 (auth), NOT 503.
   P+K keyed   -> can_train true; ingest/reset/train/share are NOT 503.
   P alone     -> 503 stays on ingest/train/reset/share; can_train false (R6 pin).
   K alone     -> can_train true; unchanged.
@@ -66,18 +67,29 @@ _GATED_POSTS = ("/api/ingest", "/api/train", "/api/reset", "/api/share")
 
 # --- P+K : public AND keyed -------------------------------------------------
 
-def test_public_keyed_anon_hits_auth_wall_not_503(tmp_path, monkeypatch):
+def test_public_keyed_anon_is_visitor_tier_no_access_wall(tmp_path, monkeypatch):
+    # OPEN_ENDS #16: a keyless visitor in keyed+public gets the VISITOR TIER — NO
+    # access wall. / serves the APP (not the access page); read routes work WITHOUT
+    # a token; the owner surfaces (ingest/train/reset/share) return 401 auth_required
+    # (so the in-app unlock affordance can enter a key), NEVER the legacy 503.
     httpd, url = _server(tmp_path, public=True, keys=["k1"], monkeypatch=monkeypatch)
     try:
-        # anonymous: gated GET -> 401, gated POSTs -> 401 (auth wall), never 503.
-        code, _ = _req(url + "/api/status")
-        assert code == 401
+        # / serves the app, not the access page.
+        code, body = _req(url + "/")
+        assert code == 200, code
+        assert b"Equilibrium Tape Synth" in body, "should serve the app"
+        assert b"access-controlled" not in body, "no access wall for keyless visitors"
+        # read routes work without a token; can_train is FALSE for the visitor.
+        code, sbody = _req(url + "/api/status")
+        assert code == 200, code
+        st = json.loads(sbody)
+        assert st["keyed"] is True and st["can_train"] is False, st
+        assert _req(url + "/api/world")[0] == 200
+        assert _req(url + "/api/explore")[0] == 200
+        # the owner surfaces are 401 (auth), never 503, for the keyless visitor.
         for path in _GATED_POSTS:
             code, _ = _req(url + path, method="POST", body={})
-            assert code == 401, f"{path} anon should be 401 (auth), got {code}"
-        # / serves the access page (unauthenticated keyed).
-        code, body = _req(url + "/")
-        assert code == 200 and b"access" in body.lower()
+            assert code == 401, f"{path} visitor should be 401 (auth), got {code}"
     finally:
         httpd.shutdown(); httpd.server_close()
 
@@ -152,7 +164,9 @@ def test_keyless_local_can_train(tmp_path, monkeypatch):
 def test_world_payload_exposes_can_train():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "companion" / "app.py").read_text()
-    # both read-only payloads carry the owner predicate; the POST gate honors keyed.
+    # both read-only payloads carry the owner predicate; the POST gate branches on
+    # the SAME predicate (one channel) — keyed visitor -> 401, legacy public -> 503.
     assert 'info["can_train"] = self._can_train(session)' in src
     assert '"can_train": self._can_train(session)' in src
-    assert "not self.hub.keyed and path in (" in src
+    assert "and not self._can_train(session):" in src
+    assert "if self.hub.keyed:" in src

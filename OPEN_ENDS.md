@@ -219,15 +219,45 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   confirmed as registered work. Railway token rotation after infra work ends.
   ddcadfb0 snapshot download (crashed-session archaeology) still optional.
 
-## 15. Session/world persistence on Railway  🟡  (found at first hosted train, 2026-07-17)
+## 15. Session/world persistence on Railway  ✅ VOLUME ATTACHED (2026-07-18)
 - The ets-web service has NO volume ("volumeMounts": []): visitor sessions,
   uploaded audio, and TRAINED WORLDS live in the container filesystem and are
   WIPED on every deploy/restart. Tonight: operator re-drops files after the
   beat_this image deploy; the deep-field swap will wipe again.
-- Fix: attach a Railway volume mounted at the companion session base
-  (/app/cache/companion_sessions) so trained worlds survive deploys. Needs a
-  dashboard action (volume create+attach) or API mutation; then point
-  ETS session base at the mount. Register + do after the deep-field swap.
+- FIXED: volume `ets-web-volume` (id 9dd79d5d) created via API and mounted at
+  /app/cache (covers companion_sessions + worlds). ACTIVATES on the next
+  deploy (the front-door swap); persistence across a subsequent redeploy to be
+  verified once two deploys have occurred post-attach. Until that verify, the
+  next single swap still starts empty (nothing pre-volume can be preserved).
+
+## 16. FRONT DOOR redesign — keyless Explore-driven flow  🟢 (operator-specified 2026-07-17/18, awaiting "build" word; freeze in effect)
+- Operator decisions from live testing, superseding the parked #8 "P+K anonymous
+  view" question:
+  (a) KEYLESS visitors: NO access wall. Land on PLAY in an EMPTY STATE (no world
+      auto-loaded, no noise; honest "pick a set from Explore" pointer). Explore
+      lists opted-in shared sets; opening one loads it into Play (listen+steer).
+      Key unlocks ONLY Train/publish (can_train machinery already does the split).
+  (b) Sharing stays STRICTLY OPT-IN (already implemented + audit-pinned: default
+      OFF, owner-only toggle, unshare revokes). Training never auto-publishes.
+  (c) Demo world: DECIDED (operator, 2026-07-18): NO founding demo surfaced on
+      the site for now — hidden from keyless Explore AND not auto-loaded for
+      keyed users' empty state either; "we'll zero in on the right one later."
+      #14a's content rebuild is PARKED until the operator picks the material
+      (it remains committed in the repo for R5's fresh-clone/local path).
+  (d) Build-time consideration: per-set steer RATE caps (deferred in the demo
+      prereg) become relevant once strangers can steer shared sets; envelope
+      bounds magnitude already, caps would bound frequency.
+- Status: specified, registered, NOT building (operator freeze). Trigger phrase:
+  "build the front door".
+
+## 17. Hardened multi-user fork — collected deferrals  🟡  (register, 2026-07-18)
+- From the front-door audit (PASS-WITH-NOTES): (a) SHARED VISITOR SESSION —
+  all keyless visitors share one session, so concurrent strangers collide on
+  opened set + steer (accidental co-play). No privacy/R1 leak (owner routes
+  gated; only opt-in attributed sets reachable). Acceptable demo-phase UX;
+  per-visitor sessions belong to the multi-user fork. (b) Per-set visitor
+  steer RATE caps (magnitude already enveloped). Plus the earlier multi-user
+  parking (#8): key issuance/quotas/store, deliberate co-play as a feature.
 
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
