@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETS — access</title>
+<style>
+  :root{ color-scheme: dark; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:#0d0f13; color:#e7e9ee;
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .card{
+    width:min(92vw,380px); background:#151922; border:1px solid #262c39;
+    border-radius:14px; padding:28px 26px; box-shadow:0 10px 40px rgba(0,0,0,.45);
+  }
+  h1{ font-size:16px; margin:0 0 4px; letter-spacing:.02em; }
+  p.sub{ margin:0 0 18px; color:#8b93a6; font-size:12.5px; }
+  label{ display:block; font-size:11px; color:#8b93a6; margin:0 0 6px; text-transform:uppercase; letter-spacing:.08em; }
+  input{
+    width:100%; box-sizing:border-box; background:#0d0f13; color:#e7e9ee;
+    border:1px solid #2b3242; border-radius:9px; padding:11px 12px; font-size:14px;
+    outline:none;
+  }
+  input:focus{ border-color:#4c7dff; }
+  button{
+    margin-top:14px; width:100%; background:#4c7dff; color:#fff; border:0;
+    border-radius:9px; padding:11px 12px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  button:disabled{ opacity:.6; cursor:default; }
+  .err{ margin-top:12px; min-height:16px; color:#ff7a7a; font-size:12.5px; }
+</style>
+</head>
+<body>
+  <form class="card" id="accessGate" autocomplete="off">
+    <h1>ETS companion</h1>
+    <p class="sub">This instance is access-controlled. Enter your access key to continue.</p>
+    <label for="key">access key</label>
+    <input id="key" name="key" type="password" placeholder="access key" autofocus>
+    <button id="go" type="submit">Enter</button>
+    <div class="err" id="err" role="alert"></div>
+  </form>
+<script>
+  var form = document.getElementById("accessGate");
+  var keyEl = document.getElementById("key");
+  var errEl = document.getElementById("err");
+  var goEl = document.getElementById("go");
+  form.addEventListener("submit", function(e){
+    e.preventDefault();
+    errEl.textContent = "";
+    goEl.disabled = true;
+    // same-origin only — the access page talks to nothing but this companion.
+    fetch("/api/auth", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ key: keyEl.value })
+    }).then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
+      .then(function(res){
+        if(res.ok && res.j && res.j.ok){
+          // the cookie is set by the server; reload to land on the instrument.
+          window.location.replace("/");
+        } else {
+          errEl.textContent = (res.j && res.j.error) || "access denied";
+          goEl.disabled = false;
+          keyEl.focus(); keyEl.select();
+        }
+      }).catch(function(){
+        errEl.textContent = "could not reach the companion — try again";
+        goEl.disabled = false;
+      });
+  });
+</script>
+</body>
+</html>
