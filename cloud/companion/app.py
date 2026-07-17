@@ -99,6 +99,14 @@ class Companion:
         self.owner_label: Optional[str] = None
         self.shared: bool = False
         self.opened_set_id: Optional[str] = None
+        # VISITOR TIER (OPEN_ENDS #16): in a KEYED deploy an unauthenticated request
+        # resolves to a read/play visitor session (is_visitor=True). A visitor may
+        # read + play + steer + open shared sets, but is NOT an owner: ingest / train
+        # / reset / share stay key-gated (401, so the in-app "unlock training"
+        # affordance can upgrade the page). The Hub flips this on the shared session
+        # it hands to keyless requests in keyed mode; every keyed-authenticated /
+        # keyless-local / legacy-public session leaves it False.
+        self.is_visitor: bool = False
         # playable world for the INSTRUMENT (default: the repo's founding world).
         self.seed = int(seed)
         if play_world is None and surface_demo:
@@ -443,6 +451,12 @@ class Hub:
         # layout (and the existing tests' expectations) are exactly unchanged.
         self.default_session = self._make_session(self._base)
         self.default_session.public = self.public
+        # In a KEYED deploy the default session is the shared VISITOR session handed
+        # to unauthenticated (keyless) requests: read/play/steer/open only, never an
+        # owner (OPEN_ENDS #16). In a keyless deploy it is THE session (local owner or
+        # legacy-public demo consumer), so is_visitor stays False and the owner
+        # predicate falls through to the not-keyed branch.
+        self.default_session.is_visitor = self.keyed
 
     @property
     def keyed(self) -> bool:
@@ -580,29 +594,37 @@ class _Handler(BaseHTTPRequestHandler):
         return None
 
     def _session(self):
-        """The authenticated session, or None. In KEYLESS mode (no ETS_ACCESS_KEYS)
-        there is no gate and the single default session is always returned — today's
-        behavior, untouched. In KEYED mode a valid token is required."""
+        """The session for THIS request — never None on the serving path (OPEN_ENDS
+        #16: no access wall). In KEYLESS mode the single default session is always
+        returned (today's behavior). In KEYED mode a valid token resolves to that
+        visitor's OWNER session; a missing/invalid token falls back to the shared
+        VISITOR session (read/play/steer/open only), so a keyless visitor lands on the
+        app instead of an access wall."""
         if not self.hub.keyed:
             return self.hub.default_session
-        return self.hub.session_for_token(self._token())
+        sess = self.hub.session_for_token(self._token())
+        return sess if sess is not None else self.hub.default_session
 
     def _can_train(self, session) -> bool:
-        """The single owner predicate that fixes all four (public × keyed) combos:
-        a session may train/ingest/reset iff it is an OWNER, i.e. the deploy is keyed
-        (reaching any session required a valid token) OR the session is not public.
-        Only a KEYLESS-public visitor is the demo-only consumer."""
-        return bool(self.hub.keyed or not getattr(session, "public", False))
+        """The single OWNER predicate that pins every (public × keyed × visitor)
+        combo. A session may ingest/train/reset/share iff it is an OWNER:
+          * KEYED deploy  -> owner iff it is NOT the shared visitor session (i.e. it
+            was reached with a valid token). A keyless visitor is not an owner.
+          * KEYLESS deploy -> owner iff not public (local run). The legacy
+            keyless-public session is the demo-only consumer.
+        This is the ONE channel both the POST gate and the FE branch on."""
+        if self.hub.keyed:
+            return not getattr(session, "is_visitor", False)
+        return not getattr(session, "public", False)
 
     # --- GET ----------------------------------------------------------------
     def do_GET(self):  # noqa: N802
         path = self.path.split("?", 1)[0].rstrip("/")
         if path in ("", "/"):
-            # KEYED + unauthenticated -> the access page. Otherwise the instrument.
-            if self.hub.keyed and self._session() is None:
-                self._serve_static("access.html", "text/html; charset=utf-8")
-            else:
-                self._serve_static("index.html", "text/html; charset=utf-8")
+            # NO ACCESS WALL (OPEN_ENDS #16): GET / always serves the app. A keyless
+            # visitor gets the read/play visitor session; the access-key entry is now
+            # an in-app "unlock training" affordance, not a gate page.
+            self._serve_static("index.html", "text/html; charset=utf-8")
             return
         if path == "/api/health":
             # liveness stays UNGATED (platform probe + the FE's dead-vs-loading
@@ -614,7 +636,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._serve_static(path[len("/static/"):], self._ctype(path))
             return
 
-        # everything below is a gated /api route in KEYED mode.
+        # The read/play /api routes below serve OWNERS and VISITORS alike (OPEN_ENDS
+        # #16). _session() never returns None on the serving path (keyless -> default;
+        # keyed -> owner-by-token or the shared visitor session); the None guard stays
+        # as a defensive backstop only.
         session = self._session()
         if session is None:
             self._json(401, dict(self._UNAUTH))
@@ -661,6 +686,11 @@ class _Handler(BaseHTTPRequestHandler):
             # KEYED-TRAIN: expose the owner predicate so the FE shows Train for keyed
             # sessions (read-only state; no new authority — the gate stays server-side).
             info["can_train"] = self._can_train(session)
+            # VISITOR TIER (OPEN_ENDS #16): whether the deploy is keyed decides if the
+            # in-app "unlock training" affordance is offered. A keyless visitor on a
+            # KEYED deploy can upgrade with a key; on a keyless deploy there is no key
+            # to enter, so the FE shows no unlock affordance.
+            info["keyed"] = self.hub.keyed
             # STATIC per-world FIELD telemetry (read-only, once-per-world): the
             # per-track anchor-mass profiles + per-role unit pools that carry the
             # field's TRACK and UNIT grains. Same reductions the desktop emits over
@@ -757,24 +787,27 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "token": token, "keyed": True}, cookie=token)
             return
 
-        # every other /api POST is gated in KEYED mode.
+        # Resolve the session (never None on the serving path: keyless -> default;
+        # keyed -> owner-by-token or the shared visitor session).
         session = self._session()
-        if session is None:
-            self._json(401, dict(self._UNAUTH))
-            return
 
-        # PUBLIC (hosted, keyless-R6) mode is a play/steer-the-demo deployment only.
-        # The corpus surfaces (upload, train, reset) write session state and need the
-        # ingest deps that aren't in the hosted image — refuse them cleanly (503)
-        # rather than expose a broken surface. KEYED sessions are OWNERS (a valid token
-        # was required to reach this session), so the key gate SUPERSEDES the R6 demo
-        # restriction: the 503 fires only for KEYLESS public visitors. The FE hides
-        # these when !can_train.
-        if getattr(session, "public", False) and not self.hub.keyed and path in (
-                "/api/ingest", "/api/train", "/api/reset", "/api/share"):
-            self._json(503, {"ok": False, "error": "not available in the hosted "
-                             "demo — run the companion locally to train your own "
-                             "audio", "public": True})
+        # OWNER GATE (OPEN_ENDS #16): the corpus surfaces (ingest/train/reset/share)
+        # are OWNER-only. A non-owner hitting one is refused by the SINGLE owner
+        # predicate — no second decision channel:
+        #   * KEYED deploy -> a keyless VISITOR gets 401 auth_required, so the in-app
+        #     "unlock training" affordance can enter a key and upgrade the page. (This
+        #     replaces the old access wall; it is NOT the legacy 503.)
+        #   * KEYLESS-public (legacy, no keys configured) -> the R6 demo-only 503
+        #     stays exactly as before (there is no key to enter).
+        # Owners (keyed-authenticated, or keyless-local) fall through and proceed.
+        if path in ("/api/ingest", "/api/train", "/api/reset", "/api/share") \
+                and not self._can_train(session):
+            if self.hub.keyed:
+                self._json(401, dict(self._UNAUTH))
+            else:
+                self._json(503, {"ok": False, "error": "not available in the hosted "
+                                 "demo — run the companion locally to train your own "
+                                 "audio", "public": True})
             return
 
         if path == "/api/ingest":

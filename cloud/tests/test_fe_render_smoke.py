@@ -46,7 +46,7 @@ class _ServerProc:
     interpreter, so the in-process import-graph invariants (test_mvp_d) stay
     order-independent — the render gate never pollutes another test's sys.modules."""
 
-    def __init__(self, tmp_path, public=False):
+    def __init__(self, tmp_path, public=False, keys=None):
         self.port = _free_port()
         self.url = "http://127.0.0.1:%d" % self.port
         argv = [sys.executable, "-m", "cloud.companion", "--cloud-url", "inproc",
@@ -58,7 +58,10 @@ class _ServerProc:
             argv.append("--public")
         import os
         env = dict(os.environ)
-        env.pop("ETS_ACCESS_KEYS", None)   # keyless: no access wall in commit-1 scope
+        if keys:
+            env["ETS_ACCESS_KEYS"] = ",".join(keys)
+        else:
+            env.pop("ETS_ACCESS_KEYS", None)
         self.proc = subprocess.Popen(
             argv, cwd=str(_ROOT), env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -200,6 +203,44 @@ def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
             page.screenshot(path=str(shot), full_page=True)
             assert shot.exists() and shot.stat().st_size > 0
             print(f"[render-smoke] empty-state screenshot: {shot}")
+            browser.close()
+    finally:
+        server.close()
+
+
+def test_fe_keyed_public_visitor_sees_unlock_affordance(tmp_path):
+    """OPEN_ENDS #16 render smoke: a keyless visitor on a KEYED+PUBLIC deploy lands
+    on the app (no access wall), Train is hidden (visitor), and the in-app
+    "Unlock training" affordance is present. Clicking it opens the key prompt."""
+    server = _ServerProc(tmp_path, public=True, keys=["k1"])
+    try:
+        server.wait_healthy()
+        with sync_playwright() as p:
+            browser = _launch(p)
+            page = browser.new_page(viewport={"width": 1200, "height": 900})
+            page.goto(server.url, wait_until="load", timeout=30000)
+            # the APP is served (not an access wall).
+            page.wait_for_selector("#tabs", timeout=15000)
+            assert page.query_selector("#accessGate") is None, "access wall must be gone"
+
+            # visitor: the unlock affordance appears (polled in from /api/world.keyed),
+            # and the Train tab is hidden.
+            page.wait_for_function(
+                "() => { const b = document.getElementById('unlockBtn');"
+                " return b && !b.hidden; }", timeout=20000)
+            assert page.query_selector("#tabTrain").is_hidden(), \
+                "Train tab must be hidden for a keyless visitor"
+
+            # clicking the affordance opens the in-app key prompt (no navigation).
+            page.click("#unlockBtn")
+            page.wait_for_selector("#keyModal:not([hidden])", timeout=5000)
+            assert page.query_selector("#keyInput") is not None, "key prompt missing"
+            assert server.url in page.url, "unlock must not navigate away from the app"
+
+            shot = tmp_path / "fe_keyed_public_unlock.png"
+            page.screenshot(path=str(shot), full_page=True)
+            assert shot.exists() and shot.stat().st_size > 0
+            print(f"[render-smoke] unlock-affordance screenshot: {shot}")
             browser.close()
     finally:
         server.close()
