@@ -329,6 +329,19 @@
   }
   .pad.active{ border-color: var(--accent); }
   .pad.active .ring{ box-shadow: inset 0 0 0 1px var(--accent-deep), inset 0 -30px 44px -20px var(--accent-glow), 0 0 26px -2px var(--accent-glow); }
+  /* visible drill affordance in the pad's top-right corner */
+  .pad .drillbtn{
+    position:absolute; top:8px; right:8px; z-index:2;
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 7px; border-radius:999px;
+    font-size:9px; letter-spacing:.1em; text-transform:uppercase; font-weight:700;
+    color: var(--muted); background: var(--panel-inset);
+    border:1px solid var(--line-soft); cursor:pointer;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .pad .drillbtn:hover{ color: var(--accent); border-color: var(--accent-deep); }
+  .pad .drillbtn:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .pad.active .drillbtn{ color: var(--ink-2); border-color: var(--accent-deep); }
   .pad .idx{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--muted); font-weight:650; position:relative; }
   .pad.active .idx{ color: var(--accent); }
   .pad .big{ position:relative; }
@@ -381,6 +394,8 @@
   }
   .puck:active{ cursor: grabbing; }
   .puck:focus-visible{ outline:none; box-shadow: 0 0 0 5px var(--accent-glow), var(--focus); }
+  /* generous invisible hit area so the handle is easy to grab (no extra friction) */
+  .puck::before{ content:""; position:absolute; inset:-13px; border-radius:50%; }
   .puck::after{ content:""; position:absolute; inset:8px; border-radius:50%; background: rgba(255,255,255,.7); }
   .xy .readout{ display:flex; gap: var(--sp-5); margin-top: var(--sp-4); flex-wrap:wrap; }
   .xy .readout .k{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--faint); font-weight:650; }
@@ -502,7 +517,8 @@
   }
   .unit:hover{ transform: scale(1.08); outline: 1.5px solid var(--ink); }
   .unit:focus-visible{ outline:none; box-shadow: var(--focus); }
-  .unit.sel{ outline:2px solid var(--accent); box-shadow: 0 0 14px -1px var(--accent-glow); opacity:1; }
+  .unit.sel{ outline:2px solid var(--accent); box-shadow: 0 0 14px -1px var(--accent-glow); opacity:1 !important; }
+  .drill-note{ grid-column:1/-1; font-size: var(--fs-tiny); color: var(--muted); padding: var(--sp-4) 0; line-height:1.5; }
   .drill .cap{ font-size: var(--fs-tiny); color: var(--muted); margin-top: var(--sp-4); line-height:1.5; }
   .drill .cap b{ color: var(--ink-2); font-weight:600; }
 
@@ -568,7 +584,7 @@
         <span class="glyph" aria-hidden="true"></span>
         <div>
           <h1><b>ETS</b> — Equilibrium Tape Synth</h1>
-          <div class="sub micro">sealed on-device box · steer the terrain</div>
+          <div class="sub micro">cloud-trained instrument · steer the terrain</div>
         </div>
       </div>
       <div class="spacer"></div>
@@ -580,7 +596,7 @@
       </button>
     </header>
 
-    <!-- SOURCE AUDIO (phase-1 ingest, local-only) -->
+    <!-- SOURCE AUDIO (drag-drop ingest; uploaded to the cloud for training, R3(b)) -->
     <section class="block panel" id="sourceSection">
       <div class="sec-h">
         <span class="lbl">Source Audio</span><span class="rule"></span>
@@ -588,12 +604,12 @@
       </div>
       <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop audio files here or click to choose">
         <div class="big">Drop audio here <b>or click to choose</b></div>
-        <div class="note">Files stay on this machine. They're ingested locally — never uploaded.</div>
+        <div class="note">Your tracks are uploaded to the cloud and trained there.</div>
         <input type="file" id="picker" multiple hidden>
       </div>
       <div class="files" id="files"><div class="empty">no files ingested yet</div></div>
-      <div class="seal"><span class="lock" aria-hidden="true">🔒</span>
-        <span>Only gauge-invariant <b>stage-3</b> cost matrices leave this box — raw audio and recipes never do.</span></div>
+      <div class="seal"><span class="lock" aria-hidden="true">☁️</span>
+        <span>Your audio is uploaded to the cloud (Railway) and processed there to build your world. A fully private mode is a planned upgrade.</span></div>
     </section>
 
     <!-- TRAIN (cloud anchor-fit) -->
@@ -633,7 +649,7 @@
         <section class="pads panel">
           <div class="sec-h" style="margin-bottom:2px">
             <span class="lbl">Role Pads</span><span class="rule"></span>
-            <span class="hint">tap to steer region tilt · tap-hold to drill</span>
+            <span class="hint">tap to steer region tilt · ⋯ drill (or tap-hold / d) for real units</span>
           </div>
           <div class="pad-row" id="padRow" style="margin-top:12px"><!-- pads injected from /api/world M --></div>
         </section>
@@ -645,7 +661,7 @@
             <div class="sec-h" style="margin-bottom:2px">
               <span class="lbl">Region Tilt · XY</span><span class="rule"></span>
             </div>
-            <div class="pad-xy" id="xyPad" tabindex="0" role="application" aria-label="Region tilt vector pad — click to place, drag to move">
+            <div class="pad-xy" id="xyPad" tabindex="0" role="application" aria-label="Region tilt vector pad — grab the puck and drag to steer; scroll to nudge">
               <svg class="grid-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                 <g stroke="currentColor" stroke-width=".25" style="color:var(--line)">
                   <path d="M25 0V100M50 0V100M75 0V100M0 25H100M0 50H100M0 75H100"/>
@@ -712,7 +728,7 @@
           <section class="tape-panel panel">
             <div class="sec-h" style="margin-bottom:2px">
               <span class="lbl">Output Tape</span><span class="rule"></span>
-              <span class="hint">settled render · playhead from telemetry</span>
+              <span class="hint">settled-render audio · playhead from telemetry</span>
             </div>
             <div class="tape-scroll">
               <div class="tape" id="tape">
@@ -743,7 +759,7 @@
         <button class="xbtn" id="drillClose" aria-label="Close drill">×</button>
       </div>
       <div class="unit-grid" id="unitGrid"></div>
-      <p class="cap">Each cell is one <b>unit</b>, colored by its source track. This drill-in is a <b>display</b> view of the role's makeup — steering is done from the pad face and the XY tilt.</p>
+      <p class="cap">Each cell is one <b>real unit</b> the equilibrium placed in the <b>last produced bar</b> for this role, colored by its <b>real source track</b> (from render provenance; brighter = larger settled mass). Display only — steering is done from the pad face and the XY tilt.</p>
     </section>
   </div>
 
@@ -775,8 +791,6 @@
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var $ = function(id){ return document.getElementById(id); };
   var noop = function(){};
-
-  var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
   var TAPE_WINDOW = 16;   // seconds shown across the tape before the playhead wraps
 
   /* ================= THEME (display-only) ================= */
@@ -820,8 +834,21 @@
     });
   }
 
+  // Session recovery: in public mode a session can be evicted (server redeploy or
+  // the 30-min idle TTL). The server then answers /api/* with 401. Rather than a
+  // cryptic "can't upload", send the user back to the key gate to re-authorize —
+  // GET / serves the gate to an un-authorized caller. Returns true if it redirected.
+  var _reauthing = false;
+  function reauth(code){
+    if(code === 401 && !_reauthing){ _reauthing = true; try{ location.href = "/"; }catch(e){} return true; }
+    return code === 401;
+  }
+
   function loadStatus(){
-    return fetch("/api/status").then(function(r){ return r.json(); }).then(function(s){
+    return fetch("/api/status").then(function(r){
+      if(r.status === 401){ reauth(401); return {}; }
+      return r.json();
+    }).then(function(s){
       renderIngestFiles(s.files || []);
       renderLibrary(s.files || []);
       // s.world (a path or null) is an early hint; /api/world is the authority.
@@ -831,19 +858,23 @@
 
   function loadWorld(){
     return fetch("/api/world").then(function(r){
+      if(r.status === 401){ reauth(401); throw new Error("reauth"); }
       if(!r.ok) throw new Error("world "+r.status);
       return r.json();
     }).then(function(w){
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
+        // Persist the last-known completion EDGE so the train poller's snapshot
+        // fallback (when its click-time /api/world read rejects on a flaky edge)
+        // uses the REAL baseline, not a hardcoded 0 — else a retrain false-succeeds
+        // off the prior run. Kept current here (page load + after every train).
+        world.train_seq = (w.train_seq)|0;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
-        // Hosted (public) deploy = play/steer the demo only. Hide the upload/train/
-        // reset controls (they 503 server-side there) so nothing broken is shown.
-        if(w.public){
-          var ss=document.getElementById("sourceSection"); if(ss) ss.style.display="none";
-          var ts=document.getElementById("trainSection"); if(ts) ts.style.display="none";
-        }
+        // Hosted (public) deploy now supports upload-your-own-tracks per visitor
+        // (R6 phase 2): the Source Audio + Train + New corpus controls stay VISIBLE
+        // in both modes. The demo world is playable immediately; Train switches this
+        // session's instrument to the user's own world.
         enableInstrument();
         // Honest steer state: a disarmed region means taps settle no differently.
         instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
@@ -858,7 +889,7 @@
     });
   }
 
-  /* ================= SOURCE INGEST (phase-1, local-only) ================= */
+  /* ================= SOURCE INGEST (upload to cloud, R3(b)) ================= */
   var drop = $("drop"), picker = $("picker"), filesEl = $("files");
   var trainBtn = $("trainBtn"), trainNote = $("trainNote");
 
@@ -871,9 +902,7 @@
     filesEl.innerHTML = "";
     files.forEach(function(n, i){
       var d = document.createElement("div"); d.className = "file";
-      var color = TRACK_COLORS[i % TRACK_COLORS.length];
-      d.innerHTML = '<span class="sw" style="background:'+color+';color:'+color+'"></span>'+
-                    '<span>'+escapeHtml(n)+'</span><span class="b">local</span>';
+      d.innerHTML = '<span>'+escapeHtml(n)+'</span><span class="b">local</span>';
       filesEl.appendChild(d);
     });
     trainBtn.disabled = false; trainNote.textContent = files.length + " source(s) ready.";
@@ -882,20 +911,46 @@
   function escapeHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]; }); }
 
   function upload(file){
+    // same-origin: the session cookie is sent automatically. Return {code, j} so
+    // caller can surface honest server-side rejections (e.g. per-session caps).
     return fetch("/api/ingest", {
-      method:"POST",
+      method:"POST", cache:"no-store",
       headers:{ "X-Filename": file.name, "Content-Type":"application/octet-stream" },
       body:file
-    }).then(function(r){ return r.json(); });
+    }).then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); });
+  }
+  function showUploadError(msg){
+    trainNote.textContent = msg;
+    trainNote.style.color = "var(--danger)";
   }
   function handleFiles(list){
+    // Upload with bounded CONCURRENCY (not one-at-a-time) and refresh the file list
+    // as each lands, so a corpus of multi-MB tracks goes up in parallel and the user
+    // sees live "uploading X/N" progress + files appearing instead of a silent stall.
     var arr = Array.prototype.slice.call(list); if(!arr.length) return;
-    var chain = Promise.resolve();
-    arr.forEach(function(f){ chain = chain.then(function(){ return upload(f); }); });
-    chain.then(function(last){
-      var files = (last && last.files) || null;
-      if(files){ renderIngestFiles(files); renderLibrary(files); }
-    }).catch(noop);
+    trainNote.style.color = "";
+    var total = arr.length, completed = 0, next = 0, active = 0, errMsg = null;
+    var CONC = 4;
+    trainNote.textContent = "uploading 0/" + total + "…";
+    function done(){ loadStatus().then(function(){ if(errMsg) showUploadError(errMsg); }).catch(noop); }
+    function pump(){
+      while(active < CONC && next < arr.length && !errMsg){
+        var f = arr[next++]; active++;
+        upload(f).then(function(res){
+          if(res.code === 401){ reauth(401); errMsg = "session expired — re-enter your access key"; }
+          else if(res.code >= 400 || (res.j && res.j.ok === false)){
+            errMsg = errMsg || (res.j && res.j.error) || ("upload rejected (" + res.code + ")");
+          }
+        }).catch(noop).then(function(){
+          active--; completed++;
+          if(!errMsg) trainNote.textContent = "uploading " + completed + "/" + total + "…";
+          loadStatus();                                  // files appear as they land
+          if(active === 0 && (errMsg || completed >= total)){ done(); }
+          else if(!errMsg){ pump(); }
+        });
+      }
+    }
+    pump();
   }
 
   drop.addEventListener("click", function(){ picker.click(); });
@@ -917,59 +972,103 @@
 
   /* ================= TRAIN ================= */
   var resultWrap = $("resultWrap"), resultEl = $("result"), resultBadge = $("resultBadge"), resultMeta = $("resultMeta");
-  trainBtn.addEventListener("click", function(){
-    trainBtn.disabled = true; var old = trainBtn.textContent; trainBtn.textContent = "training…";
-    resultWrap.style.display = "none";
-    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({}) })
-      .then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); })
-      .then(function(res){
-        var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
-        if(j.ok){
-          resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
-          resultMeta.textContent = "cloud anchor-fit returned + receipt verified locally";
-          var r = j.receipt || {};
-          var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
-          var msg;
-          if(j.playback === "live"){
-            // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
-            // the companion repointed the player at the user's trained world.
-            // Compute ARMED from the ACTUAL disarmed set (never hardcode "armed"):
-            // on a small/degenerate corpus region itself can disarm.
-            var dis = (j.sigma_phi_disarmed || []).map(function(l){ return l === "cont" ? "continuity" : l; });
-            var ALL = ["region", "continuity", "novelty", "density", "gauge"];
-            var armed = ALL.filter(function(l){ return dis.indexOf(l) < 0; });
-            msg = "\nYour trained world is now LIVE below — play and steer it." +
-                  "\nTraining also measured a σ_φ calibration for your corpus." +
-                  (dis.length ? "\nDisarmed at u=0 (measured σ=0, no tilt — same as the" +
-                     " founding world): " + dis.join(", ") + ".  Armed: " + armed.join(", ") + "." : "");
-            if(dis.indexOf("region") >= 0){
-              msg += "\n⚠ REGION steering is DISARMED on this corpus — the pads / XY will not" +
-                     " change the terrain. Use more, longer, more varied tracks to arm it.";
-            }
-          } else if(j.playback === "error"){
-            // BUILD + verify + σ_φ succeeded; an UNEXPECTED failure bringing it live is
-            // surfaced honestly; the calibrated demo world stays live meanwhile.
-            msg = "\nYour world was BUILT, VERIFIED, and CALIBRATED (it references your" +
-                  " local audio), but bringing it live hit an unexpected error; the demo" +
-                  " world stays live.\nError: " + (j.playback_error || "unknown");
-          } else {
-            // .npz geometry-only verify path
-            msg = "\n(geometry-only verify: receipt confirmed; the instrument keeps" +
-                  " playing the founding demo world.)";
-          }
-          resultEl.textContent = "trained world → " + j.world + msg + "\n" + lines.join("\n");
-          // loadWorld() re-reads /api/world; the instHint reflects whatever is
-          // actually PLAYING (the demo world unless the trained world went live).
-          loadWorld();
-        } else {
-          resultBadge.className = "badge err"; resultBadge.textContent = "failed";
-          resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
+  // Render a finished training result (success or failure) into the panel.
+  function renderTrainResult(j){
+    resultWrap.style.display = "block"; trainBtn.textContent = "Train on cloud"; trainBtn.disabled = false;
+    if(j.ok){
+      resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
+      resultMeta.textContent = "cloud training returned + receipt verified";
+      var r = j.receipt || {};
+      var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
+      var msg;
+      if(j.playback === "live"){
+        // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
+        // the companion repointed the player at the user's trained world.
+        // Compute ARMED from the ACTUAL disarmed set (never hardcode "armed"):
+        // on a small/degenerate corpus region itself can disarm.
+        var dis = (j.sigma_phi_disarmed || []).map(function(l){ return l === "cont" ? "continuity" : l; });
+        var ALL = ["region", "continuity", "novelty", "density", "gauge"];
+        var armed = ALL.filter(function(l){ return dis.indexOf(l) < 0; });
+        msg = "\nYour trained world is now LIVE below — play and steer it." +
+              "\nTraining also measured a σ_φ calibration for your corpus." +
+              (dis.length ? "\nDisarmed at u=0 (measured σ=0, no tilt — same as the" +
+                 " founding world): " + dis.join(", ") + ".  Armed: " + armed.join(", ") + "." : "");
+        if(dis.indexOf("region") >= 0){
+          msg += "\n⚠ REGION steering is DISARMED on this corpus — the pads / XY will not" +
+                 " change the terrain. Use more, longer, more varied tracks to arm it.";
         }
-      }).catch(function(e){
-        trainBtn.textContent = old; trainBtn.disabled = false;
-        resultWrap.style.display = "block"; resultBadge.className = "badge err"; resultBadge.textContent = "error";
-        resultEl.textContent = String(e);
-      });
+      } else if(j.playback === "error"){
+        msg = "\nYour world was BUILT, VERIFIED, and CALIBRATED (it references your" +
+              " audio), but bringing it live hit an unexpected error; the demo" +
+              " world stays live.\nError: " + (j.playback_error || "unknown");
+      } else {
+        msg = "\n(geometry-only verify: receipt confirmed; the instrument keeps" +
+              " playing the founding demo world.)";
+      }
+      resultEl.textContent = "trained world → " + (j.world || "your corpus") + msg +
+                             (lines.length ? "\n" + lines.join("\n") : "");
+      loadWorld();
+    } else {
+      resultBadge.className = "badge err"; resultBadge.textContent = "failed";
+      resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
+    }
+  }
+
+  trainBtn.addEventListener("click", function(){
+    trainBtn.disabled = true; trainBtn.textContent = "training…";
+    resultWrap.style.display = "none";
+    var done = false, startT = Date.now(), poll = null;
+    function finish(j){ if(done) return; done = true; if(poll) clearInterval(poll); renderTrainResult(j); }
+
+    // fast-path bonus: the actual request. On a long (cold) train the platform edge
+    // cuts it at ~60s — that drop is a NO-OP (the poller below is the real signal).
+    // A genuine JSON {ok:false} (cap / no-protos) still renders a real failure.
+    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" },
+                          credentials:"same-origin", body:JSON.stringify({}) })
+      .then(function(r){ var st=r.status; return r.json().then(function(j){ return { st:st, j:j }; }); })
+      .then(function(res){
+        if(res.st === 401){ reauth(401); return; }
+        if(res.j && (res.j.ok === true || res.j.ok === false)) finish(res.j);
+      })
+      .catch(function(){ /* edge-dropped on a long train — rely on the poller */ });
+
+    // ROBUST COMPLETION via the train_seq EDGE. `is_trained` is a persistent LEVEL
+    // (only reset clears it), so polling it would FALSE-SUCCEED on a retrain off the
+    // prior run's stale value. Instead we snapshot the pre-train `train_seq` and
+    // accept completion only once a NEW run has ADVANCED it — THIS run finishing,
+    // even if its own HTTP request was dropped.
+    function startPolling(seq0){
+      poll = setInterval(function(){
+        if(done) return;
+        fetch("/api/world", { credentials:"same-origin" }).then(function(r){
+          if(r.status === 401){ reauth(401); return null; }
+          return r.json();
+        }).then(function(w){
+          if(done || !w) return;
+          if(w && (w.train_seq||0) > seq0){
+            if(w.is_trained){
+              fetch("/api/status", { credentials:"same-origin" }).then(function(r){ return r.json(); })
+                .then(function(s){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"),
+                                            receipt:(s && s.last_receipt) || {}, sigma_phi_disarmed:(w.disarmed||[]) }); })
+                .catch(function(){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"), receipt:{} }); });
+            } else {
+              // run finished but the world did not go live (rare) — honest, not faked.
+              finish({ ok:true, playback:"error", world:(w.world||"your corpus"), receipt:{},
+                       playback_error:"built, but bringing it live failed; the demo world stays live" });
+            }
+          } else if(Date.now() - startT > 12*60*1000){
+            finish({ ok:false, error:"Training is taking longer than expected — it may still be running on the server. Reload the page in a minute to check." });
+          }
+        }).catch(function(){ /* transient; keep polling */ });
+      }, 8000);
+      // if the fast-path request already resolved (finish set done) before this
+      // interval was assigned, clear it now so no dormant interval leaks.
+      if(done) clearInterval(poll);
+    }
+    // snapshot the baseline edge (fresh read; fall back to the loaded world / 0).
+    fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); })
+      .then(function(w0){ startPolling((w0 && w0.train_seq) || 0); })
+      .catch(function(){ startPolling((typeof world === "object" && world && world.train_seq) || 0); });
   });
 
   /* ================= INSTRUMENT ENABLE / LOCK ================= */
@@ -1010,6 +1109,7 @@
         b.setAttribute("aria-label","Role "+idx+", steer region tilt");
         b.innerHTML =
           '<span class="halo"></span><span class="ring"></span>'+
+          '<span class="drillbtn" role="button" tabindex="0" aria-label="Drill into role '+idx+'" title="Drill into role '+idx+' — real units">⋯ drill</span>'+
           '<span class="idx">role '+idx+'</span>'+
           '<span class="big"><div class="n num" data-n>—</div><div class="u">energy</div></span>'+
           '<span class="lvl"><i data-lvl></i></span>';
@@ -1020,6 +1120,14 @@
         var cancel = function(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
         b.addEventListener("pointerup", cancel);
         b.addEventListener("pointerleave", cancel);
+        // VISIBLE drill affordance: a normal click opens the drill. stopPropagation
+        // keeps it from triggering the pad's click-to-steer / tap-hold timer.
+        var db = b.querySelector(".drillbtn");
+        db.addEventListener("pointerdown", function(e){ e.stopPropagation(); });
+        db.addEventListener("click", function(e){ e.stopPropagation(); openDrill(idx); });
+        db.addEventListener("keydown", function(e){
+          if(e.key==="Enter"||e.key===" "){ e.preventDefault(); e.stopPropagation(); openDrill(idx); }
+        });
         b.addEventListener("keydown", function(e){
           if(e.key==="Enter"||e.key===" "){ e.preventDefault(); activateRole(idx, true); }
           if(e.key.toLowerCase()==="d"){ openDrill(idx); }
@@ -1136,14 +1244,27 @@
     setPuck((cx-rect.left)/rect.width, (cy-rect.top)/rect.height);
     sendSteerThrottled();
   }
-  xyPad.addEventListener("pointerdown", function(e){
+  // GRAB MODEL: only pressing DOWN on the puck (the handle) starts a drag.
+  // Clicking empty pad space does NOT teleport the puck (no inadvertent jump);
+  // hovering never moves it (pointermove only acts while a grab is held).
+  puck.addEventListener("pointerdown", function(e){
     if(!world.ready) return;
-    if(e.target===puck){ dragging=true; puck.setPointerCapture && puck.setPointerCapture(e.pointerId); return; }
-    dragging=true; fromEvent(e);
+    dragging = true;
+    puck.setPointerCapture && puck.setPointerCapture(e.pointerId);
+    e.stopPropagation();
+    e.preventDefault();
   });
   window.addEventListener("pointermove", function(e){ if(dragging){ fromEvent(e); } });
   window.addEventListener("pointerup", function(){ if(dragging){ dragging=false; sendSteerNow(); } });
-  puck.addEventListener("pointerdown", function(e){ if(!world.ready) return; dragging=true; e.stopPropagation(); });
+  // FINE NUDGE: a deliberate wheel/scroll gesture over the pad steps the puck a
+  // little and commits it. Never fires on hover alone (requires an actual wheel).
+  xyPad.addEventListener("wheel", function(e){
+    if(!world.ready) return;
+    e.preventDefault();
+    var step = 0.02 * (e.deltaY>0 ? 1 : -1);   // scroll down → puck moves down
+    setPuck(px, py + step);
+    sendSteerThrottled();
+  }, { passive:false });
   puck.addEventListener("keydown", function(e){
     if(!world.ready) return;
     var s=0.05, done=true;
@@ -1216,50 +1337,71 @@
 
   /* ================= SOURCE LIBRARY (from ingested files) ================= */
   var libRows = $("libRows");
-  var eyeOpen = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
-  var eyeOff  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3l18 18M10.6 6.2A9.7 9.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.2 7.2A17 17 0 0 0 2 12s3.5 6 10 6a9.6 9.6 0 0 0 3.3-.6"/></svg>';
   function renderLibrary(files){
+    // Plain, honest tracklist of the REAL ingested filenames — no per-track color
+    // (there is no real per-source color to show), no "active in render" indicator
+    // (we don't track that here), no light-up. Just index + the real filename.
     files = files || [];
     if(!files.length){ libRows.innerHTML = '<div class="empty">no sources ingested</div>'; $("libCount").textContent = "0 loaded"; return; }
     libRows.innerHTML = "";
     files.forEach(function(name, i){
-      var color = TRACK_COLORS[i % TRACK_COLORS.length];
       var rowEl = document.createElement("div");
       rowEl.className = "trk";
       rowEl.innerHTML =
-        '<span class="sw" style="background:'+color+';color:'+color+'"></span>'+
-        '<span class="tid num">T'+i+'</span>'+
-        '<span class="tname" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>'+
-        '<span class="np" title="active in render"></span>'+
-        '<button class="eye" aria-label="Toggle visibility of '+escapeHtml(name)+'" aria-pressed="true">'+eyeOpen+'</button>';
-      var eye = rowEl.querySelector(".eye");
-      eye.addEventListener("click", function(){   // display only — no engine call
-        var hidden = rowEl.classList.toggle("hidden");
-        eye.innerHTML = hidden ? eyeOff : eyeOpen;
-        eye.setAttribute("aria-pressed", hidden?"false":"true");
-      });
+        '<span class="tid num">'+(i+1)+'</span>'+
+        '<span class="tname" title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</span>';
       libRows.appendChild(rowEl);
     });
     $("libCount").textContent = files.length + " loaded";
   }
 
-  /* ================= TAPE WAVEFORM (cosmetic) ================= */
-  (function buildWave(){
-    var wav = $("wav"), W=720, H=150, mid=H/2, pts=[];
-    for(var x=0;x<=W;x+=3){
-      var env = 0.35+0.5*Math.abs(Math.sin(x*0.011))*Math.abs(Math.sin(x*0.003+1));
-      var a = env*(0.55+0.45*Math.sin(x*0.09))*mid*0.86;
-      pts.push([x, mid-a]);
+  /* ================= TAPE WAVEFORM (REAL settled-render PCM) =================
+     The envelope is drawn from the ACTUAL decoded /api/stream PCM (the settled render
+     the engine produces + eardrum-caps), tapped in feedPCM() as it decodes. We fold
+     each incoming column-worth of samples into a rolling peak envelope (newest at the
+     right) and redraw on a rAF. Nothing synthetic: an empty stream draws a flat
+     baseline. The playhead is the real telemetry `t`. */
+  var WAV = { W:720, H:150, COLS:240, peaks:null, accMax:0, accN:0, perCol:1000, dirty:true };
+  WAV.peaks = new Float32Array(WAV.COLS);
+  function waveConfig(){ WAV.perCol = Math.max(1, Math.round((world.sr||48000) * TAPE_WINDOW / WAV.COLS)); }
+  function waveReset(){ WAV.peaks.fill(0); WAV.accMax = 0; WAV.accN = 0; WAV.dirty = true; }
+  function wavePush(samples, n){
+    // fold real decoded samples into the rolling per-column peak envelope
+    for(var i=0;i<n;i++){
+      var a = samples[i]; if(a<0) a=-a;
+      if(a > WAV.accMax) WAV.accMax = a;
+      if(++WAV.accN >= WAV.perCol){
+        WAV.peaks.copyWithin(0, 1);            // scroll left
+        WAV.peaks[WAV.COLS-1] = WAV.accMax;    // newest peak at right edge
+        WAV.accMax = 0; WAV.accN = 0; WAV.dirty = true;
+      }
     }
-    var top="M0 "+mid, bot="";
-    pts.forEach(function(p){ top+=" L"+p[0]+" "+p[1].toFixed(1); });
-    for(var i=pts.length-1;i>=0;i--){ var p=pts[i]; bot+=" L"+p[0]+" "+(mid+(mid-p[1])).toFixed(1); }
+  }
+  function drawWave(){
+    var wav = $("wav"), W=WAV.W, H=WAV.H, mid=H/2, step=W/WAV.COLS, GAIN=1.6;
+    var top = "M0 "+mid, bot = "";
+    for(var c=0;c<WAV.COLS;c++){
+      var x = (c*step);
+      var amp = Math.min(1, WAV.peaks[c]*GAIN) * mid * 0.86;
+      top += " L"+x.toFixed(1)+" "+(mid-amp).toFixed(1);
+    }
+    top += " L"+W+" "+mid;
+    for(var d=WAV.COLS-1; d>=0; d--){
+      var xd = (d*step);
+      var ampd = Math.min(1, WAV.peaks[d]*GAIN) * mid * 0.86;
+      bot += " L"+xd.toFixed(1)+" "+(mid+ampd).toFixed(1);
+    }
+    bot += " L0 "+mid;
     var grad = '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
       '<stop offset="0" stop-color="var(--tape)" stop-opacity="0.9"/>'+
       '<stop offset="0.5" stop-color="var(--accent)" stop-opacity="0.55"/>'+
       '<stop offset="1" stop-color="var(--tape)" stop-opacity="0.9"/></linearGradient></defs>';
-    wav.innerHTML = grad+'<path d="'+top+bot+' Z" fill="url(#wg)" opacity="0.85"/>'+
+    wav.innerHTML = grad + '<path d="'+top+" "+bot+' Z" fill="url(#wg)" opacity="0.85"/>'+
       '<line x1="0" y1="'+mid+'" x2="720" y2="'+mid+'" stroke="var(--line)" stroke-width="0.6"/>';
+  }
+  (function waveTick(){
+    if(WAV.dirty){ WAV.dirty = false; drawWave(); }
+    (window.requestAnimationFrame || function(f){ setTimeout(f,33); })(waveTick);
   })();
 
   var playhead = $("playhead"), tapePlayed = $("tapePlayed"), timeRead = $("timeRead");
@@ -1275,29 +1417,69 @@
     timeRead.innerHTML = (t>=0?t.toFixed(2):"0.00")+"<small>s</small>";
   }
 
-  /* ================= DRILL OVERLAY (display-only) ================= */
+  /* ================= DRILL OVERLAY (display-only, REAL provenance) =================
+     The drill-in renders the LAST produced bar's REAL placed units for a role, read
+     from GET /api/units (which mirrors render()'s ProvenanceStream grouped by role).
+     Each cell is a real unit colored by a STABLE colour keyed to its real source
+     track_id, lit by its real settled mass. No fabricated cells, no engine-control
+     call — /api/units is read-only. Before any bar is produced the view says so
+     honestly ("press play"). */
   var drillBack = $("drillBack"), drillTag = $("drillTag"), drillTitle = $("drillTitle"), unitGrid = $("unitGrid");
   var lastFocus = null;
-  function openDrill(i){
-    lastFocus = document.activeElement;
-    drillTag.textContent = "role "+i;
-    var units = 36;   // cosmetic makeup view; steering is not done here
-    drillTitle.textContent = units+" units · drilled";
+  // Fixed palette used ONLY to give each REAL source track a stable, distinct color
+  // in the drill-in (the cell's identity — track_id, unit_id, mass — is the real
+  // provenance from /api/units; the color is just a legible index into that real id,
+  // not itself data). Deterministic per track_id so a track keeps its color.
+  var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0",
+                      "#F2D06B","#6BE0D2","#F09CC5","#9AE86A","#6AC0E8"];
+  function trackColor(tid){
+    var n = TRACK_COLORS.length;
+    return TRACK_COLORS[((tid % n) + n) % n];   // stable per real track_id
+  }
+  function renderDrill(i, snap){
     unitGrid.innerHTML = "";
-    for(var u=0; u<units; u++){
-      var color = TRACK_COLORS[(u*7+i) % TRACK_COLORS.length];
+    var roles = snap && snap.roles;
+    var pool = (roles && (roles[i] || roles[String(i)])) || [];
+    if(!snap || snap.bar < 0){
+      drillTitle.textContent = "role "+i+" · awaiting audio";
+      unitGrid.innerHTML = '<div class="drill-note">No bar produced yet — press <b>play</b> to populate this role from real render provenance.</div>';
+      return;
+    }
+    if(!pool.length){
+      drillTitle.textContent = "role "+i+" · 0 units";
+      unitGrid.innerHTML = '<div class="drill-note">No units fell under this role in the last produced bar.</div>';
+      return;
+    }
+    drillTitle.textContent = "role "+i+" · "+pool.length+" unit"+(pool.length===1?"":"s")+" (last bar)";
+    var maxMass = 0;
+    pool.forEach(function(u){ if(u.mass > maxMass) maxMass = u.mass; });
+    pool.forEach(function(u){
       var cell = document.createElement("button");
       cell.className = "unit";
-      cell.style.background = color;
-      cell.setAttribute("aria-label","unit "+u);
+      cell.style.background = trackColor(u.track_id|0);
+      cell.style.opacity = (0.45 + 0.55*(maxMass>0 ? (u.mass/maxMass) : 1)).toFixed(3);
+      cell.setAttribute("aria-label","unit "+u.unit_id+" · source track "+u.track_id);
+      cell.title = "track T"+u.track_id+" · unit "+u.unit_id+" · mass "+(+u.mass).toFixed(3);
       cell.addEventListener("click", (function(c){ return function(){
         unitGrid.querySelectorAll(".unit.sel").forEach(function(n){ n.classList.remove("sel"); });
         c.classList.add("sel");   // display selection only — no engine call
       };})(cell));
       unitGrid.appendChild(cell);
-    }
+    });
+  }
+  function openDrill(i){
+    lastFocus = document.activeElement;
+    drillTag.textContent = "role "+i;
+    drillTitle.textContent = "role "+i+" · loading…";
+    unitGrid.innerHTML = "";
     drillBack.classList.add("open"); drillBack.setAttribute("aria-hidden","false");
     $("drillClose").focus();
+    // READ-ONLY fetch of the last bar's real provenance; re-fetched each open so the
+    // makeup reflects the most recently produced bar.
+    fetch("/api/units", { cache:"no-store" })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(snap){ if(drillBack.classList.contains("open")) renderDrill(i, snap); })
+      .catch(function(){ if(drillBack.classList.contains("open")) renderDrill(i, null); });
   }
   function closeDrill(){
     drillBack.classList.remove("open"); drillBack.setAttribute("aria-hidden","true");
@@ -1412,7 +1594,8 @@
         ch0[f] = dv.getInt16(b, true) / 32768;
         if(audio.channels>1) ch1[f] = dv.getInt16(b+2, true) / 32768;
       }
-      pushChunk(ch0, ch1, nFrames);
+      wavePush(ch0, nFrames);   // tap the REAL decoded PCM BEFORE pushChunk transfers
+      pushChunk(ch0, ch1, nFrames);   // (worklet path neuters ch0.buffer via transfer)
     }
     audio.tail = (usable < data.length) ? data.slice(usable) : null;
   }
@@ -1501,6 +1684,7 @@
       try{ audio.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e2){ showStreamError(e2); return; }
     }
     audio.stopped = false; audio.tail = null; audio.buffered = 0; audio.queue = [];
+    waveConfig(); waveReset();   // size the waveform columns to this world's sr, clear stale peaks
     try{ await audio.ctx.resume(); }catch(e){}
     // load the AudioWorklet (fall back to ScriptProcessor if unavailable)
     audio.worklet = false;
@@ -1548,6 +1732,7 @@
     teardownAudio();
     state = "idle"; setPlayUI();
     updateTape(0);
+    waveReset();   // clear the waveform back to a flat baseline on stop
   }
 
   // stream failure while playing: stop audio + telemetry, return to idle (no crash)

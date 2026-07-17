@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# ETS faithfulness harness — pre-commit gate (tier 1).
+# Blocks the commit if any faithfulness check fails. See
+# cloud/FAITHFULNESS_REGRESSION_SPEC.md and CLAUDE.md (standing rules).
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+echo "[pre-commit] faithfulness_verify --tier 1"
+python "$ROOT/cloud/tools/faithfulness_verify.py" --tier 1

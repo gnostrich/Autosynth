@@ -553,3 +553,171 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` cloud/companion/Dockerfile (2026-07-17T10:21:57+00:00)
 - `Write` cloud/companion/railway.json (2026-07-17T10:22:01+00:00)
 - `Write` cloud/companion/Dockerfile.dockerignore (2026-07-17T10:22:18+00:00)
+
+### at `e2fb3f8`
+- `Edit` cloud/companion/Dockerfile (2026-07-17T10:28:24+00:00)
+
+### at `8d63776`
+- `Edit` cloud/companion/app.py (2026-07-17T10:30:24+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:31:04+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:31:18+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T10:31:46+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T10:31:52+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T10:32:08+00:00)
+
+### at `d2c2d57`
+- `Edit` cloud/companion/Dockerfile (2026-07-17T10:38:57+00:00)
+
+### at `0a623bd`
+- `Edit` cloud/companion/app.py (2026-07-17T10:41:48+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:43:03+00:00)
+
+### at `76f9997`
+- `Edit` cloud/companion/app.py (2026-07-17T10:43:53+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:44:25+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:44:56+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:45:11+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:45:31+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:45:40+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T10:45:45+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T10:45:53+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T10:46:04+00:00)
+
+### at `6af037c`
+- `Edit` cloud/companion/app.py (2026-07-17T10:50:56+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T10:51:06+00:00)
+
+### at `4a9b43a`
+- `Edit` cloud/companion/app.py (2026-07-17T11:03:38+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T11:03:50+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T11:03:59+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T11:04:06+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T11:04:11+00:00)
+- `Edit` cloud/companion/Dockerfile (2026-07-17T11:04:25+00:00)
+
+### at `4ae2d74`
+- `Edit` cloud/companion/Dockerfile (2026-07-17T11:13:02+00:00)
+
+### at `bf10baa`
+- `Edit` cloud/companion/Dockerfile (2026-07-17T11:26:47+00:00)
+
+### at `4a9d66d`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T11:38:52+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:40:25+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:40:31+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:40:41+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:40:56+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:41:12+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:41:40+00:00)
+
+### at `31c6334`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T11:45:12+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T11:45:32+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T11:45:38+00:00)
+
+### at `46b3643`
+- `Write` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:47:38+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:48:22+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:48:29+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:48:50+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:02+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:23+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:37+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:48+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:54+00:00)
+- `Write` cloud/tools/faithfulness_verify.py (2026-07-17T11:50:00+00:00)
+
+### at `9d9d923`
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:50:45+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:51:55+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:52:00+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:52:10+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:52:20+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:52:26+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:52:38+00:00)
+- `Edit` CLAUDE.md (2026-07-17T11:52:51+00:00)
+- `Edit` cloud/COMPANION_INVARIANTS.md (2026-07-17T11:52:58+00:00)
+- `Write` .githooks/pre-commit (2026-07-17T11:53:05+00:00)
+- `Write` .githooks/pre-push (2026-07-17T11:53:07+00:00)
+- `Edit` cloud/COMPANION_INVARIANTS.md (2026-07-17T11:53:32+00:00)
+- `Edit` cloud/COMPANION_INVARIANTS.md (2026-07-17T11:53:51+00:00)
+
+### at `ba4634a`
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:55:26+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:56:23+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:56:43+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:56:49+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:56:53+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:57:02+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:57:10+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:57:19+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T11:57:26+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:57:41+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:57:56+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:58:09+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T12:02:24+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:06:20+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:06:27+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:06:36+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:07:01+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:07:10+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:07:14+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T12:07:39+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:09:31+00:00)
+
+### at `d521255`
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:24:15+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:25:06+00:00)
+
+### at `43f8cf3`
+- `Edit` cloud/companion/app.py (2026-07-17T12:32:26+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T12:32:36+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T12:32:50+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:34:11+00:00)
+
+### at `f4d1d4d`
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:40:51+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T12:41:02+00:00)
+- `Write` .claude/agents/holonomy-tester.md (2026-07-17T12:41:54+00:00)
+
+### at `37882f6`
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:02:14+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:02:22+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:02:51+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:03:03+00:00)
+
+### at `c80921b`
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:14:54+00:00)
+
+### at `9fd0eff`
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:22:07+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:22:13+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:22:25+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:22:32+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:22:36+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:22:41+00:00)
+
+### at `49a2630`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:14+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:22+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:37+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:45+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:53+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T13:45:02+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T13:45:10+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T13:45:17+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:45:40+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:45:49+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:45:57+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:46:05+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:46:31+00:00)
+- `Write` OPERATOR_REQUESTS.md (2026-07-17T13:47:10+00:00)
+- `Edit` OPERATOR_REQUESTS.md (2026-07-17T13:47:49+00:00)
+
+### at `4dfda9d`
+- `Write` cloud/tools/tempo_verify.py (2026-07-17T13:48:36+00:00)
+- `Edit` cloud/tools/tempo_verify.py (2026-07-17T13:49:02+00:00)
+- `Edit` cloud/tools/tempo_verify.py (2026-07-17T13:49:07+00:00)
+
+### at `40819a1`
+- `Edit` OPERATOR_REQUESTS.md (2026-07-17T13:58:50+00:00)

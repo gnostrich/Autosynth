@@ -75,8 +75,26 @@ class StreamPlayer:
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._bar_index = 0
-        # latest read-only telemetry (roles 0..1, elapsed seconds) — for /api/telemetry
-        self.telemetry = {"roles": [0.0] * self.M, "t": 0.0, "bar": 0}
+        # Canonical unit->role map (spec §8 region lane): a unit's role is the
+        # DOMINANT anchor of its band's column of the frozen anchor band-profile
+        # matrix B (argmax over B[:, band]) — the SAME map role_unit_counts() uses.
+        # Precomputed ONCE over the frozen world; read-only. On a degenerate world
+        # whose B is uniform this genuinely collapses every band onto anchor 0 (a
+        # real property of that world, surfaced honestly, not a fabricated split).
+        _B0 = np.asarray(self.world.fstate.B, dtype=np.float64)   # (M, n_bands)
+        self._role_of_band = (_B0.argmax(0).astype(np.int64)
+                              if _B0.size else np.zeros(0, np.int64))
+        # latest read-only telemetry — for /api/telemetry. `rms`/`peak` are the level
+        # of the ALREADY-PRODUCED, eardrum-capped bar audio (a pure reduction of the
+        # produced buffer; nothing downstream), so the UI output meters reflect real
+        # playback level, not decoration.
+        self.telemetry = {"roles": [0.0] * self.M, "t": 0.0, "bar": 0,
+                          "rms": 0.0, "peak": 0.0}
+        # LAST produced bar's REAL render provenance, grouped by role. Each entry is
+        # a placed unit's real source (track_id, unit_id) + settled mass, taken from
+        # render()'s ProvenanceStream (I-12: every unit that reached the tape). Read-
+        # only; surfaced to the drill-in via /api/units. Empty until the first bar.
+        self._last_bar = {"bar": -1, "roles": {i: [] for i in range(self.M)}}
         # produced PCM waiting to be streamed (bytes of int16 mono @ sr)
         import queue
         self._pcm_q: "queue.Queue[bytes]" = queue.Queue(maxsize=64)
@@ -145,15 +163,58 @@ class StreamPlayer:
         tilt = self.engine._tilt_for(u)                      # ONE lane->tilt point
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
-        audio, _prov = render_schedule(sched, self._bank)
+        audio, prov = render_schedule(sched, self._bank)
         audio = _playback_soft_limit(audio)                  # LIVE-only eardrum cap
         roles = bar_role_activity(r.rows, self._bank, self.world.fstate.B)
         roles = [float(x) for x in np.asarray(roles).reshape(-1)[:self.M]]
+        # REAL per-bar provenance for the drill-in: group render()'s ProvenanceStream
+        # segments (each an on-tape placed unit) by their canonical role. Pure READ of
+        # already-produced state (prov + the frozen bank/B); calls nothing downstream,
+        # so the audio is byte-identical whether or not this runs.
+        by_role = self._group_units_by_role(prov)
+        rms = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2))) if audio.size else 0.0
+        peak = float(np.max(np.abs(audio))) if audio.size else 0.0
         self._bar_index = int(r.bar)
+        with self._lock:
+            self._last_bar = {"bar": int(r.bar), "roles": by_role}
         self.telemetry = {"roles": roles, "bar": int(r.bar),
-                          "t": float(r.bar * self.engine.writer.bar_seconds)}
+                          "t": float(r.bar * self.engine.writer.bar_seconds),
+                          "rms": rms, "peak": peak}
         pcm = _to_int16(audio)
         return pcm, roles
+
+    def _group_units_by_role(self, prov) -> dict:
+        """Group a rendered bar's provenance segments by canonical role. Each placed
+        unit's role is the dominant anchor of its band (self._role_of_band, argmax over
+        the frozen B). Returns {role: [{track_id, unit_id, mass}, ...]}. READ-ONLY over
+        already-produced provenance + the frozen bank; nothing downstream is touched."""
+        by_role: dict = {i: [] for i in range(self.M)}
+        n_bands = int(self._role_of_band.shape[0])
+        for seg in prov.segments:
+            tid = int(seg["src_track"]); uid = int(seg["src_unit"])
+            try:
+                band = int(self._bank.get(tid, uid).band)
+            except KeyError:
+                continue
+            if not (0 <= band < n_bands):
+                continue
+            role = int(self._role_of_band[band])
+            if 0 <= role < self.M:
+                by_role[role].append({"track_id": tid, "unit_id": uid,
+                                      "mass": float(seg["mass"])})
+        return by_role
+
+    def last_bar_units(self) -> dict:
+        """READ-ONLY snapshot of the LAST produced bar's real placed units, grouped by
+        role, plus the world's source-track set (for stable per-track colouring). Empty
+        (`bar == -1`, all roles []) until the first bar is produced. Pure read of the
+        state produce_one_bar() already captured; issues no engine-control."""
+        with self._lock:
+            lb = self._last_bar
+            roles = {int(k): [dict(v) for v in vs] for k, vs in lb["roles"].items()}
+            bar = int(lb["bar"])
+        return {"bar": bar, "M": self.M, "roles": roles,
+                "tracks": [int(t.track_id) for t in self.world.tracks]}
 
     # --- transport / streaming ---------------------------------------------
     def _loop(self):
@@ -173,6 +234,11 @@ class StreamPlayer:
         self._playing.set()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
+
+    def is_playing(self) -> bool:
+        """True while the produce loop is armed. Read-only; the session registry
+        uses it to avoid evicting a session whose audio is actively streaming."""
+        return self._playing.is_set()
 
     def stop(self):
         self._playing.clear()

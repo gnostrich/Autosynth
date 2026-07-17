@@ -30,6 +30,30 @@ breaking one, STOP and surface it to the operator — never silently.
    `cloud/tools/*_verify.py` pattern) before claiming it works. Note that this
    sandbox renders ~100x slower than real hardware — build/verify accordingly.
 
+## Faithfulness regression harness (MECHANICAL — run it first, every time)
+The judgement-call auditor is necessary but not sufficient: two faithfulness
+regressions shipped anyway (a fabricated green-dashboard drill-in + `Math.sin` tape
+"render"; and a runtime file-path load not COPY'd into the image → live 502). The
+mechanical guard is `cloud/tools/faithfulness_verify.py`, driven by the living
+checklist `cloud/FAITHFULNESS_REGRESSION_SPEC.md` (which carries the CAPTION REGISTRY
+and the FABRICATION INCIDENT LOG). **Standing rules — enforcement, not suggestion:**
+- After EVERY edit to `cloud/` or an engine tree (`ets/`, `architecture-v6/ets/`),
+  run `python cloud/tools/faithfulness_verify.py --tier 0` (< ~5s, pure static).
+- Before ANY commit, run `--tier 1` (adds `pytest cloud/tests` + the fail-closed
+  public-gate probe). The `.githooks/pre-commit` hook runs this; enable hooks once
+  per clone with `git config core.hooksPath .githooks`.
+- Before ANY merge to `main`, run `--tier 2` (adds engine byte-verify + seam +
+  instrument). The `.githooks/pre-push` hook runs this.
+- The **ets-auditor MUST run the harness FIRST and paste its output** before doing
+  judgement review. The harness is the floor; the auditor's judgement is on top of a
+  green (or honestly-explained) harness, never instead of it.
+- Doctrine every surface obeys: **REAL-DATA or DISARMED-AND-LABELED.** A prettier
+  synthetic still FAILS. A check that cannot fail is worthless — `--self-test` proves
+  every check can fail; keep it green.
+- Fabrication incident log lives in `cloud/FAITHFULNESS_REGRESSION_SPEC.md`
+  (FABRICATION INCIDENT LOG); add every new incident there with root cause +
+  remediation check-id.
+
 ## Repo hygiene
 - **Keep `main` current.** After work is committed to the working branch, merge it
   to `main` (PR + merge) so the operator only ever needs `main`. Don't make them
