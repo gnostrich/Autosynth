@@ -556,8 +556,8 @@
     .lane{ grid-template-columns: 78px 1fr 44px; }
     header.hd{ padding: var(--sp-3) var(--sp-4); }
   }
-</style>
-  /* ===== TABS (Play / Train / Explore) ===== */
+
+/* ===== TABS (Play / Train / Explore) ===== */
   .tabs{ display:flex; gap:4px; margin-left:14px; }
   .tab{ appearance:none; background:transparent; border:1px solid var(--line);
         color:var(--muted); border-radius:9px; padding:7px 14px; font-size:12.5px;
@@ -625,6 +625,7 @@
   .pad.settling::after{ content:"settling…"; position:absolute; right:8px; top:8px;
        font-size:9px; color:var(--muted); letter-spacing:.04em; }
 </style>
+  
 </head>
 <body>
 <div id="ets">
@@ -663,12 +664,12 @@
       </div>
       <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop audio files here or click to choose">
         <div class="big">Drop audio here <b>or click to choose</b></div>
-        <div class="note">Files stay on this machine. They're ingested locally — never uploaded.</div>
+        <div class="note">Local run: files stay on this machine. Hosted run: files upload to this app's server for training (see the privacy note).</div>
         <input type="file" id="picker" multiple hidden>
       </div>
       <div class="files" id="files"><div class="empty">no files ingested yet</div></div>
       <div class="seal"><span class="lock" aria-hidden="true">🔒</span>
-        <span>Only gauge-invariant <b>stage-3</b> cost matrices leave this box — raw audio and recipes never do.</span></div>
+        <span>Local sealed mode: only gauge-invariant <b>stage-3</b> cost matrices leave this box. Hosted mode: your audio is processed on this app's server (operator's R3 model).</span></div>
     </section>
 
     <!-- TRAIN (cloud anchor-fit) -->
