@@ -533,3 +533,10 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `f2ffc7b`
 - `Write` cloud/run_companion.sh (2026-07-17T09:09:45+00:00)
 - `Write` cloud/LOCAL_DEPLOY.md (2026-07-17T09:09:59+00:00)
+
+### at `a144dc1`
+- `Edit` cloud/companion/app.py (2026-07-17T09:57:26+00:00)
+
+### at `5c8ef08`
+- `Write` cloud/COMPANION_INVARIANTS.md (2026-07-17T10:00:21+00:00)
+- `Write` CLAUDE.md (2026-07-17T10:01:06+00:00)
