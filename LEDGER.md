@@ -696,3 +696,25 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/static/index.html (2026-07-17T13:22:32+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-17T13:22:36+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-17T13:22:41+00:00)
+
+### at `49a2630`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:14+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:22+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:37+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:45+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T13:44:53+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T13:45:02+00:00)
+- `Edit` cloud/tools/faithfulness_verify.py (2026-07-17T13:45:10+00:00)
+- `Edit` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T13:45:17+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:45:40+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:45:49+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:45:57+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:46:05+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T13:46:31+00:00)
+- `Write` OPERATOR_REQUESTS.md (2026-07-17T13:47:10+00:00)
+- `Edit` OPERATOR_REQUESTS.md (2026-07-17T13:47:49+00:00)
+
+### at `4dfda9d`
+- `Write` cloud/tools/tempo_verify.py (2026-07-17T13:48:36+00:00)
+- `Edit` cloud/tools/tempo_verify.py (2026-07-17T13:49:02+00:00)
+- `Edit` cloud/tools/tempo_verify.py (2026-07-17T13:49:07+00:00)
