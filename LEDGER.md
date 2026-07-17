@@ -614,3 +614,15 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/engine_bridge.py (2026-07-17T11:45:12+00:00)
 - `Edit` cloud/companion/engine_bridge.py (2026-07-17T11:45:32+00:00)
 - `Edit` cloud/companion/app.py (2026-07-17T11:45:38+00:00)
+
+### at `46b3643`
+- `Write` cloud/FAITHFULNESS_REGRESSION_SPEC.md (2026-07-17T11:47:38+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:48:22+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:48:29+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:48:50+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:02+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:23+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:37+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:48+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T11:49:54+00:00)
+- `Write` cloud/tools/faithfulness_verify.py (2026-07-17T11:50:00+00:00)
