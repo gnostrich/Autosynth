@@ -793,7 +793,10 @@
   applyThemeLabel();
 
   /* ================= APP STATE ================= */
-  var world = { ready:false, M:0, sr:48000, keyed:false, canTrain:true };
+  // canTrain defaults FALSE (auditor note 2): the Train tab must never
+  // flash for a visitor before the first /api/world poll answers; the
+  // server's owner gate is authoritative either way.
+  var world = { ready:false, M:0, sr:48000, keyed:false, canTrain:false };
   var state = "idle";        // idle | playing | paused
   var region = [];           // last computed region vector (length M)
   var es = null;             // telemetry EventSource

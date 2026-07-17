@@ -250,6 +250,15 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
 - Status: specified, registered, NOT building (operator freeze). Trigger phrase:
   "build the front door".
 
+## 17. Hardened multi-user fork — collected deferrals  🟡  (register, 2026-07-18)
+- From the front-door audit (PASS-WITH-NOTES): (a) SHARED VISITOR SESSION —
+  all keyless visitors share one session, so concurrent strangers collide on
+  opened set + steer (accidental co-play). No privacy/R1 leak (owner routes
+  gated; only opt-in attributed sets reachable). Acceptable demo-phase UX;
+  per-visitor sessions belong to the multi-user fork. (b) Per-set visitor
+  steer RATE caps (magnitude already enveloped). Plus the earlier multi-user
+  parking (#8): key issuance/quotas/store, deliberate co-play as a feature.
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
