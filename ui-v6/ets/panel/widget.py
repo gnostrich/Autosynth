@@ -1,0 +1,666 @@
+"""Native PySide6 panel widget (spec §8, §12) — the six lanes (strips for
+REGION; ui-v6 removed the XY vector pad — the FIELD surface in
+ets.instrument.field subsumes it), the two declared tolerance knobs
+(LEASH/COMMA), meter
+jacks (the slide/loop pairs; the prior conflated drift jack was DELETED
+outright in directive-v1 Feature 2 Stage 1), clock display, MIDI CC learn.
+Headless-testable under QT_QPA_PLATFORM=offscreen.
+
+Native Qt only. No web/browser tech (I-13). The widget renders exactly the six
+lanes from `ets.panel.lanes.LANES` (its construction asserts exhaustiveness)
+plus exactly the two tolerances from `ets.panel.tolerances.TOLERANCES` (also
+asserted), routes every lane change to the OSC emitter (the one outbound
+boundary-measure channel) and every tolerance change to /ets/tolerances, and
+paints the inbound meter jacks read-only. Meters never feed a lane or a knob:
+the meter widgets only read a `MeterState`; there is no signal from a jack to
+the lane vector or the tolerances.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Dict, Optional
+
+import numpy as np
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPainter, QPen
+from PySide6.QtWidgets import (
+    QCheckBox, QDoubleSpinBox, QGroupBox, QGridLayout, QHBoxLayout, QLabel,
+    QSlider, QVBoxLayout, QWidget,
+)
+
+from ets.panel.envelope import (
+    SAFE_REGION_MAGNITUDE, SLEW_MAX_STEP, RegionSlew, clamp_region,
+)
+from ets.panel.lanes import (
+    LANES, LaneKind, LaneVector, assert_lanes_exhaustive, default_lane_vector,
+    spec,
+)
+from ets.panel.meters import MeterState, fmt_reading
+from ets.panel.midi import CCMap, LaneTarget
+from ets.panel.tolerances import (
+    TOLERANCES, Tolerances, assert_tolerances_exhaustive, display as tol_display,
+)
+from ets.panel import osc_schema as S
+
+
+# --- FACE-LABEL ALIAS MAP (display layer ONLY; directive: ETS panel relabel) --
+# The SINGLE source of the synth-native face words + hover tooltips. Keys are the
+# UNCHANGED internal control ids: the six lanes, the two tolerance knobs, and the
+# two meter FAMILIES (slide/loop). Values carry the face word the operator reads
+# and a verbatim tooltip. This is PRESENTATION only: no logic anywhere branches
+# on a face string — face labels and tooltips are RENDERED from this table and
+# nothing else reads it. Every tooltip keeps the true theory name (in the gloss
+# and in an "internal:" footer) so the theory name is always one hover away,
+# never hidden. This map is the ONLY relabel; every internal id (region,
+# density, continuity, gauge, novelty, temperature/T_s, leash, comma, slide,
+# loop, sigma_phi) stays EXACTLY as-is in lanes/tolerances/OSC/MIDI/registry.
+@dataclass(frozen=True)
+class _Face:
+    label: str        # synth-native face word painted on the panel
+    gloss: str        # verbatim one-line meaning (carries the theory name)
+    internal: str     # unchanged internal name, revealed in the tooltip footer
+    disarmed: bool = False   # visibly-disabled lane (uncalibrated scale)
+
+    def tooltip(self) -> str:
+        gloss = self.gloss
+        if self.disarmed:
+            gloss += "  (disarmed — uncalibrated scale)"
+        return f"{gloss}\n\ninternal: {self.internal}"
+
+
+_FACE: Dict[str, "_Face"] = {
+    # five direction lanes + the sharpness lane (internal ids unchanged)
+    "region": _Face(
+        "VECTOR",
+        "Region tilt: lean the mix toward discovered sound-roles (anchors).",
+        "region"),
+    "density": _Face(
+        "DENSITY",
+        "How much material fills each bar.",
+        "density", disarmed=True),
+    "continuity": _Face(
+        "VARY",
+        "Loop vs mutate: low = long faithful runs, high = aggressive "
+        "recombination.",
+        "continuity"),
+    "gauge": _Face(
+        "KEY LOCK",
+        "Gauge stiffness: cost of changing key/feel. High = stay home.",
+        "gauge", disarmed=True),
+    "novelty": _Face(
+        "SPREAD",
+        "Novelty pressure: how strongly recent material is avoided.",
+        "novelty"),
+    "temperature": _Face(
+        "CHAOS",
+        "Temperature: how strictly the writer obeys its own best choice. "
+        "High = looser. (Sampling is a declared approximation above ~0.)",
+        "temperature / T_s"),
+    # the two declared tolerance knobs — meter/limit pairs share the stem
+    "leash": _Face(
+        "SLIDE LIMIT",
+        "How far SLIDE may roam before homing. (Stage-1)",
+        "leash"),
+    "comma": _Face(
+        "LOOP LIMIT",
+        "How much LOOP residue is allowed before a reset is owed. "
+        "Reich (inf) <-> Schubert (small). (Stage-1)",
+        "comma"),
+    # the two meter FAMILIES (read-only); sub-jacks keep the SLIDE/LOOP stem
+    "slide": _Face(
+        "SLIDE",
+        "Distance from home key/feel. Read-only.",
+        "slide"),
+    "loop": _Face(
+        "LOOP",
+        "Un-undoable route residue (holonomy) — nonzero even when home. "
+        "Read-only; holds ending veto.",
+        "loop"),
+}
+
+
+def _face(control_id: str, fallback_label: str, fallback_gloss: str) -> "_Face":
+    """Resolve the face alias for a control. Presentation is TOTAL: a control id
+    with no alias (only the closed-set NEGATIVE tests ever inject one) renders
+    from its own spec text. The display layer thus never crashes and never
+    becomes a second enforcement channel — the control-set LAW stays solely in
+    assert_lanes_exhaustive / assert_tolerances_exhaustive, which still fire."""
+    f = _FACE.get(control_id)
+    return f if f is not None else _Face(fallback_label, fallback_gloss, control_id)
+
+
+_SLIDER_STEPS = 1000
+
+
+def _to_slider(lane_id: str, value: float) -> int:
+    s = spec(lane_id)
+    frac = (value - s.lo) / (s.hi - s.lo) if s.hi > s.lo else 0.0
+    return int(round(max(0.0, min(1.0, frac)) * _SLIDER_STEPS))
+
+
+def _from_slider(lane_id: str, pos: int) -> float:
+    s = spec(lane_id)
+    return float(s.lo + (pos / _SLIDER_STEPS) * (s.hi - s.lo))
+
+
+class _ScrollSlider(QSlider):
+    """A vertical slider driven by HOVER + SCROLL, not click-drag (macOS
+    trackpad idiom, operator request). Contract:
+
+    * WHEEL over the widget (two-finger trackpad scroll or mouse wheel) nudges
+      the value RELATIVELY — no need to click first; hovering is enough.
+    * click / drag do NOT move the value (no accidental fling, no click-to-jump).
+    * hovering alone does NOT move the value (no absolute "value follows the
+      cursor" — the position only changes on an explicit scroll gesture).
+
+    Everything else (range, setValue/value, valueChanged, blockSignals) is the
+    stock QSlider API, so the surrounding panel code is unchanged."""
+
+    # scroll sensitivity: a standard wheel notch is 120 units in angleDelta;
+    # one notch moves ~2% of the range. Trackpad pixelDelta is finer-grained and
+    # scaled to match. Derived from _SLIDER_STEPS, not hand-tuned per feel.
+    _STEP_PER_NOTCH = max(1, _SLIDER_STEPS // 50)
+
+    def __init__(self, *a, **k) -> None:
+        super().__init__(*a, **k)
+        self.setFocusPolicy(Qt.WheelFocus)   # wheel works on hover, no click needed
+        self._accum = 0.0
+
+    def wheelEvent(self, ev) -> None:
+        # prefer high-resolution trackpad pixelDelta; fall back to angleDelta.
+        pd = ev.pixelDelta().y()
+        if pd != 0:
+            step = pd / 8.0 * (self._STEP_PER_NOTCH / 15.0)
+        else:
+            step = (ev.angleDelta().y() / 120.0) * self._STEP_PER_NOTCH
+        self._accum += step
+        whole = int(self._accum)
+        if whole:
+            self._accum -= whole
+            self.setValue(int(min(self.maximum(),
+                                  max(self.minimum(), self.value() + whole))))
+        ev.accept()
+
+    # click / drag are inert: value changes only via wheel.
+    def mousePressEvent(self, ev) -> None:
+        ev.ignore()
+
+    def mouseMoveEvent(self, ev) -> None:
+        ev.ignore()
+
+    def mouseReleaseEvent(self, ev) -> None:
+        ev.ignore()
+
+
+class _LaneStrip(QWidget):
+    """A single scalar-lane channel strip (label + hover-scroll slider)."""
+
+    changed = Signal(str, float)   # (lane_id, value)
+
+    def __init__(self, lane_id: str, parent=None) -> None:
+        super().__init__(parent)
+        self.lane_id = lane_id
+        s = spec(lane_id)
+        lay = QVBoxLayout(self)
+        self._slider = _ScrollSlider(Qt.Vertical, self)
+        self._slider.setRange(0, _SLIDER_STEPS)
+        self._slider.setValue(_to_slider(lane_id, s.default))
+        self._slider.valueChanged.connect(self._on_move)
+        face = _face(lane_id, s.title, s.title)
+        tip = face.tooltip()
+        label = QLabel(face.label, self)
+        label.setToolTip(tip)
+        self._slider.setToolTip(tip)
+        self.setToolTip(tip)
+        lay.addWidget(label)
+        lay.addWidget(self._slider)
+        if face.disarmed:
+            # visibly-disabled rendering for an uncalibrated lane (display only)
+            self.setEnabled(False)
+
+    def _on_move(self, pos: int) -> None:
+        self.changed.emit(self.lane_id, _from_slider(self.lane_id, pos))
+
+    def set_value(self, value: float) -> None:
+        self._slider.blockSignals(True)
+        self._slider.setValue(_to_slider(self.lane_id, value))
+        self._slider.blockSignals(False)
+
+    def value(self) -> float:
+        return _from_slider(self.lane_id, self._slider.value())
+
+
+class _RegionStrips(QGroupBox):
+    """REGION TILT — growable channel strips / XY vector pad over discovered
+    anchors. One vertical slider per anchor; `set_anchor_count` grows/shrinks."""
+
+    changed = Signal(int, float)   # (anchor_index, value)
+
+    def __init__(self, parent=None) -> None:
+        face = _FACE["region"]
+        super().__init__(face.label, parent)
+        self.setToolTip(face.tooltip())
+        self._row = QHBoxLayout(self)
+        self._strips: list[_ScrollSlider] = []
+
+    def set_anchor_count(self, K: int) -> None:
+        K = int(K)
+        while len(self._strips) < K:
+            i = len(self._strips)
+            sl = _ScrollSlider(Qt.Vertical, self)
+            sl.setRange(0, _SLIDER_STEPS)
+            sl.setValue(_to_slider("region", 0.0))
+            sl.valueChanged.connect(lambda pos, idx=i:
+                                    self.changed.emit(idx, _from_slider("region", pos)))
+            self._strips.append(sl)
+            self._row.addWidget(sl)
+        while len(self._strips) > K:
+            sl = self._strips.pop()
+            self._row.removeWidget(sl)
+            sl.deleteLater()
+
+    @property
+    def anchor_count(self) -> int:
+        return len(self._strips)
+
+    def set_anchor(self, i: int, value: float) -> None:
+        sl = self._strips[i]
+        sl.blockSignals(True)
+        sl.setValue(_to_slider("region", value))
+        sl.blockSignals(False)
+
+
+# ui-v6: the XY VECTOR PAD (`_RegionXYPad`) is REMOVED. The FIELD surface
+# (ets.instrument.field) subsumes it: biasing toward material IS the blend, and
+# the field shows the real anchor geometry the XY pad only proxied. The REGION
+# lane keeps its §8-exhaustive control in `_RegionStrips` above; region tilt
+# still flows only through the one region path (`_push` -> /ets/lanes).
+# The prior XY implementation is intact one version back (architecture-v6/).
+
+
+class _RemovedRegionXYPad_uiv6:
+    """Tombstone for the removed XY pad (documentation only; never
+    instantiated). Original interaction model, for the record:
+
+    Interaction model (architecture-v5 B2, ui-v5 pad-feel):
+
+      * CLICK to ARM — the dot jumps to the cursor and begins following it.
+      * MOVE to position — the dot tracks the cursor. ANGLE selects which anchors
+        (a SOFT Gaussian kernel over distance to the ring anchors — see
+        `_vector`); DISTANCE from centre is the lean magnitude. POSITION *is* the
+        value — no momentum, no roll.
+      * CLICK to DROP — the dot parks where it is, stops following, stays put.
+      * a second CLICK re-arms.
+
+    A gesture updates only the region TARGET (the pad emits `changed` = the new
+    target, which the panel stores). It does NOT push raw values to the engine on
+    every move — the panel's single ~30 Hz timer glides the slewed value toward
+    the target at a controlled rate, so a fast drag is one smooth glide, not a
+    flood of region jumps (ui-v5 BUG-1). "Emit live" is thus emit-on-the-tick.
+
+    PASSIVE HOVER IS INERT: while disarmed, moving the cursor over the pad
+    changes and emits nothing. (Mouse tracking is enabled only so the dot can
+    follow the cursor between arm and drop, when the button is up; every move is
+    gated on the armed state, so a disarmed hover is a no-op — B1/B2.)
+
+    The emittable magnitude is walled at `SAFE_REGION_MAGNITUDE`: the dot cannot
+    leave the ring drawn at that radius, so no reachable position emits a lean
+    above the safe envelope (B3.1 / V5-D).
+    """
+
+
+
+class _ToleranceKnob(QWidget):
+    """One declared tolerance knob (LEASH / COMMA). Displays 'inf' while the
+    infinity latch is on (the shipped default — unconstraining); unlatching
+    exposes a finite spin value. Emits (id, value)."""
+
+    changed = Signal(str, float)
+
+    def __init__(self, spec_, parent=None) -> None:
+        super().__init__(parent)
+        self.tol_id = spec_.id
+        face = _face(self.tol_id, f"{spec_.title} ({spec_.meaning})", spec_.meaning)
+        lay = QHBoxLayout(self)
+        klabel = QLabel(face.label, self)
+        klabel.setToolTip(face.tooltip())
+        self.setToolTip(face.tooltip())
+        lay.addWidget(klabel)
+        self._inf = QCheckBox("inf", self)
+        self._inf.setChecked(math.isinf(spec_.default))
+        self._spin = QDoubleSpinBox(self)
+        self._spin.setRange(spec_.lo, 1e9)
+        self._spin.setDecimals(3)
+        self._spin.setValue(1.0)
+        self._spin.setEnabled(not self._inf.isChecked())
+        self._value_label = QLabel(tol_display(spec_.default), self)
+        self._inf.toggled.connect(self._on_change)
+        self._spin.valueChanged.connect(self._on_change)
+        lay.addWidget(self._inf)
+        lay.addWidget(self._spin)
+        lay.addWidget(self._value_label)
+
+    def value(self) -> float:
+        return math.inf if self._inf.isChecked() else float(self._spin.value())
+
+    def _on_change(self, *_a) -> None:
+        self._spin.setEnabled(not self._inf.isChecked())
+        v = self.value()
+        self._value_label.setText(tol_display(v))
+        self.changed.emit(self.tol_id, v)
+
+
+class _MeterJack(QWidget):
+    """A read-only meter indicator (LED/jack metaphor). Reads a value on
+    `refresh`; has NO path back into any lane."""
+
+    def __init__(self, label: str, parent=None, tooltip: str = "") -> None:
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        self._label = QLabel(label, self)
+        self._value = QLabel("--", self)
+        if tooltip:
+            self.setToolTip(tooltip)
+            self._label.setToolTip(tooltip)
+        lay.addWidget(self._label)
+        lay.addWidget(self._value)
+
+    def refresh(self, text: str) -> None:
+        self._value.setText(text)
+
+
+class Panel(QWidget):
+    """The panel. Exactly six lanes (+ the two declared tolerance knobs);
+    meter jacks incl. the slide/loop pairs; clock; MIDI CC learn; OSC out."""
+
+    lanes_changed = Signal()
+    tolerances_changed = Signal()
+
+    def __init__(self, emitter=None, n_anchors: int = 0, parent=None) -> None:
+        super().__init__(parent)
+        self.emitter = emitter
+        self.u = default_lane_vector(n_anchors)
+        # OUTBOUND region shaping (B3, UX-layer only; nothing from settlement):
+        # `self.u` is the raw TARGET the controls represent; what leaves on the
+        # wire is the clamped, slew-ramped region. The slew chases the target so
+        # a control JUMP never emits a one-frame discontinuity (V5-E).
+        self._region_slew = RegionSlew(SLEW_MAX_STEP, n=self.u.n_anchors)
+        self._region_slew.reset(clamp_region(self.u.u_region))
+        self.tolerances = Tolerances()          # leash=inf, comma=inf (shipped)
+        self.meter_state = MeterState()
+        self.cc_map = CCMap()
+
+        self._strips: Dict[str, _LaneStrip] = {}
+        root = QVBoxLayout(self)
+        lane_row = QHBoxLayout()
+
+        # REGION (vector lane) — growable channel strips + XY vector pad, two
+        # views over the SAME u_region (spec §8 lane 1); no lane is added.
+        self._region = _RegionStrips(self)
+        self._region.set_anchor_count(n_anchors)
+        self._region.changed.connect(self._on_region)
+        # ui-v6: no XY pad here — the FIELD (ets.instrument.field) is the
+        # continuous region surface, feeding the SAME set_region_vector path.
+        region_col = QVBoxLayout()
+        region_col.addWidget(self._region)
+        lane_row.addLayout(region_col)
+
+        # The four scalar direction lanes + the sharpness lane.
+        built_ids = ["region"]
+        for lane in LANES:
+            if lane.is_vector:
+                continue
+            strip = _LaneStrip(lane.id, self)
+            strip.changed.connect(self._on_scalar)
+            self._strips[lane.id] = strip
+            lane_row.addWidget(strip)
+            built_ids.append(lane.id)
+
+        # §8 EXHAUSTIVENESS LAW, enforced at construction: exactly the six.
+        assert_lanes_exhaustive(built_ids)
+        self._built_lane_ids = tuple(built_ids)
+
+        root.addLayout(lane_row)
+
+        # The two declared TOLERANCE knobs — NOT lanes (ets.panel.tolerances):
+        # they transmit on /ets/tolerances and nothing consumes them (Stage-1).
+        tol_box = QGroupBox(
+            "TOLERANCES (declared; no consumer until Stage-1)", self)
+        tlay = QVBoxLayout(tol_box)
+        self._tol_knobs: Dict[str, _ToleranceKnob] = {}
+        for tspec in TOLERANCES:
+            knob = _ToleranceKnob(tspec, self)
+            knob.changed.connect(self._on_tolerance)
+            self._tol_knobs[tspec.id] = knob
+            tlay.addWidget(knob)
+        assert_tolerances_exhaustive(self._tol_knobs.keys())
+        root.addWidget(tol_box)
+
+        # Clock display (master clock, /ets/clock) + engine link status
+        # (handshake reply /ets/welcome — includes the declared latency L).
+        clock_row = QHBoxLayout()
+        self._clock = QLabel("CLOCK —", self)
+        self._link = QLabel("engine: not connected", self)
+        clock_row.addWidget(self._clock)
+        clock_row.addWidget(self._link)
+        root.addLayout(clock_row)
+
+        # Meter jacks (read-only). The slide/loop pairs show '—' until the
+        # Stage-0 shadow feed arrives. (The prior conflated DRIFT jack was
+        # DELETED outright in directive-v1 Feature 2 Stage 1 — code, panel
+        # element, OSC address — per merged evidence it carried zero bits the
+        # slide/loop pair does not already carry; REGISTRY
+        # conflation-regression-stage1-2026-07-15.)
+        meters_box = QGroupBox("METER JACKS (read-only)", self)
+        mlay = QGridLayout(meters_box)
+        _slide_tip = _FACE["slide"].tooltip()   # SLIDE meter-family face alias
+        _loop_tip = _FACE["loop"].tooltip()     # LOOP meter-family face alias
+        self._jacks = {
+            "slide_key": _MeterJack("SLIDE key", self, tooltip=_slide_tip),
+            "slide_phase_feel": _MeterJack("SLIDE phase/feel", self, tooltip=_slide_tip),
+            "slide_timbre": _MeterJack("SLIDE timbre", self, tooltip=_slide_tip),
+            "loop_key": _MeterJack("LOOP key", self, tooltip=_loop_tip),
+            "loop_phase_feel": _MeterJack("LOOP phase/feel", self, tooltip=_loop_tip),
+            "loop_timbre": _MeterJack("LOOP timbre", self, tooltip=_loop_tip),
+            "eoc": _MeterJack("PHRASE EOC gate", self),
+            "novelty_sat": _MeterJack("NOVELTY saturation", self),
+        }
+        for i, j in enumerate(self._jacks.values()):
+            mlay.addWidget(j, i % 6, i // 6)
+        root.addWidget(meters_box)
+        self.refresh_meters()
+
+    # --- the exhaustive control set (for the §8 / H-6 tests) ------------------
+    @property
+    def lane_control_ids(self) -> tuple:
+        return self._built_lane_ids
+
+    @property
+    def tolerance_control_ids(self) -> tuple:
+        return tuple(self._tol_knobs.keys())
+
+    # --- lane edits → emit ----------------------------------------------------
+    def _on_scalar(self, lane_id: str, value: float) -> None:
+        if lane_id == "density":
+            self.u.u_density = value
+        elif lane_id == "continuity":
+            self.u.u_continuity = value
+        elif lane_id == "gauge":
+            self.u.u_gauge = value
+        elif lane_id == "novelty":
+            self.u.u_novelty = value
+        elif lane_id == "temperature":
+            self.u.T_s = value
+        else:
+            raise AssertionError(f"unexpected scalar lane {lane_id!r}")
+        self._push()
+
+    def _on_region(self, anchor: int, value: float) -> None:
+        if 0 <= anchor < self.u.n_anchors:
+            self.u.u_region[anchor] = value
+        self._push()
+
+    def tap_region_anchor(self, anchor: int, value: float) -> None:
+        """Set one anchor's region lean and push it — the PUBLIC entry the
+        instrument-half pad tap/hold (ets.instrument.tap) drives. It is exactly
+        the existing region path: it writes u_region and emits on the ONE
+        outbound /ets/lanes channel via the same `_push`. It opens no second
+        channel — a pad gesture reaches the engine ONLY as a spike on this
+        region-tilt lane (PREREG-feature3 §hard lines; connector C-3)."""
+        if 0 <= anchor < self.u.n_anchors:
+            self.u.u_region[anchor] = float(value)
+            if anchor < self._region.anchor_count:
+                self._region.set_anchor(anchor, float(value))
+        self._push()
+
+    def set_region_vector(self, vec) -> None:
+        """Set the WHOLE region lean at once AND push it — the public whole-vector
+        twin of `tap_region_anchor`, driven by the unit-drill FINE steer
+        (ets.instrument.live). It is EXACTLY the existing region path: it writes
+        u_region, mirrors the strip sliders (display), and emits on the ONE
+        outbound /ets/lanes channel via the same `_push`. It opens no second
+        channel — a unit tap reaches the engine ONLY as a lean on this region-tilt
+        lane. The emitted vector is the panel's usual clamped + slew-ramped region
+        (`_outbound`), so a discrete unit tap lands as one bounded glide, never a
+        one-frame discontinuity, and never past the safe envelope."""
+        v = np.asarray(vec, dtype=np.float32).reshape(-1)
+        n = min(self.u.n_anchors, v.shape[0])
+        self.u.u_region[:n] = v[:n]
+        for i in range(min(self._region.anchor_count, n)):
+            self._region.set_anchor(i, float(v[i]))
+        self._push()
+
+    def _region_target(self) -> np.ndarray:
+        """The clamped region TARGET (safe-envelope wall, B3.1). Reads only the
+        panel's own control state — never settlement/F/render."""
+        return clamp_region(self.u.u_region)
+
+    def _outbound(self) -> LaneVector:
+        """Build the message that actually leaves the panel: `self.u` with its
+        region replaced by ONE bounded slew step toward the clamped target. The
+        scalar leans and T_s pass through unchanged (already range-bounded by
+        their lanes); only the region vector is clamped + ramped (B3)."""
+        out = self.u.copy()
+        out.u_region = self._region_slew.step(self._region_target())
+        return out
+
+    def _push(self) -> None:
+        if self.emitter is not None:
+            self.emitter.emit(self._outbound())
+        self.lanes_changed.emit()
+
+    def tick_slew(self) -> None:
+        """Timer-driven ramp completion: while the emitted region has not reached
+        the (clamped) target, emit the next bounded step. This is the SAME emit
+        path (`_push`); it opens no second channel and reads nothing downstream.
+        A no-op once converged, so it does not spam the wire."""
+        if not self._region_slew.at_target(self._region_target()):
+            self._push()
+
+    # --- tolerance knobs → /ets/tolerances (declared; consumed by nothing) ----
+    def _on_tolerance(self, tol_id: str, value: float) -> None:
+        if tol_id == "leash":
+            self.tolerances = Tolerances(leash=value, comma=self.tolerances.comma)
+        elif tol_id == "comma":
+            self.tolerances = Tolerances(leash=self.tolerances.leash, comma=value)
+        else:
+            raise AssertionError(f"unexpected tolerance knob {tol_id!r}")
+        if self.emitter is not None:
+            self.emitter.emit_tolerances(self.tolerances)
+        self.tolerances_changed.emit()
+
+    def set_anchor_count(self, K: int) -> None:
+        self.u.resize_region(K)
+        self._region.set_anchor_count(K)
+        # keep the outbound slew sized to the world support (preserves overlap).
+        self._region_slew.reset(clamp_region(self.u.u_region))
+
+    def hide_region_strips(self) -> None:
+        """Hide the redundant REGION vector strips (`_RegionStrips`). DISPLAY-ONLY
+        collapse for the CONNECTED instrument window, where the discrete ROLE pads
+        + the continuous XY vector pad already cover region tilt, so the third
+        (strip) view is redundant surface. The strips widget is NOT deleted: it
+        stays constructed and keeps mirroring region values (`tap_region_anchor` /
+        `set_region_vector` still call `_region.set_anchor`), and it is still the
+        exhaustive region control the §8 tests count — only its VISIBILITY is off.
+        Region tilt continues to flow unchanged through the XY pad + role pads via
+        the SAME `_push`/`/ets/lanes` path; this opens no channel and mutates no
+        lane value."""
+        self._region.setVisible(False)
+
+    # --- MIDI CC learn --------------------------------------------------------
+    def arm_cc_learn(self, target: LaneTarget) -> None:
+        self.cc_map.arm(target)
+
+    def handle_cc(self, channel: int, cc: int, value7: int) -> bool:
+        """Route a live CC. During learn (armed) it binds; otherwise it drives
+        the mapped lane and emits. Returns True if it hit a binding."""
+        if self.cc_map.armed is not None:
+            self.cc_map.observe(channel, cc)
+            return True
+        hit = self.cc_map.apply(channel, cc, value7, self.u)
+        if hit:
+            self._sync_controls_from_u()
+            self._push()
+        return hit
+
+    def _sync_controls_from_u(self) -> None:
+        self._strips["density"].set_value(self.u.u_density)
+        self._strips["continuity"].set_value(self.u.u_continuity)
+        self._strips["gauge"].set_value(self.u.u_gauge)
+        self._strips["novelty"].set_value(self.u.u_novelty)
+        self._strips["temperature"].set_value(self.u.T_s)
+        for i in range(min(self._region.anchor_count, self.u.n_anchors)):
+            self._region.set_anchor(i, float(self.u.u_region[i]))
+
+    # --- affordance honesty: disarmed lanes render visibly disabled -----------
+    # Engine-side lane ids (region, density, cont, gauge, novelty) → panel strip
+    # ids (continuity, not cont; region is the strips + XY pad, not a _strips key).
+    _DISARM_MAP = {"density": "density", "cont": "continuity",
+                   "gauge": "gauge", "novelty": "novelty"}
+
+    def apply_disarmed(self, disarmed_ids) -> None:
+        """Render exactly the lanes the registered σ_φ instrument could not scale
+        (from /ets/welcome) as visibly DISABLED — not live sliders. Display only:
+        u still transmits (the engine applies NO tilt on a disarmed lane); this
+        just stops the panel implying a calibrated control exists where none does.
+        The temperature lane carries no φ and is never disarmed."""
+        dis = set(disarmed_ids or ())
+        for eng_id, strip_id in self._DISARM_MAP.items():
+            strip = self._strips.get(strip_id)
+            if strip is not None:
+                strip.setEnabled(eng_id not in dis)
+        region_disarmed = "region" in dis
+        self._region.setEnabled(not region_disarmed)
+
+    # --- meters (display only) ------------------------------------------------
+    def refresh_meters(self) -> None:
+        """Pull the latest MeterState into the read-only jack widgets. This is a
+        one-way read; it writes NOTHING into the lane vector, the tolerances, or
+        the emitter. (The welcome-driven anchor-count resize below sizes the
+        region lane's SUPPORT — world structure — never a lean value.)"""
+        ms = self.meter_state
+        for prefix, comp in (("slide", ms.slide), ("loop", ms.loop)):
+            self._jacks[f"{prefix}_key"].refresh(fmt_reading(comp["key"]))
+            self._jacks[f"{prefix}_phase_feel"].refresh(
+                fmt_reading(comp["phase_feel"]))
+            self._jacks[f"{prefix}_timbre"].refresh(fmt_reading(comp["timbre"]))
+        self._jacks["eoc"].refresh("ON" if ms.eoc_gate else "off")
+        self._jacks["novelty_sat"].refresh(f"{ms.novelty_saturation:.3f}")
+        if ms.clock_bar >= 0:
+            self._clock.setText(f"CLOCK bar {ms.clock_bar}  "
+                                f"({ms.clock_seconds:.1f}s)")
+        if ms.engine_K is not None:
+            dis = (f"  DISARMED: {ms.engine_disarmed} (uncalibrated scale — "
+                   "u transmits, no tilt)" if ms.engine_disarmed else "")
+            self._link.setText(
+                f"engine: connected  K={ms.engine_K}  L={ms.engine_L} bars  "
+                f"world {ms.engine_world_hash[:8]}{dis}")
+            if ms.engine_K != self.u.n_anchors:
+                self.set_anchor_count(ms.engine_K)
+            # affordance honesty: reflect the engine's disarmed-lane report on
+            # the strips (comma-joined ids on /ets/welcome; display only).
+            self.apply_disarmed(
+                [s for s in ms.engine_disarmed.split(",") if s])
