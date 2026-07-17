@@ -259,6 +259,21 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   steer RATE caps (magnitude already enveloped). Plus the earlier multi-user
   parking (#8): key issuance/quotas/store, deliberate co-play as a feature.
 
+## 18. OVERNIGHT MILESTONES (2026-07-18, crash-safe log)
+- FIRST COMPLETE HOSTED TRAIN: operator's 4 real tracks (from their Drive, per
+  instruction; synthetics discarded) -> trained world in 4m43s. Receipt:
+  effective_rank 2.73 -> 3 roles; sigma 0.515; F monotone. region/cont/novelty
+  armed. Two image gaps found+fixed en route (beat_this dep; architecture-v6/
+  scripts for the by-path sigma_phi load). Volume attached BUT sessions are
+  in-memory (token->dir) so restarts orphan files: #17 durable-session item.
+- Set SHARED to Explore ("first field — jormungandr/black garden/korl/anathema").
+- PLAY-SESSION VIDEO recorded against production via loopback relay (browser
+  egress is proxy-blocked; relay uses the sanctioned client). Silent (headless).
+- Design: autosynth rebrand + living prism chrome PASSED the render/interact
+  gate (artifact updated); PRODUCTION PORT build in flight -> audit -> deploy.
+- Cert for www.autosynth.fun: still in Railway's issuance queue (DNS verified
+  perfect; recreated once already).
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.

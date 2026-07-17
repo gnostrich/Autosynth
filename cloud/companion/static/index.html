@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ETS — Equilibrium Tape Synth</title>
+<title>autosynth</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234FE0AE' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M3 6.5q2.25 -3 4.5 0t4.5 0t4.5 0t4.5 0'/%3E%3Cpath d='M3 12q2.25 -1.6 4.5 0t4.5 0t4.5 0t4.5 0'/%3E%3Cpath d='M3 17.5h18'/%3E%3C/svg%3E">
 <style>
   :root{
     /* geometry */
@@ -24,6 +25,7 @@
     --fs-num: 26px;
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: ui-monospace, Menlo, Consolas, "SF Mono", monospace;
+    --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
 
     /* DARK — primary/hero look */
     --bg: #0E1214;
@@ -111,8 +113,27 @@
     -webkit-font-smoothing: antialiased;
     line-height: 1.45;
     overflow-x: hidden;
+    position: relative;
+    z-index: 1;               /* content sits above the ambient prism (z-index:0) */
   }
   #ets .wrap{ max-width: var(--maxw); margin: 0 auto; }
+
+  /* ---------- AMBIENT PRISM CHROME (fixed obsidian backdrop) ----------
+     ambient chrome · reacts to input · not a data value.
+     A full-viewport WebGL2 prism canvas behind ALL content. Revealed only in the
+     dark (obsidian) theme; the light theme keeps its current clean, opaque look.
+     Panels/field keep their opaque backgrounds, so the ambient shows only in the
+     margins and never overlaps a data area with readable intensity. */
+  #ambient{ position:fixed; inset:0; width:100vw; height:100vh; z-index:0;
+            pointer-events:none; display:none; }
+  :root[data-theme="dark"] #ambient{ display:block; }
+  :root[data-theme="dark"] body{ background:#05060B; }
+  :root[data-theme="dark"] #ets{ background:transparent; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme]) #ambient{ display:block; }
+    :root:not([data-theme]) body{ background:#05060B; }
+    :root:not([data-theme]) #ets{ background:transparent; }
+  }
 
   .micro{
     font-size: var(--fs-micro);
@@ -137,29 +158,19 @@
     padding: var(--sp-4) var(--sp-5);
     margin-bottom: var(--sp-5);
   }
-  .mark{ display:flex; align-items:baseline; gap: 12px; }
-  .mark .glyph{
-    width: 30px; height: 30px; flex:0 0 auto; align-self:center;
-    border-radius: 8px;
-    background:
-      radial-gradient(circle at 32% 30%, var(--accent), transparent 60%),
-      linear-gradient(145deg, var(--panel-2), var(--panel-inset));
-    border: 1px solid var(--line);
-    box-shadow: 0 0 18px -4px var(--accent-glow);
-    position: relative;
+  .mark{ display:flex; align-items:center; gap: 11px; }
+  .mark .logo{
+    width: 30px; height: 30px; flex:0 0 auto;
+    display:inline-flex; align-items:center; justify-content:center;
+    color: var(--accent);                         /* monochrome-capable: one currentColor */
+    filter: drop-shadow(0 0 12px var(--accent-glow));
   }
-  .mark .glyph::after{
-    content:""; position:absolute; inset:7px;
-    border-radius: 50%;
-    border: 1.5px solid var(--accent);
-    opacity:.75;
+  .mark .logo svg{ width:100%; height:100%; display:block; }
+  .mark .wordmark{
+    font-family: var(--font-serif); font-size: 24px; margin:0; line-height:1;
+    color: var(--ink); font-weight:400; letter-spacing:-0.015em;   /* lowercase, tight, quiet */
+    text-transform:lowercase;
   }
-  .mark h1{
-    font-size: var(--fs-h); margin:0; font-weight:650; letter-spacing:.005em;
-    color: var(--ink);
-  }
-  .mark h1 b{ color: var(--accent); font-weight:650; }
-  .mark .sub{ font-size: var(--fs-micro); }
   .hd .spacer{ flex:1 1 auto; }
 
   .pill{
@@ -532,17 +543,144 @@
   
 </head>
 <body>
+
+<!-- AMBIENT PRISM CHROME: obsidian-black backdrop with faint drifting spectral
+     light-leaks (chromatic-dispersed caustics). Reacts to the pointer + UI actions
+     (bend / brightness swell / glint) but carries NO engine state — honesty ledger:
+     'ambient chrome · reacts to input · not a data value'. Fixed behind all content;
+     bleeds subtly past the opaque glass panels in the margins (never over a data area);
+     drift AND reactivity freeze when the viewer prefers reduced motion. If webgl2 is
+     unavailable the canvas simply stays inert (no fallback, no errors). -->
+<canvas id="ambient" aria-hidden="true"></canvas>
+<script>
+"use strict";
+/* ambient chrome · reacts to input · not a data value
+   Self-contained obsidian backdrop: a tiny WebGL2 prism shader driven ONLY by
+   uTime / uRes / uMouse (pointer) / uReact / uPulse (UI-action glints). It consumes
+   only time/pointer/action pulses — never any engine or telemetry value, carries no
+   id, and sits behind all content. Ported from the design prototype (§1b); the only
+   change is that it runs its own render loop (the app's main loop is world-gated). */
+(function(){
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* eased INTERACTION state — all cosmetic. Reacting to input is allowed precisely
+     because this layer is ledgered as decor (never engine telemetry). Under
+     prefers-reduced-motion the drift freezes AND reactivity is disabled. */
+  var amb = document.getElementById("ambient");
+  var DPR = Math.min(2, window.devicePixelRatio||1);
+  var ambMouse={x:0,y:0}, ambMouseT={x:0,y:0}, ambReact=0, ambPulse=0, ambLastMove=-99;
+  var AMB = initAmbient();
+  /* brief eased GLINT fired by a real UI action (field scroll-bias, drill, tab switch,
+     transport). Exposed to the app; a decor cue, never engine telemetry. */
+  window.ambFirePulse = function(){ if(AMB && !reduce) ambPulse=1; };
+  function initAmbient(){
+    if(!amb) return null;
+    var gl; try{ gl=amb.getContext("webgl2",{antialias:false, alpha:false}); }catch(e){ gl=null; }
+    if(!gl) return null;
+    var V="#version 300 es\nvoid main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position=vec4(p*2.0-1.0,0.0,1.0); }";
+    var F=
+      "#version 300 es\n"+
+      "precision highp float;\n"+
+      "precision highp int;\n"+
+      "out vec4 o;\n"+
+      "uniform vec2 uRes; uniform float uTime; uniform vec2 uMouse; uniform float uReact; uniform float uPulse;\n"+
+      "vec3 streak(vec2 q, float ang, float pos, float w, float disp, float ac){\n"+
+      "  vec2 dir=vec2(cos(ang),sin(ang)); vec2 nrm=vec2(-dir.y,dir.x);\n"+
+      "  // pointer refraction: gently BEND + brighten the streak where it passes near the\n"+
+      "  // cursor (generous gaussian falloff — light shifting in glass, not a spotlight)\n"+
+      "  float mperp = dot(uMouse,nrm)-pos;\n"+
+      "  float malong= dot(uMouse,dir)-ac;\n"+
+      "  float mnear = exp(-(malong*malong)/0.45) * exp(-(mperp*mperp)/0.09);\n"+
+      "  pos += uReact * 0.045 * mnear * sign(mperp);\n"+   // bend toward the pointer side
+      "  float swell = uReact * 0.85 * mnear;\n"+           // subtle brightness swell
+      "  float b=dot(q,nrm)-pos;\n"+
+      "  float a=dot(q,dir)-ac;\n"+
+      "  float len=exp(-a*a/0.5) * (1.0 + swell);\n"+
+      "  float r =exp(-pow((b-disp)/w,2.0));\n"+            // R/G/B split across the streak normal
+      "  float g =exp(-pow((b     )/w,2.0));\n"+            //   = chromatic dispersion
+      "  float bl=exp(-pow((b+disp)/w,2.0));\n"+
+      "  return vec3(r,g,bl)*len;\n"+
+      "}\n"+
+      "void main(){\n"+
+      "  vec2 uv=gl_FragCoord.xy/uRes; vec2 q=(uv-0.5)*vec2(uRes.x/uRes.y,1.0);\n"+
+      "  float t=uTime;\n"+
+      "  vec3 c=vec3(0.0);\n"+
+      "  c+=streak(q,  0.55+0.04*sin(t*0.030),        0.17+0.06*sin(t*0.021),      0.030, 0.020, 0.25*sin(t*0.017));\n"+
+      "  c+=streak(q,  2.30+0.05*sin(t*0.020+1.0),   -0.22+0.05*cos(t*0.018),      0.022, 0.026, 0.30*sin(t*0.013+2.0));\n"+
+      "  c+=streak(q, -0.90+0.03*sin(t*0.025+3.0),    0.05+0.05*sin(t*0.015+1.5),  0.040, 0.015, 0.20*cos(t*0.020));\n"+
+      "  c *= 0.11 * (1.0 + uPulse*0.7);\n"+                 // baseline VERY low; action glint = brief global swell
+      "  o=vec4(c,1.0);\n"+
+      "}";
+    function sh(t,s){ var x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x);
+      if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)){ console.warn("amb",gl.getShaderInfoLog(x)); return null;} return x; }
+    var vs=sh(gl.VERTEX_SHADER,V), fs=sh(gl.FRAGMENT_SHADER,F); if(!vs||!fs) return null;
+    var pr=gl.createProgram(); gl.attachShader(pr,vs); gl.attachShader(pr,fs); gl.linkProgram(pr);
+    if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){ console.warn("amb-link",gl.getProgramInfoLog(pr)); return null; }
+    gl.useProgram(pr); gl.bindVertexArray(gl.createVertexArray());
+    return { gl:gl, pr:pr,
+      uRes:gl.getUniformLocation(pr,"uRes"), uTime:gl.getUniformLocation(pr,"uTime"),
+      uMouse:gl.getUniformLocation(pr,"uMouse"), uReact:gl.getUniformLocation(pr,"uReact"),
+      uPulse:gl.getUniformLocation(pr,"uPulse") };
+  }
+  function resizeAmbient(){
+    if(!AMB) return;
+    var w=Math.round(window.innerWidth*DPR), h=Math.round(window.innerHeight*DPR);
+    amb.width=w; amb.height=h; AMB.gl.viewport(0,0,w,h);
+  }
+  function drawAmbient(tsec, dt){
+    if(!AMB) return;
+    if(reduce){ ambReact=0; ambPulse=0; }
+    else{
+      var present = (tsec - ambLastMove < 1.4) ? 1 : 0;        // presence fades ~1.4s after last move
+      ambReact += (present - ambReact) * Math.min(1, dt*4);
+      ambMouse.x += (ambMouseT.x - ambMouse.x) * Math.min(1, dt*3);   // soft, generous easing
+      ambMouse.y += (ambMouseT.y - ambMouse.y) * Math.min(1, dt*3);
+      ambPulse += (0 - ambPulse) * Math.min(1, dt*3.4);        // glint decays in ~0.6s
+    }
+    var gl=AMB.gl; gl.useProgram(AMB.pr);
+    gl.uniform2f(AMB.uRes, amb.width, amb.height);
+    gl.uniform1f(AMB.uTime, reduce ? 0.0 : tsec);              // freeze drift under reduced-motion
+    gl.uniform2f(AMB.uMouse, ambMouse.x, ambMouse.y);
+    gl.uniform1f(AMB.uReact, ambReact);
+    gl.uniform1f(AMB.uPulse, ambPulse);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  }
+  if(!AMB) return;                          // graceful absence: no webgl2 -> inert canvas, no loop
+  /* pointer -> eased target in the shader's centered, aspect-corrected space */
+  window.addEventListener("pointermove", function(e){
+    if(reduce) return;
+    var asp = window.innerWidth/window.innerHeight;
+    ambMouseT.x = (e.clientX/window.innerWidth - 0.5)*asp;
+    ambMouseT.y = (e.clientY/window.innerHeight - 0.5);
+    ambLastMove = performance.now()/1000;
+  });
+  window.addEventListener("resize", resizeAmbient);
+  resizeAmbient();
+  var ambLast = performance.now();
+  (function loop(now){
+    var dt=Math.min(0.05,(now-ambLast)/1000); ambLast=now;
+    drawAmbient(now/1000, dt);
+    requestAnimationFrame(loop);
+  })(performance.now());
+})();
+</script>
+
 <div id="ets">
   <div class="wrap">
 
     <!-- HEADER -->
     <header class="hd panel">
       <div class="mark">
-        <span class="glyph" aria-hidden="true"></span>
-        <div>
-          <h1><b>ETS</b> — Equilibrium Tape Synth</h1>
-          <div class="sub micro">sealed on-device box · steer the terrain</div>
-        </div>
+        <!-- LOGO: a signal settling into a surface — top stroke wavy, each lower stroke
+             flatter, bottom line the settled equilibrium. One idea, few strokes; reads
+             at favicon scale; monochrome (currentColor). -->
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6.5q2.25 -3 4.5 0t4.5 0t4.5 0t4.5 0"/>
+            <path d="M3 12q2.25 -1.6 4.5 0t4.5 0t4.5 0t4.5 0" opacity="0.72"/>
+            <path d="M3 17.5h18" opacity="0.9"/>
+          </svg>
+        </span>
+        <h1 class="wordmark">autosynth</h1>
       </div>
       <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
         <button class="tab active" id="tabPlay" role="tab" data-tab="play" aria-selected="true">Play</button>
@@ -815,6 +953,7 @@
   var currentTab = "play";
   function switchTab(name){
     if(!PANES[name] || TABBTN[name].hidden) return;
+    if(window.ambFirePulse) window.ambFirePulse();   // ambient action glint (tab switch)
     currentTab = name;
     Object.keys(PANES).forEach(function(k){
       var on = (k === name);
@@ -1577,6 +1716,7 @@
     }
     if(!sq || !notches) return;
     fieldAddBias(fieldBias, fieldKeyStr(sq.key), notches * FIELD_BIAS_STEP);
+    if(window.ambFirePulse) window.ambFirePulse();   // ambient action glint (scroll-bias)
     sendSteerNow();
     fieldDraw();
   }
@@ -1602,11 +1742,13 @@
       return false;
     }
     fieldStack.push(sq.key); fieldHover = null; fieldSetStatus("", false); fieldDraw();
+    if(window.ambFirePulse) window.ambFirePulse();   // ambient action glint (drill in)
     return true;
   }
   function fieldZoomOut(){
     if(!fieldStack.length) return false;
     fieldStack.pop(); fieldHover = null; fieldSetStatus("", false); fieldDraw();
+    if(window.ambFirePulse) window.ambFirePulse();   // ambient action glint (drill out)
     return true;
   }
   function fieldOnClick(ev){                       // click affordance: header = out; square = in
@@ -2014,11 +2156,12 @@
   }
 
   btnPlay.addEventListener("click", function(){
+    if(window.ambFirePulse) window.ambFirePulse();   // ambient action glint (transport)
     if(state==="idle") startPlayback();
     else if(state==="paused") resumePlayback();
   });
-  btnPause.addEventListener("click", pausePlayback);
-  btnStop.addEventListener("click", stopPlayback);
+  btnPause.addEventListener("click", function(){ if(window.ambFirePulse) window.ambFirePulse(); pausePlayback(); });
+  btnStop.addEventListener("click", function(){ if(window.ambFirePulse) window.ambFirePulse(); stopPlayback(); });
 
   /* ================= STREAM ERROR BANNER ================= */
   var streamErr = $("streamErr");

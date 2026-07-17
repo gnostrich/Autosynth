@@ -108,7 +108,7 @@ def test_keyless_visitor_read_and_play_routes_open(tmp_path, monkeypatch):
     try:
         # / serves the app (no access wall).
         code, body = _req(url + "/")
-        assert code == 200 and b"Equilibrium Tape Synth" in body
+        assert code == 200 and b'id="tabs"' in body   # app-only marker (post-rebrand)
         # read routes: status/world/explore all 200 without a token.
         for path in ("/api/status", "/api/world", "/api/explore"):
             assert _req(url + path)[0] == 200, path

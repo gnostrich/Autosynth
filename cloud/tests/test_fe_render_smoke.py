@@ -147,6 +147,20 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
             assert page.query_selector("#puck") is None, "XY puck still present"
             assert page.query_selector("#drillBack") is None, "drill overlay still present"
 
+            # (7) REBRAND: the wordmark is "autosynth", the inline logo mark is present,
+            # and the old ETS header/subtext is gone (no "Equilibrium Tape Synth", no
+            # "steer the terrain"). Ambient prism chrome canvas is present.
+            wordmark = page.eval_on_selector(".mark .wordmark", "el => el.textContent.trim()")
+            assert wordmark == "autosynth", f"wordmark must be 'autosynth', got {wordmark!r}"
+            assert "autosynth" in body_text, "wordmark 'autosynth' not visible in the page"
+            for gone in ("Equilibrium Tape Synth", "steer the terrain", "ETS —"):
+                assert gone not in body_text, f"old ETS branding still present: {gone!r}"
+            logo_svg = page.query_selector(".mark .logo svg")
+            assert logo_svg is not None, "inline logo SVG mark missing from the header"
+            paths = page.eval_on_selector_all(".mark .logo svg path", "els => els.length")
+            assert paths >= 3, f"logo mark should be the 3-stroke glyph, got {paths} paths"
+            assert page.query_selector("#ambient") is not None, "ambient prism canvas missing"
+
             # the field canvas is actually laid out (non-zero box) — really rendered.
             box = page.eval_on_selector("#fieldCanvas",
                                         "el => { const r = el.getBoundingClientRect();"
