@@ -648,3 +648,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/static/index.html (2026-07-17T16:49:55+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-17T16:50:11+00:00)
 - `Write` cloud/tools/companion_demo_verify.py (2026-07-17T16:52:27+00:00)
+
+### at `113217e`
+- `Edit` cloud/COMPANION_INVARIANTS.md (2026-07-17T17:05:20+00:00)

@@ -331,3 +331,18 @@ Deploy sequencing: builder → ets-auditor PASS (notes fixed) → merge to main 
 connect Railway service to GitHub main → deploy → verify live (health + auth
 + play path) → record. Rollback point: Railway deployment ddcadfb0 (running
 image retained in deployment history) + the operator's snapshot download.
+
+## AUDIT RESULT — demo-phase build (2026-07-17)
+
+ets-auditor: **PASS-WITH-NOTES** on commit 113217e. All claims verified (scope
+clean; keyless byte-faithful; gate sound incl. traversal guard; memory bounds
+real with leak-hunt clean; share/unshare revokes, EXP-D demo-analog reading
+ACCEPTED; steering single-lane with envelope+cap; progress signal-bound; 61/61
+tests + standalone verifier reproduced by the auditor).
+- MUST-FIX (governance) — R1's server-side-library clause amended on the
+  record in COMPANION_INVARIANTS.md (opt-in shared sets, demo phase,
+  attribution preserved): DONE in this commit.
+- Notes: per-set steer rate caps deferred to the hardened fork (operator-
+  scoped); CatalogEntry.owner_token dead code (remove in hardened pass);
+  eviction-cuts-live-listeners now disclosed in engine_bridge.py; catalog
+  text escaping present, catalog-trust question stays open for hardened fork.

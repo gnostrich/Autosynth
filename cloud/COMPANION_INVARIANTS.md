@@ -9,6 +9,20 @@ breaking one, STOP and surface it — never silently.
   audio (drag-drop / file pick in the browser). There is no server-side audio
   library; the app never plays "someone else's" audio as if it were the user's.
 
+  *R1 amendment — OPT-IN SHARED SETS, demo phase (operator-signed 2026-07-17;
+  recorded decision + scope in `cloud/PREREG-explore-shared-sets.md`).* On the
+  ACCESS-KEYED hosted deploy, a user may explicitly SHARE a set they trained;
+  the server then renders that set for other keyed users (audible + steerable
+  via the Explore page). This narrowly relaxes the "no server-side audio
+  library" clause for EXPLICITLY SHARED sets only: sharing is opt-in per set
+  (default OFF), unshare/delete actually revokes (auditor-verified EXP-B), and
+  a shared set is always ATTRIBUTED ("by <owner>" / "shared set") — the second
+  clause, never passing someone else's audio off as the user's own, stays
+  fully in force. Keyless/public visitors still get only the self-contained
+  demo (R6 unchanged). The hardened privacy forks (owner-online rendering /
+  self-contained-only) recorded in the prereg remain the path for any
+  post-demo tightening.
+
 - **R2 — Training runs via the CLOUD.** The user's own audio drives a cloud
   training step (Railway) that produces THAT user's world. "Upload my audio, train
   in the cloud, get my world."
