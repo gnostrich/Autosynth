@@ -192,6 +192,53 @@ def _imported_modules(py_path: Path):
     return mods
 
 
+def test_train_routes_audio_to_seam_and_npz_to_geometry():
+    # The train->play seam is the ONLY new branch. Prove the routing statically (no
+    # arch-v6 load): run_train reaches cloud.companion.train_local's build_trained_world
+    # when raw audio is present, and the geometry-only cloud.client.train otherwise.
+    src = (Path(__file__).resolve().parents[1] / "companion" / "app.py").read_text()
+    # audio branch delegates to the lazily-imported seam module
+    assert "cloud.companion.train_local" in src and "build_trained_world" in src, \
+        "run_train must delegate the audio branch to train_local.build_trained_world"
+    # the geometry-only branch is still the guarded cloud.client.train
+    assert "from cloud.client.cli import train" in src, \
+        "the .npz/offline branch must keep the geometry-only cloud.client.train path"
+    # routing is by extension (raw audio vs bundle), single decision channel
+    assert "_AUDIO_EXTS" in src, "run_train must route by audio extension"
+
+
+def test_seam_module_wire_exit_is_only_post_job():
+    # CS-1 for the seam: the ONLY thing train_local puts on the wire is the stage-3
+    # job via the guarded post_job. It must NOT call cloud.client.cli.train (which
+    # re-ingests) and must NOT serialize tracks/audio. Static import check.
+    tl = Path(__file__).resolve().parents[1] / "companion" / "train_local.py"
+    mods = _imported_modules(tl)
+    assert "cloud.client.cli.post_job" in mods or "cloud.client.cli" in mods, \
+        "train_local must reach the cloud through post_job"
+    assert "cloud.client.cli.train" not in mods, \
+        "train_local must NOT use the re-ingesting train(); only the whitelist exit"
+    # the wire encoder is the shared whitelist encoder — the single seam definition
+    assert "cloud.common.encode_job" in mods or "cloud.common" in mods
+
+
+def test_reset_reverts_trained_state(tmp_path):
+    # reset is the operator's "reset button and all": after a trained repoint, reset
+    # must revert play_world to the demo, drop the cached player, and clear is_trained.
+    comp = Companion(cloud_url="inproc", session_dir=str(tmp_path / "sess"))
+    demo = comp.play_world
+    # simulate a completed audio train having repointed the instrument
+    comp.play_world = str(comp.trained_world_path)
+    comp._is_trained = True
+    comp._player = object()          # a stale cached player
+    comp.last_receipt = {"n_anchors": 3}
+    out = comp.reset()
+    assert out["ok"] is True
+    assert comp._is_trained is False, "reset must clear the trained flag"
+    assert comp.play_world == demo, "reset must revert play_world to the demo world"
+    assert comp._player is None, "reset must drop the cached player"
+    assert comp.last_receipt is None
+
+
 def test_companion_cloud_path_imports_no_decoder():
     # CS-4: the companion + the guarded client import NO renderer/decoder. (Local
     # playback in phase 2 is a LOCAL decoder in its own module — never on this

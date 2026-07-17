@@ -40,6 +40,12 @@ if str(_REPO_ROOT) not in sys.path:
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
+# Extensions that route /api/train to the train->play seam (raw audio -> a playable
+# trained world). Kept inline so app.py's ROUTING pulls no engine/decoder import; the
+# seam module (cloud.companion.train_local) owns the authoritative AUDIO_EXTS and is
+# imported lazily only once audio is actually present (CS-4: no decoder on this path).
+_AUDIO_EXTS = frozenset({".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aif", ".aiff", ".aac"})
+
 
 class Companion:
     """Holds the per-run config + session state. No engine/render import here;
@@ -55,13 +61,19 @@ class Companion:
         self.session_dir = base
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.world_path = self.session_dir / "world.npz"
+        # the user's freshly cloud-trained playable world (built by the train->play
+        # seam; distinct from world.npz, which is the geometry-only offline artifact).
+        self.trained_world_path = self.session_dir / "trained.etsworld"
         self.last_receipt: Optional[dict] = None
         # playable world for the INSTRUMENT (default: the repo's founding world).
         self.seed = int(seed)
         if play_world is None:
             cand = _REPO_ROOT / "corpus.etsworld"
             play_world = str(cand) if cand.exists() else None
+        # remember the demo/founding world so reset() can revert to it.
+        self._demo_world = play_world
         self.play_world = play_world
+        self._is_trained = False       # True once the seam repoints to the user's world
         self._player = None            # lazy StreamPlayer (the LOCAL decoder)
 
     def player(self):
@@ -71,7 +83,8 @@ class Companion:
             if not self.play_world or not Path(self.play_world).exists():
                 return None
             from cloud.companion.engine_bridge import StreamPlayer
-            self._player = StreamPlayer(self.play_world, seed=self.seed)
+            self._player = StreamPlayer(self.play_world, seed=self.seed,
+                                        is_trained=self._is_trained)
         return self._player
 
     # --- local-only ingest --------------------------------------------------
@@ -92,12 +105,21 @@ class Companion:
     def reset(self) -> dict:
         """Clear the current corpus + world so a fresh corpus can be loaded — the
         MVP's account-free 'new corpus' action (one corpus at a time; whoever is at
-        the machine resets and drops their own audio). Local-only: no network."""
+        the machine resets and drops their own audio). Local-only: no network.
+
+        Full revert (the operator's "reset button and all"): drops the session
+        files AND the trained world, repoints the instrument back to the founding
+        demo world, drops the cached player, and clears the trained flag. After a
+        reset the instrument plays the demo again and reports is_trained:false."""
         removed = 0
         for p in list(self.session_dir.iterdir()):
             if p.is_file():
                 p.unlink(); removed += 1
         self.last_receipt = None
+        # revert the instrument to the founding demo world
+        self.play_world = self._demo_world
+        self._is_trained = False
+        self._player = None
         return {"ok": True, "cleared": removed}
 
     # --- the guarded cloud round-trip --------------------------------------
@@ -105,10 +127,55 @@ class Companion:
                   sigma: Optional[float] = None) -> dict:
         """Ingest the session -> stage-3 -> cloud anchor-fit -> verify -> write.
 
-        Delegates entirely to ``cloud.client.train`` so the whitelist encoder is
-        the single wire exit. Accepts a corpus dir of cached track_*.npz or a
-        .npz prototype bundle in the session dir (raw-audio ingest is the same
-        local ets.ingestion step, run on the device)."""
+        The whitelist encoder is the SINGLE wire exit in both branches; only
+        stage-3 ever crosses (CS-1). Two branches, distinguished by extension:
+
+        * RAW AUDIO in the session (wav/mp3/flac/...): run the full train->play
+          seam (local ingest -> stage-3 -> cloud fit -> local build_index ->
+          playable .etsworld) and REPOINT the instrument at the user's trained
+          world (is_trained -> True). The renderer/build_index imports live in the
+          lazily-loaded ``train_local`` module, never on this cloud path (CS-4).
+
+        * A .npz prototype bundle / dir of cached track_*.npz (the offline/test
+          path): keep the geometry-only behavior — verify + write world.npz. The
+          instrument keeps playing the demo world (is_trained stays False)."""
+        # route by content: raw audio -> the train->play seam
+        audio = sorted(p for p in self.session_dir.iterdir()
+                       if p.is_file() and p.suffix.lower() in _AUDIO_EXTS)
+        if audio:
+            # lazy import: only pulls the local decoder/build_index when audio is
+            # present, so app.py's top level stays provably decoder-free (CS-4).
+            from cloud.companion.train_local import build_trained_world
+            out = build_trained_world(
+                [str(p) for p in audio], out_path=str(self.trained_world_path),
+                cloud_url=self.cloud_url, seed=seed, sweeps=sweeps, sigma=sigma)
+            self.last_receipt = out["receipt"]
+            # Attempt to bring the trained world LIVE. Loading it constructs the
+            # engine, which resolves σ_φ. A freshly-trained world has a new content
+            # hash, so the REGISTERED σ_φ artifact (bound to the demo world) is
+            # STALE for it and ``resolve_sigma`` REFUSES it (loud, by design — it
+            # will not lean on a foreign scale). This is a real wall, surfaced not
+            # patched: see PREREG-cloud-mvp2 "Phase-2 seam: BUILD wired, PLAY blocked
+            # on σ_φ" and OPEN_ENDS #8. We do NOT invent a scale and do NOT repoint
+            # into a crash; we keep the calibrated demo world live and REPORT the
+            # block in the response (honest degradation, not a silent fallback).
+            trained = str(self.trained_world_path)
+            from cloud.companion.engine_bridge import StreamPlayer
+            try:
+                player = StreamPlayer(trained, seed=self.seed, is_trained=True)
+            except RuntimeError as exc:
+                if "STALE CALIBRATION" not in str(exc):
+                    raise                     # any other engine fault is a real 502
+                return {"ok": True, "built": True, "is_trained": False,
+                        "world": trained, "receipt": out["receipt"],
+                        "playback": "blocked", "playback_error": str(exc)}
+            # loadable (e.g. once the σ_φ precedence revision lands): go live.
+            self.play_world = trained
+            self._is_trained = True
+            self._player = player             # reuse the already-loaded player
+            return {"ok": True, "built": True, "receipt": out["receipt"],
+                    "world": trained, "is_trained": True, "playback": "live"}
+
         from cloud.client.cli import train  # imported lazily; guarded path only
 
         # pick a .npz prototype bundle if present, else the session dir itself
@@ -123,7 +190,8 @@ class Companion:
                        if hasattr(v, "tolist") else v))
              for k, v in result.receipt.items()}
         self.last_receipt = r
-        return {"ok": True, "receipt": r, "world": str(self.world_path)}
+        return {"ok": True, "receipt": r, "world": str(self.world_path),
+                "is_trained": False}
 
 
 class _Handler(BaseHTTPRequestHandler):

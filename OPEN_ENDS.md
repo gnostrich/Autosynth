@@ -89,10 +89,23 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   streaming audio + SSE telemetry, functional FE. Auditor FAIL→fixed: (a) sys.path pin
   bug that let root ets shadow the arch-v6 engine — fixed (app.py appends repo-root;
   bridge forces arch-v6 front + fails loud); (b) namespace + clamp reuse. Re-audit pending.
-- **TBD — train→play-YOUR-corpus seam (unbuilt, disclosed):** the instrument plays the
-  FOUNDING demo world; playing a freshly-trained corpus needs local build_index
-  (ingest → tracks → realization index from the trained artifact). UI + /api/world
-  (is_trained:false) state this plainly. Next phase-2 seam. Not faked.
+- **train→YOUR-corpus seam — BUILD ✅ WIRED, PLAY 🔴 blocked on σ_φ (2026-07-17):**
+  `/api/train` on raw audio runs the full LOCAL BUILD seam
+  (`cloud/companion/train_local.py`: local ingest → stage-3 → CLOUD anchor-fit →
+  verify → local `build_index` → `save_world` .etsworld referencing the user's local
+  audio). CS-1 intact: only stage-3 crosses (`encode_job`→`post_job`; verified by
+  `cloud/tools/seam_verify.py`). A `.npz` bundle keeps the geometry-only verify
+  (offline/test path); `reset()` reverts to the founding demo world. **PLAY is
+  blocked by a real σ_φ wall:** a freshly-trained world has a new content hash, so
+  the registered σ_φ artifact (bound to the demo world) is REFUSED by
+  `engine.resolve_sigma` (STALE) rather than reused — the trained world will not even
+  load to play untilted. `run_train` reports `{"built":true,"playback":"blocked"}`
+  and keeps the calibrated demo live; it does NOT invent a scale or fake an artifact
+  (rejected non-solutions listed in PREREG-cloud-mvp2). **Proposed fix (needs
+  sign-off):** revise `resolve_sigma` precedence so a foreign-hash artifact is treated
+  as absent (→ untilted-only, loud refusal on lean) instead of a hard STALE raise;
+  then per-corpus σ_φ calibration (settlement-only `scripts/run_sigma_phi.py` at
+  world-freeze) unlocks live steering — a heavier, deferred item.
 - **Next action (operator):** Railway is deployed (see above); run the companion
   locally to play/steer the demo world and iterate.
 - **TBD — multi-user expansion:** deferred by operator. Sequence = single-user MVP-2 →

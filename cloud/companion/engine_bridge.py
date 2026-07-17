@@ -35,7 +35,8 @@ class StreamPlayer:
     mutates the settlement input is :meth:`set_region` (the region-tilt lane).
     Everything else reads produced state."""
 
-    def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None):
+    def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None,
+                 is_trained: bool = False):
         # Force the ui-v5 engine tree to the FRONT of sys.path (membership isn't
         # enough — root engine-v1 must not shadow it), THEN assert we actually
         # resolved the capped engine. If root ets was imported first, fail LOUD
@@ -54,6 +55,11 @@ class StreamPlayer:
         from ets.engine.worldfile import load_world
 
         self.world_path = world_path
+        # is_trained reports (truthfully) whether this world is the user's freshly
+        # cloud-trained corpus (True) or the founding/demo world (False). The
+        # Companion passes True only when it built the player from the trained
+        # .etsworld produced by the train->play seam (cloud.companion.train_local).
+        self.is_trained = bool(is_trained)
         self.wf = load_world(world_path)                 # ~0.5s (fast); no bank yet
         self.world = self.wf.world
         self.M = int(self.world.M)
@@ -77,14 +83,15 @@ class StreamPlayer:
 
     # --- world info ---------------------------------------------------------
     def world_info(self) -> dict:
-        # `is_trained` is False: the instrument plays the loaded (founding/demo)
-        # world. Playing a freshly cloud-trained corpus needs the local
-        # build_index seam (materialize the bank/realization index from the
-        # trained artifact) — NOT wired yet. The UI must not present this as the
-        # user's trained world. (see PREREG-cloud-mvp2 seam disclosure)
+        # `is_trained` reports truthfully which world is loaded: True for the
+        # user's freshly cloud-trained corpus (built by the train->play seam,
+        # cloud.companion.train_local: local ingest -> cloud anchor-fit -> local
+        # build_index -> playable .etsworld), False for the founding/demo world.
+        # The UI reads this to label what is actually playing. (The seam is WIRED;
+        # see PREREG-cloud-mvp2 "Phase-2 seam WIRED" amendment.)
         return {"ready": True, "M": self.M, "sr": self.sr,
                 "world": Path(self.world_path).name,
-                "is_trained": False,
+                "is_trained": self.is_trained,
                 "bar_seconds": float(self.engine.writer.bar_seconds)}
 
     # --- THE SINGLE ENGINE-CONTROL PATH ------------------------------------

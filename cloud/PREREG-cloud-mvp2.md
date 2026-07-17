@@ -216,3 +216,72 @@ training shows a verified receipt but does not change what plays. Wiring
 train→play-your-corpus (local ingest → tracks → `build_index` → playable world) is the
 next phase-2 seam. This is a faithfulness disclosure, not a CS issue: rendering stays
 local (CS-4 intact); nothing is presented as the user's world when it is not.
+
+## Phase-2 seam: BUILD wired + verified; PLAY blocked on σ_φ (2026-07-17, amendment)
+
+Append-only amendment; the disclosure above records the honest prior state and is
+not rewritten. The train→YOUR-corpus seam splits cleanly into a **BUILD** half
+(WIRED + verified) and a **PLAY** half (blocked at a real σ_φ wall, surfaced not
+patched). The literal MVP-2 plan assumed `save_world(..., sigma_phi=None)` would let
+`resolve_sigma` **fall back** to the registered σ_φ calibration; on inspection it
+does **not** — it **refuses** (STALE), so PLAY is blocked. That is the wall below.
+
+### BUILD half — WIRED (faithful reuse; no engine/theory/F edits)
+- New module `cloud/companion/train_local.py::build_trained_world` — the LOCAL half
+  of a cloud train. It mirrors `ets.writer.build_world_from_tracks` VERBATIM with a
+  single substitution: `fstate` comes from the CLOUD anchor-fit, not local
+  `anchors.build_world`. Steps: local `ets.ingestion.pipeline.ingest` → stage-3
+  `roles.extract_prototypes` → **the one guarded wire exit** `cloud.common.encode_job`
+  + `cloud.client.cli.post_job` → `decode_result` + `verify_receipt` → local
+  `ets.writer.build_index` + `World` → `ets.engine.worldfile.save_world` (a
+  `.etsworld` referencing the user's LOCAL audio). Imported LAZILY (only when raw
+  audio is present), engine imports deferred to call time, so `app.py`/`cli.py` stay
+  decoder-free (CS-4).
+- `Companion.run_train` routes by extension: raw audio → the BUILD seam; `.npz`
+  bundle / dir of cached tracks → the geometry-only verify (unchanged offline/test
+  path). `StreamPlayer` gains an honest `is_trained` flag; `world_info()` reports it.
+- `Companion.reset` fully reverts: clears session + trained world, repoints to the
+  founding demo world, drops the cached player, `is_trained→False`.
+
+**CS-1 intact.** The ONLY thing crossing device→cloud is the stage-3 whitelist via
+the unchanged `encode_job`→`post_job` exit. Tracks, raw audio, provenance, and the
+realization index are never serialized and never leave the device. `seam_verify.py`
+captures the exact bytes handed to `post_job` and asserts only `p{i}.{cost|mass|
+slot_hist|band_profile}` + params crossed — no track/audio/provenance key.
+
+### PLAY half — BLOCKED on the σ_φ resolution wall (honest, surfaced)
+Loading the trained world constructs the engine, which resolves σ_φ. A freshly-
+trained world has a **new content hash**; the registered σ_φ artifact
+(`ets/calibration/sigma_phi.json`) is bound to the **demo** world's hash
+(`777b2ed…`), so for the trained world (`020b07…`) `engine.resolve_sigma` raises
+**STALE CALIBRATION** — it will not lean on a foreign world's scale (correct). But
+that raise fires at LOAD, so the trained world cannot even play *untilted*; the
+engine's own "uncalibrated → untilted-only, refuse leans loudly" degradation
+(`sigma_φ is None`) is **unreachable** because the stale foreign artifact preempts
+it with a hard raise.
+
+`run_train` therefore does NOT invent a scale, does NOT repoint into a crash, and
+does NOT embed a fabricated/all-disarmed σ_φ (a silent no-op steer would be a hidden
+fallback). It reports `{"built": true, "playback": "blocked", "playback_error": …}`;
+the FE shows the verified receipt + the block plainly; the calibrated demo world
+stays live. `seam_verify.py` asserts this honest state: the world file is valid, its
+load RAISES STALE (the wall is real), and the demo world still renders a capped bar.
+
+Rejected non-solutions (each an auto-reject under the operating rules): (a) faking a
+σ_φ artifact — fabricated measurement; (b) re-stamping the demo artifact's hash onto
+the trained world — forging the world binding to sneak past the staleness guard; (c)
+embedding an all-non-identifiable σ_φ — makes leans *silently disarm* (`_lam` returns
+λ=0 for non-identifiable lanes; it does NOT raise), a silent-fallback steer no-op.
+
+### Proposed fix (spec/engine revision — for human sign-off; NOT done here)
+The clean first-principles fix is a `resolve_sigma` **precedence** revision: a
+registered σ_φ artifact whose `world_hash` ≠ the loaded world's hash is simply **not
+this world's calibration** → treat as ABSENT → return `None` (→ untilted-only, leans
+raise `WorldNotCalibrated` loudly), rather than raising STALE. The STALE raise is
+correct only for a *same-lineage* anchor resize (the one-world-per-deploy assumption
+the desktop instrument was built under); it is wrong for a genuinely different world
+in the multi-world companion (demo + trained). With that revision the trained world
+plays untilted immediately, and **live steering** of a trained world additionally
+needs a **per-corpus σ_φ calibration** (the settlement-only `scripts/run_sigma_phi.py`
+instrument run at world-freeze, embedded via `sigma_phi`) — a heavier step the
+operator flagged as outside MVP-2 scope, deferred and disclosed, not faked.
