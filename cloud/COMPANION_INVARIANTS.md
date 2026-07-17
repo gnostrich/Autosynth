@@ -13,13 +13,14 @@ breaking one, STOP and surface it — never silently.
   training step (Railway) that produces THAT user's world. "Upload my audio, train
   in the cloud, get my world."
 
-- **R3 — Privacy boundary — [OPERATOR TO CONFIRM, then LOCKED].**
-  Exactly one of these is the rule; the operator picks it and it is locked:
-  - **(a) Private:** raw audio stays on the device; only derived, gauge-invariant
-    **stage-3** data crosses to the cloud (the sealed design already built,
-    CS-1..CS-5). Raw audio + recipes NEVER uploaded.
-  - **(b) Simple:** the raw audio itself is uploaded to the cloud for training.
-  *(Currently built = (a). Awaiting operator confirmation before locking.)*
+- **R3 — Audio flow (operator's model, 2026-07-17).** The ONLY local step is
+  **fetching the user's music from their device** (browser file-pick / drag-drop —
+  the "device-origin" of R1). After that first local fetch, the audio goes to the
+  **Railway** server, which does the training/processing; the interface talks to
+  Railway for everything else (R6). So the raw audio DOES leave the device (it is
+  processed on Railway) — the earlier "stage-3-only / audio never leaves" sealed
+  design is superseded by this simpler model unless the operator says otherwise.
+  *(If privacy-max is ever wanted again, that's the WASM-in-browser path in R6(b).)*
 
 - **R4 — RESET / change corpus.** The user can clear the current corpus and load a
   new one at any time ("New corpus" reset) — account-free, one corpus at a time,
@@ -27,7 +28,18 @@ breaking one, STOP and surface it — never silently.
 
 - **R5 — Fresh clone PLAYS out of the box.** A committed, self-contained demo world
   (`demo.etsworld` — embedded audio, no external files, no copyright) ships so
-  anyone who clones can hear + steer immediately, without supplying audio first.
+  anyone can hear + steer immediately, without supplying audio first.
+
+- **R6 — Interface is served by the CLOUD, not a repo clone [TARGET].** An end user
+  must NOT need to clone the GitHub repo to use the instrument. The interface gets
+  everything it needs (UI, worlds/assets, engine services) directly from the
+  **Railway** server; we keep the server updated with whatever it needs.
+  **Status: NOT yet met** — today's companion is local Python and still needs a
+  clone. This is the next major build (a Railway-served web app).
+  **Forced decision (this IS the R3 lock):** with no local install, the engine can't
+  run locally, so audio must render EITHER (a) on Railway — server-side, meaning the
+  audio is processed in the cloud [= R3(b)], OR (b) in the browser via WASM — audio
+  stays on device [= R3(a)], but that's a large engine-to-WebAssembly rebuild.
 
 ## Enforcement (the "never repeat this again" mechanism)
 
