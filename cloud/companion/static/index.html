@@ -258,10 +258,26 @@
   /* Honest steer state: a corpus whose region lane measured σ=0 disarms region
      steering — the pads/XY settle no differently. Dim those surfaces + tag them so
      the operator isn't misled into thinking a dead pad steers. */
-  .instrument.region-disarmed .pads, .instrument.region-disarmed .xy{ opacity:.55; }
-  .instrument.region-disarmed .pads::after{ content:"region steering disarmed on this corpus";
+  .instrument.region-disarmed #steerSurface .field-canvas{ opacity:.55; }
+  .instrument.region-disarmed #steerSurface::after{ content:"region steering disarmed on this corpus";
     display:block; margin-top:8px; font-size: var(--fs-micro); letter-spacing:.1em;
     text-transform:uppercase; color: var(--tape); font-weight:650; }
+
+  /* ---------- THE FIELD (canvas; replaces pads + XY) ---------- */
+  #steerSurface{ padding: var(--sp-5); margin-bottom: var(--sp-5); }
+  .field-wrap{ position:relative; margin-top: var(--sp-3); }
+  .field-canvas{
+    display:block; width:100%; height:340px;
+    border-radius: var(--r-md);
+    background: var(--panel-inset); border:1px solid var(--line);
+    box-shadow: inset 0 2px 30px -10px rgba(0,0,0,.6);
+    touch-action:none; cursor:crosshair;
+  }
+  .field-status{
+    position:absolute; right:12px; bottom:10px; pointer-events:none;
+    font-size: var(--fs-micro); letter-spacing:.06em; color: var(--muted);
+  }
+  .field-status.settling{ color: var(--accent); }
   .instrument .inst-inner{ transition: filter .2s ease, opacity .2s ease; }
   .instrument:not(.ready) .inst-inner{ filter: blur(1.6px); opacity:.42; pointer-events:none; user-select:none; }
   .inst-lock{
@@ -291,101 +307,6 @@
   }
   .stream-err.show{ display:block; }
   .stream-err b{ color: var(--danger); }
-
-  /* ---------- ROLE PADS (hero) ---------- */
-  section.pads{ padding: var(--sp-5); margin-bottom: var(--sp-5); }
-  .pad-row{ display:grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--sp-3); }
-  .pad{
-    position: relative;
-    aspect-ratio: 1 / 1.02;
-    border-radius: var(--r-md);
-    background:
-      radial-gradient(120% 90% at 50% 8%, var(--panel-2), var(--panel-inset) 70%);
-    border: 1px solid var(--line);
-    box-shadow: var(--pad-shadow);
-    cursor: pointer;
-    padding: 13px 13px 12px;
-    display:flex; flex-direction:column; justify-content:space-between;
-    color: var(--ink);
-    overflow: hidden;
-    transition: transform .12s ease, border-color .18s ease;
-    text-align:left;
-    font: inherit;
-  }
-  .pad:focus-visible{ outline:none; box-shadow: var(--pad-shadow), var(--focus); }
-  .pad:hover{ transform: translateY(-2px); }
-  .pad:active{ transform: translateY(0); }
-  /* ambient breathing glow layer; --tele is live telemetry energy 0..1 */
-  .pad .halo{
-    position:absolute; inset:-1px; border-radius: var(--r-md); pointer-events:none;
-    background: radial-gradient(90% 70% at 50% 118%, var(--accent-glow), transparent 62%);
-    opacity: calc(.12 + var(--tele,0) * .78);
-    transition: opacity .12s linear;
-  }
-  .pad .ring{
-    position:absolute; inset:0; border-radius: var(--r-md); pointer-events:none;
-    box-shadow: inset 0 0 0 1px transparent;
-    transition: box-shadow .25s ease;
-  }
-  .pad.active{ border-color: var(--accent); }
-  .pad.active .ring{ box-shadow: inset 0 0 0 1px var(--accent-deep), inset 0 -30px 44px -20px var(--accent-glow), 0 0 26px -2px var(--accent-glow); }
-  .pad .idx{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--muted); font-weight:650; position:relative; }
-  .pad.active .idx{ color: var(--accent); }
-  .pad .big{ position:relative; }
-  .pad .big .n{ font-size: 30px; font-weight:600; letter-spacing:-.01em; line-height:1; }
-  .pad .big .u{ font-size: var(--fs-micro); letter-spacing:.16em; text-transform:uppercase; color: var(--faint); margin-top:5px; }
-  .pad .lvl{
-    position:relative; height:4px; border-radius:3px; overflow:hidden;
-    background: var(--panel-inset); border:1px solid var(--line-soft);
-  }
-  .pad .lvl i{ position:absolute; left:0; top:0; bottom:0; width: 8%; background: linear-gradient(90deg, var(--accent-deep), var(--accent)); box-shadow:0 0 8px var(--accent-glow); border-radius:3px; transition: width .1s linear; }
-
-  /* ---------- MIDDLE: XY + LANE CONSOLE ---------- */
-  .grid-2{ display:grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: var(--sp-5); margin-bottom: var(--sp-5); align-items:stretch; }
-
-  .xy{ padding: var(--sp-5); display:flex; flex-direction:column; }
-  .xy .pad-xy{
-    position:relative; width:100%; aspect-ratio:1/1; max-width:100%;
-    border-radius: var(--r-md);
-    background:
-      linear-gradient(180deg, var(--panel-inset), #0c1113);
-    border: 1px solid var(--line);
-    box-shadow: inset 0 2px 30px -10px rgba(0,0,0,.6);
-    overflow:hidden; cursor: crosshair; touch-action:none;
-    margin-top: var(--sp-2);
-  }
-  :root[data-theme="light"] .xy .pad-xy{ background: linear-gradient(180deg, var(--panel-inset), #dbe3e0); }
-  @media (prefers-color-scheme: light){ :root:not([data-theme]) .xy .pad-xy{ background: linear-gradient(180deg, var(--panel-inset), #dbe3e0); } }
-  .xy .grid-lines{ position:absolute; inset:0; pointer-events:none; opacity:.55; }
-  .xy .cross{ position:absolute; background: var(--accent); opacity:.14; pointer-events:none; }
-  .xy .cross.h{ left:0; right:0; height:1px; }
-  .xy .cross.v{ top:0; bottom:0; width:1px; }
-  .xy .anchor{
-    position:absolute; width:9px; height:9px; margin:-4.5px 0 0 -4.5px; border-radius:50%;
-    background: var(--faint); box-shadow: 0 0 0 2px var(--panel-inset); pointer-events:none;
-    transition: background .15s, box-shadow .15s;
-  }
-  .xy .anchor.dom{ background: var(--accent); box-shadow: 0 0 0 2px var(--panel-inset), 0 0 12px 1px var(--accent-glow); }
-  .xy .anchor .alab{
-    position:absolute; top:11px; left:50%; transform:translateX(-50%);
-    font-size:9px; letter-spacing:.08em; color: var(--faint); font-weight:650; white-space:nowrap;
-  }
-  .xy .anchor.dom .alab{ color: var(--accent); }
-  .puck{
-    position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px;
-    border-radius:50%;
-    background: radial-gradient(circle at 40% 35%, var(--accent), var(--accent-deep));
-    box-shadow: 0 0 0 5px var(--accent-glow), 0 0 22px 3px var(--accent-glow), 0 6px 14px -4px rgba(0,0,0,.6);
-    border: 1.5px solid rgba(255,255,255,.35);
-    cursor: grab;
-  }
-  .puck:active{ cursor: grabbing; }
-  .puck:focus-visible{ outline:none; box-shadow: 0 0 0 5px var(--accent-glow), var(--focus); }
-  .puck::after{ content:""; position:absolute; inset:8px; border-radius:50%; background: rgba(255,255,255,.7); }
-  .xy .readout{ display:flex; gap: var(--sp-5); margin-top: var(--sp-4); flex-wrap:wrap; }
-  .xy .readout .k{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--faint); font-weight:650; }
-  .xy .readout .val{ font-size: var(--fs-num); font-weight:600; letter-spacing:-.01em; line-height:1.05; }
-  .xy .readout .val small{ font-size: 12px; color: var(--muted); font-weight:600; }
 
   /* lane console (display-only tolerances/weights) */
   .console{ padding: var(--sp-5); display:flex; flex-direction:column; gap: var(--sp-4); }
@@ -468,44 +389,6 @@
   .tape .played{ position:absolute; top:0; bottom:0; left:0; width:0%; background: linear-gradient(90deg, var(--tape-glow), transparent); opacity:.4; pointer-events:none; }
   .tape-legend{ display:flex; justify-content:space-between; margin-top: var(--sp-3); }
 
-  /* ---------- DRILL OVERLAY (display-only) ---------- */
-  .drill-back{
-    position: fixed; inset:0; z-index:60; display:none;
-    background: rgba(6,9,10,.66); backdrop-filter: blur(4px);
-    padding: var(--sp-5);
-    align-items:center; justify-content:center;
-  }
-  .drill-back.open{ display:flex; }
-  .drill{
-    width: min(760px, 100%); max-height: 88vh; overflow:auto;
-    padding: var(--sp-5);
-    animation: rise .22s ease;
-  }
-  @keyframes rise{ from{ transform: translateY(10px); opacity:0; } to{ transform:none; opacity:1; } }
-  .drill .dh{ display:flex; align-items:center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
-  .drill .dh .role-tag{
-    font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; font-weight:700; color: var(--bg);
-    background: var(--accent); padding:5px 10px; border-radius:6px;
-  }
-  .drill .dh h3{ margin:0; font-size:16px; font-weight:600; }
-  .drill .dh .sp{ flex:1; }
-  .xbtn{
-    width:32px; height:32px; border-radius:8px; border:1px solid var(--line); background: var(--panel-inset);
-    color: var(--muted); cursor:pointer; font-size:17px; line-height:1; display:inline-flex; align-items:center; justify-content:center; padding:0;
-  }
-  .xbtn:hover{ color: var(--ink); border-color: var(--danger); }
-  .xbtn:focus-visible{ outline:none; box-shadow: var(--focus); }
-  .unit-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(40px,1fr)); gap: 7px; }
-  .unit{
-    aspect-ratio:1; border-radius:6px; cursor:pointer; border:1px solid rgba(255,255,255,.06);
-    position:relative; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); opacity:.8;
-  }
-  .unit:hover{ transform: scale(1.08); outline: 1.5px solid var(--ink); }
-  .unit:focus-visible{ outline:none; box-shadow: var(--focus); }
-  .unit.sel{ outline:2px solid var(--accent); box-shadow: 0 0 14px -1px var(--accent-glow); opacity:1; }
-  .drill .cap{ font-size: var(--fs-tiny); color: var(--muted); margin-top: var(--sp-4); line-height:1.5; }
-  .drill .cap b{ color: var(--ink-2); font-weight:600; }
-
   /* ---------- TRANSPORT (fixed footer) ---------- */
   .transport{
     position: fixed; left:0; right:0; bottom:0; z-index:40;
@@ -539,20 +422,17 @@
   .time .v{ font-size:20px; font-weight:600; letter-spacing:.01em; min-width: 92px; }
   .time .v small{ font-size:12px; color: var(--muted); }
 
-  .pad:focus-visible .idx{ color: var(--accent); }
-
   @media (prefers-reduced-motion: reduce){
     *{ animation: none !important; transition: none !important; }
   }
 
   /* ---------- responsive ---------- */
   @media (max-width: 900px){
-    .grid-2{ grid-template-columns: 1fr; }
     .bottom{ grid-template-columns: 1fr; }
   }
   @media (max-width: 620px){
     #ets{ padding: var(--sp-4) var(--sp-3) 100px; }
-    .pad-row{ grid-template-columns: repeat(2,1fr); }
+    .field-canvas{ height: 300px; }
     .lane{ grid-template-columns: 78px 1fr 44px; }
     header.hd{ padding: var(--sp-3) var(--sp-4); }
   }
@@ -621,9 +501,6 @@
        background:linear-gradient(90deg,var(--panel-2),var(--panel-inset),var(--panel-2));
        background-size:200% 100%; animation: skel 1.1s linear infinite; }
   @keyframes skel{ from{ background-position:200% 0;} to{ background-position:-200% 0;} }
-  /* pending "settling" steer cue (engine's answer, never the echoed input) */
-  .pad.settling::after{ content:"settling…"; position:absolute; right:8px; top:8px;
-       font-size:9px; color:var(--muted); letter-spacing:.04em; }
 </style>
   
 </head>
@@ -730,73 +607,46 @@
       </div>
 
       <div class="inst-inner">
-        <!-- ROLE PADS -->
-        <section class="pads panel">
+        <!-- THE FIELD (replaces role pads + XY vector pad; mounted in #steerSurface).
+             Squares glow by LIVE SETTLED telemetry (the engine's answer). Hover +
+             scroll = bias a square (soft; saturates, never mutes). Ctrl+scroll /
+             pinch = zoom, only where real sub-structure clears the noise floor
+             (atomic at role grain over the web API — depth honestly ends here). -->
+        <section class="panel" id="steerSurface">
           <div class="sec-h" style="margin-bottom:2px">
-            <span class="lbl">Role Pads</span><span class="rule"></span>
-            <span class="hint">tap to steer region tilt · tap-hold to drill</span>
+            <span class="lbl">The Field</span><span class="rule"></span>
+            <span class="hint">hover + scroll = bias · Ctrl+scroll / pinch = zoom · fill = settled telemetry</span>
           </div>
-          <div class="pad-row" id="padRow" style="margin-top:12px"><!-- pads injected from /api/world M --></div>
+          <div class="field-wrap">
+            <canvas id="fieldCanvas" class="field-canvas" role="application"
+              aria-label="The field — every square is a role, glowing by its live settled weight (the engine's answer, never your input echoed back). Scroll to bias it; the engine re-settles."></canvas>
+            <div class="field-status" id="fieldStatus" aria-live="polite"></div>
+          </div>
         </section>
 
-        <!-- XY + CONSOLE -->
-        <div class="grid-2">
-          <!-- XY VECTOR PAD -->
-          <section class="xy panel">
-            <div class="sec-h" style="margin-bottom:2px">
-              <span class="lbl">Region Tilt · XY</span><span class="rule"></span>
-            </div>
-            <div class="pad-xy" id="xyPad" tabindex="0" role="application" aria-label="Region tilt vector pad — click to place, drag to move">
-              <svg class="grid-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <g stroke="currentColor" stroke-width=".25" style="color:var(--line)">
-                  <path d="M25 0V100M50 0V100M75 0V100M0 25H100M0 50H100M0 75H100"/>
-                </g>
-              </svg>
-              <div class="cross h" id="crossH"></div>
-              <div class="cross v" id="crossV"></div>
-              <!-- role anchors injected -->
-              <div class="puck" id="puck" tabindex="0" role="slider" aria-label="Region tilt puck" aria-valuetext="x 0.00, y 0.00"></div>
-            </div>
-            <div class="readout">
-              <div>
-                <div class="k">tilt-x</div>
-                <div class="val num" id="rx">+0.00</div>
-              </div>
-              <div>
-                <div class="k">tilt-y</div>
-                <div class="val num" id="ry">+0.00</div>
-              </div>
-              <div>
-                <div class="k">dominant</div>
-                <div class="val" id="dom">role 0 <small id="domPct">— 50%</small></div>
-              </div>
-            </div>
-          </section>
+        <!-- LANE CONSOLE (display-only) -->
+        <section class="console panel" style="margin-bottom:var(--sp-5)">
+          <div class="sec-h" style="margin-bottom:2px">
+            <span class="lbl">Lane Console</span><span class="rule"></span>
+            <span class="hint">display · tolerances &amp; weights</span>
+          </div>
+          <div class="lanes" id="lanes"><!-- lanes injected --></div>
 
-          <!-- LANE CONSOLE (display-only) -->
-          <section class="console panel">
-            <div class="sec-h" style="margin-bottom:2px">
-              <span class="lbl">Lane Console</span><span class="rule"></span>
-              <span class="hint">display · tolerances &amp; weights</span>
+          <div class="meters" id="meters">
+            <div class="meter" data-m="settle">
+              <div class="mh"><span class="micro">settle</span><span class="mv num" data-v>0.0</span></div>
+              <div class="bars" data-bars></div>
             </div>
-            <div class="lanes" id="lanes"><!-- lanes injected --></div>
-
-            <div class="meters" id="meters">
-              <div class="meter" data-m="settle">
-                <div class="mh"><span class="micro">settle</span><span class="mv num" data-v>0.0</span></div>
-                <div class="bars" data-bars></div>
-              </div>
-              <div class="meter" data-m="drift">
-                <div class="mh"><span class="micro">drift</span><span class="mv num" data-v>0.0</span></div>
-                <div class="bars" data-bars></div>
-              </div>
-              <div class="meter" data-m="output">
-                <div class="mh"><span class="micro">output</span><span class="mv num" data-v>0.0</span></div>
-                <div class="bars" data-bars></div>
-              </div>
+            <div class="meter" data-m="drift">
+              <div class="mh"><span class="micro">drift</span><span class="mv num" data-v>0.0</span></div>
+              <div class="bars" data-bars></div>
             </div>
-          </section>
-        </div>
+            <div class="meter" data-m="output">
+              <div class="mh"><span class="micro">output</span><span class="mv num" data-v>0.0</span></div>
+              <div class="bars" data-bars></div>
+            </div>
+          </div>
+        </section>
 
         <!-- BOTTOM: LIBRARY + TAPE -->
         <div class="bottom">
@@ -845,20 +695,6 @@
       </section>
     </div><!-- /paneExplore -->
 
-  </div>
-
-  <!-- DRILL OVERLAY (display-only, no engine calls) -->
-  <div class="drill-back" id="drillBack" aria-hidden="true">
-    <section class="drill panel" role="dialog" aria-modal="true" aria-label="Role drill-in">
-      <div class="dh">
-        <span class="role-tag" id="drillTag">role 0</span>
-        <h3 id="drillTitle">units · drilled</h3>
-        <span class="sp"></span>
-        <button class="xbtn" id="drillClose" aria-label="Close drill">×</button>
-      </div>
-      <div class="unit-grid" id="unitGrid"></div>
-      <p class="cap">Each cell is one <b>unit</b>, colored by its source track. This drill-in is a <b>display</b> view of the role's makeup — steering is done from the pad face and the XY tilt.</p>
-    </section>
   </div>
 
   <!-- TRANSPORT -->
@@ -913,15 +749,11 @@
   /* ================= APP STATE ================= */
   var world = { ready:false, M:0, sr:48000 };
   var state = "idle";        // idle | playing | paused
-  var padEls = [], anchorEls = [];
-  var anchors = [];          // {x,y} in 0..1 for each role
   var region = [];           // last computed region vector (length M)
-  var activeRole = 0;
   var es = null;             // telemetry EventSource
   var backendAlive = true;   // last /api/health outcome (drives dead-vs-loading)
   var worldLoadStart = Date.now();
   var SLOW_AFTER_MS = 45000; // generous ceiling (sandbox renders ~100x slower)
-  var pendingSettle = false; // a steer gesture is awaiting the engine's settled answer
 
   /* ================= ROUTING TO ACCESS PAGE (401) ================= */
   // Any gated call returning 401 means the session token expired / is missing; land
@@ -1207,125 +1039,166 @@
     instrument.classList.add("ready");
     instHint.textContent = world.M + " roles · " + world.sr + " Hz";
     $("tapeEnd").textContent = fmtClock(TAPE_WINDOW);
-    buildPads(world.M);
-    buildAnchors(world.M);
     buildLanesOnce();
     buildMetersOnce();
-    // default steer: centre / role 0 active
-    setPuck(anchors[0] ? anchors[0].x : 0.5, anchors[0] ? anchors[0].y : 0.5);
-    activateRole(0, false);
-    sendSteerNow();               // publish an initial region tilt
+    fieldInit();
+    sendSteerNow();               // publish an initial (neutral) region tilt
     btnPlay.disabled = false; btnPause.disabled = true; btnStop.disabled = true;
   }
 
-  /* ================= ROLE PADS (built from M) ================= */
-  var padRow = $("padRow");
-  var holdTimer = null;
-  function buildPads(M){
-    padRow.innerHTML = ""; padEls = [];
-    for(var i=0;i<M;i++){
-      (function(idx){
-        var b = document.createElement("button");
-        b.className = "pad";
-        b.setAttribute("aria-pressed","false");
-        b.setAttribute("aria-label","Role "+idx+", steer region tilt");
-        b.innerHTML =
-          '<span class="halo"></span><span class="ring"></span>'+
-          '<span class="idx">role '+idx+'</span>'+
-          '<span class="big"><div class="n num" data-n>—</div><div class="u">energy</div></span>'+
-          '<span class="lvl"><i data-lvl></i></span>';
-        b.addEventListener("click", function(){ activateRole(idx, true); });
-        b.addEventListener("pointerdown", function(){
-          holdTimer = setTimeout(function(){ openDrill(idx); holdTimer=null; }, 480);
-        });
-        var cancel = function(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
-        b.addEventListener("pointerup", cancel);
-        b.addEventListener("pointerleave", cancel);
-        b.addEventListener("keydown", function(e){
-          if(e.key==="Enter"||e.key===" "){ e.preventDefault(); activateRole(idx, true); }
-          if(e.key.toLowerCase()==="d"){ openDrill(idx); }
-        });
-        padRow.appendChild(b);
-        padEls.push(b);
-      })(i);
+  /* ============================================================================
+     THE FIELD — a canvas grid of role squares that REPLACES the role pads + XY.
+     Governing invariant: you push -> the engine re-settles -> the display shows
+     the ENGINE'S ANSWER. Fill brightness = live SETTLED telemetry, written ONLY
+     by fieldApplySettled (the telemetry applier). The one gesture is hover-scroll
+     BIAS (a distinct RING channel), routed through the EXISTING /api/steer region
+     path. Depth: over the web API the only settled grain is per-role (see
+     /api/telemetry `roles`), so squares are ATOMIC at role grain — the drill
+     self-sizing is present and correctly refuses (no sub-structure telemetry).
+     ========================================================================== */
+
+  /* ===== FIELD PURE LOGIC (test-extractable: bias/steer math + noise floor) =====
+     Kept as free functions with no DOM/canvas refs so the harness can run them in
+     node for the soft-saturation + envelope + participation-ratio checks. */
+  var FIELD_SAFE_MAG   = 1.0;    // = architecture-v6/ets/panel/envelope.SAFE_REGION_MAGNITUDE
+                                 //   (the cap clamp_region enforces on the wire); pinned by test.
+  var FIELD_BIAS_LIMIT = 1.0;    // soft-saturation stop for the operator bias (± envelope)
+  var FIELD_BIAS_STEP  = 0.125;  // bias accumulated per wheel notch
+
+  // Participation-ratio noise-floor criterion — the SAME (Σw)²/Σw² that self-sized
+  // the anchor count M (architecture-v6/ets/functional/anchors.py::effective_rank),
+  // restated here as pure arithmetic on a non-negative telemetry weight vector.
+  function fieldParticipationRatio(w){
+    var s1 = 0, s2 = 0;
+    for(var i=0;i<w.length;i++){ var v = w[i] > 0 ? w[i] : 0; s1 += v; s2 += v*v; }
+    if(s2 <= 0) return 0;
+    return (s1*s1)/s2;
+  }
+  // A square may drill only while its sub-structure clears the floor: at least TWO
+  // effective sub-modes (round(PR) >= 2, the same rounding the anchor count uses).
+  function fieldClearsFloor(w){ return Math.round(fieldParticipationRatio(w)) >= 2; }
+
+  // Accumulate scroll bias on role r, SOFT-saturating at ±FIELD_BIAS_LIMIT. The stop
+  // is a saturation of the INPUT; the region lane is an exponential tilt, so even the
+  // full down-stop re-weights and never mutes (WEB-FIELD-B). NEVER a mute path.
+  function fieldAddBias(bias, r, delta){
+    var b = (bias[r] || 0) + delta;
+    if(b >  FIELD_BIAS_LIMIT) b =  FIELD_BIAS_LIMIT;
+    if(b < -FIELD_BIAS_LIMIT) b = -FIELD_BIAS_LIMIT;
+    bias[r] = b;
+    return b;
+  }
+
+  // The composite region LEAN all current square biases add up to, scaled to the
+  // safe envelope. Each role square leans along its OWN axis e_r, so
+  // region[r] = bias[r]·FIELD_SAFE_MAG and |region[r]| <= FIELD_SAFE_MAG = the wire
+  // cap. This is the ONLY thing the field hands toward the engine; it goes out
+  // through the EXISTING region path (POST /api/steer -> set_region -> clamp_region).
+  function fieldRegionVector(bias, M){
+    var out = new Array(M);
+    for(var r=0;r<M;r++){ out[r] = (bias[r] || 0) * FIELD_SAFE_MAG; }
+    return out;
+  }
+  /* ===== END FIELD PURE LOGIC ===== */
+
+  var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus");
+  var fieldCtx = fieldCanvas ? fieldCanvas.getContext("2d") : null;
+  var fieldSettled = [];    // FILL brightness store — WRITTEN ONLY by fieldApplySettled
+  var fieldBias = [];       // operator BIAS store (the ring) — written by the wheel handler
+  var fieldHover = -1;      // hovered square index (wheel targeting only; inert)
+  var fieldPending = false; // a bias gesture awaiting the engine's re-settlement
+  // Per-role sub-structure weight vectors. The web telemetry (/api/telemetry,
+  // /api/world) emits NO per-role sub-feed, so this stays empty and every role
+  // square is atomic; the PR floor then refuses to drill. If the bridge ever emits
+  // sub-structure, drilling arms automatically by the same criterion.
+  var FIELD_SUBSTRUCTURE = {};
+  function fieldSubVector(k){ return FIELD_SUBSTRUCTURE[k] || []; }
+
+  function fieldCount(){ return fieldSettled.length; }   // squares derive from telemetry
+  function fieldGrid(n){
+    var cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+    var rows = Math.max(1, Math.ceil(n / cols));
+    return { rows:rows, cols:cols };
+  }
+  function fieldSquareAt(x, y){
+    var n = fieldCount(); if(n === 0) return -1;
+    var g = fieldGrid(n);
+    var w = fieldCanvas.clientWidth / g.cols, h = fieldCanvas.clientHeight / g.rows;
+    if(w <= 0 || h <= 0) return -1;
+    var c = Math.floor(x / w), r = Math.floor(y / h);
+    if(c < 0 || c >= g.cols || r < 0 || r >= g.rows) return -1;
+    var k = r * g.cols + c;
+    return (k >= 0 && k < n) ? k : -1;
+  }
+  function cssVar(name){
+    try{ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
+    catch(e){ return "#888"; }
+  }
+  function fieldRoleColor(i){
+    var hue = (i * 47) % 360;                 // legible spread; role family, not a track
+    return "hsl(" + hue + ",55%,58%)";
+  }
+  function fieldSetStatus(msg, settling){
+    if(!fieldStatus) return;
+    fieldStatus.textContent = msg || "";
+    fieldStatus.classList.toggle("settling", !!settling);
+  }
+
+  function fieldDraw(){
+    if(!fieldCtx) return;
+    var W = fieldCanvas.clientWidth, H = fieldCanvas.clientHeight;
+    var dpr = window.devicePixelRatio || 1;
+    if(fieldCanvas.width !== Math.round(W*dpr) || fieldCanvas.height !== Math.round(H*dpr)){
+      fieldCanvas.width = Math.round(W*dpr); fieldCanvas.height = Math.round(H*dpr);
+    }
+    fieldCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fieldCtx.clearRect(0, 0, W, H);
+    var n = fieldCount();
+    if(n === 0){
+      fieldCtx.fillStyle = cssVar("--faint");
+      fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field", 14, 26);
+      return;
+    }
+    var g = fieldGrid(n), cw = W / g.cols, ch = H / g.rows;
+    for(var k=0;k<n;k++){
+      var r = Math.floor(k / g.cols), c = k % g.cols;
+      var x = c * cw, y = r * ch;
+      var settled = Math.max(0, Math.min(1, fieldSettled[k] || 0));  // FILL = settled telemetry ONLY
+      fieldCtx.globalAlpha = 0.15 + 0.85 * settled;
+      fieldCtx.fillStyle = fieldRoleColor(k);
+      fieldCtx.fillRect(x+3, y+3, cw-6, ch-6);
+      fieldCtx.globalAlpha = 1;
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(x+3.5, y+3.5, cw-7, ch-7);
+      if(k === fieldHover){                                          // hover highlight (inert)
+        fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 1;
+        fieldCtx.strokeRect(x+4.5, y+4.5, cw-9, ch-9);
+      }
+      var b = fieldBias[k] || 0;                                     // RING = operator bias input
+      if(Math.abs(b) > 1e-9){
+        fieldCtx.strokeStyle = b > 0 ? "rgb(255,200,40)" : "rgb(80,200,255)";
+        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(b));
+        fieldCtx.strokeRect(x+6, y+6, cw-12, ch-12);
+      }
+      fieldCtx.fillStyle = cssVar("--ink"); fieldCtx.font = "11px " + cssVar("--font-mono");
+      fieldCtx.fillText("R" + k, x+8, y+18);
+      fieldCtx.fillStyle = cssVar("--muted");
+      fieldCtx.fillText(Math.round(settled*100) + "", x+8, y+ch-10);
+      if(fieldClearsFloor(fieldSubVector(k))){                       // affordance only if real sub-structure
+        fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.fillText("▸", x+cw-16, y+ch-10);
+      }
     }
   }
 
-  function activateRole(i, steer){
-    activeRole = i;
-    padEls.forEach(function(el,k){
-      var on = k===i;
-      el.classList.toggle("active", on);
-      el.setAttribute("aria-pressed", on?"true":"false");
-    });
-    if(anchors[i]) setPuck(anchors[i].x, anchors[i].y);
-    if(steer) sendSteerNow();
-  }
-
-  /* ================= XY PUCK + REGION VECTOR ================= */
-  var xyPad = $("xyPad"), puck = $("puck"), crossH = $("crossH"), crossV = $("crossV");
-  var rx = $("rx"), ry = $("ry"), domEl = $("dom"), domPct = $("domPct");
-  var px = 0.5, py = 0.5;
-  function clamp(v){ return Math.max(0, Math.min(1, v)); }
-
-  function buildAnchors(M){
-    // remove old
-    anchorEls.forEach(function(el){ if(el.parentNode) el.parentNode.removeChild(el); });
-    anchorEls = []; anchors = [];
-    var cx = 0.5, cy = 0.5, R = M > 1 ? 0.34 : 0;
-    for(var i=0;i<M;i++){
-      var theta = -Math.PI/2 + (i * 2*Math.PI / M);   // start at top, clockwise
-      var ax = cx + R*Math.cos(theta);
-      var ay = cy + R*Math.sin(theta);
-      anchors.push({ x:ax, y:ay });
-      var el = document.createElement("div");
-      el.className = "anchor";
-      el.style.left = (ax*100)+"%"; el.style.top = (ay*100)+"%";
-      el.innerHTML = '<span class="alab">r'+i+'</span>';
-      xyPad.appendChild(el);
-      anchorEls.push(el);
-    }
-  }
-
-  // region vector: gaussian weight per role by puck distance to its anchor, normalised to sum 1
-  function regionFromPuck(){
-    var M = world.M || anchors.length;
-    var w = new Array(M), sum = 0, sigma = 0.30;
-    for(var i=0;i<M;i++){
-      var a = anchors[i] || {x:0.5,y:0.5};
-      var dx = a.x - px, dy = a.y - py;
-      var d2 = dx*dx + dy*dy;
-      var v = Math.exp(-d2 / (2*sigma*sigma));
-      w[i] = v; sum += v;
-    }
-    if(sum <= 0){ for(var j=0;j<M;j++) w[j] = 1/M; sum = 1; }
-    else { for(var k=0;k<M;k++) w[k] /= sum; }
-    return w;
-  }
-
-  function dominant(w){
-    var best = 0, bv = -1;
-    for(var i=0;i<w.length;i++){ if(w[i] > bv){ bv = w[i]; best = i; } }
-    return { i:best, v:bv };
-  }
-
-  function setPuck(x,y){
-    px = clamp(x); py = clamp(y);
-    puck.style.left = (px*100)+"%"; puck.style.top = (py*100)+"%";
-    crossH.style.top = (py*100)+"%"; crossV.style.left = (px*100)+"%";
-    var vx = (px*2-1), vy = -(py*2-1);
-    rx.textContent = (vx>=0?"+":"")+vx.toFixed(2);
-    ry.textContent = (vy>=0?"+":"")+vy.toFixed(2);
-    puck.setAttribute("aria-valuetext","x "+vx.toFixed(2)+", y "+vy.toFixed(2));
-    region = regionFromPuck();
-    var dom = dominant(region);
-    domEl.childNodes[0].nodeValue = "role "+dom.i+" ";
-    domPct.textContent = "— "+Math.round(dom.v*100)+"%";
-    anchorEls.forEach(function(el,k){ el.classList.toggle("dom", k===dom.i); });
+  // The telemetry applier: the SINGLE writer of the fill/brightness store. Input
+  // handlers never call it (WEB-FIELD-INV). Empty roles -> empty field (WEB-FIELD-E).
+  function fieldApplySettled(roles){
+    fieldSettled = roles.map(function(v){ return Math.max(0, Math.min(1, v)); });
+    fieldDraw();
   }
 
   /* -------- THE ONE ENGINE-CONTROL PATH: POST /api/steer -------- */
-  var steerTimer = null, steerPending = false;
   function sendSteer(regionVec){
     // The ONLY request in this app that steers the engine. Region tilt only.
     return fetch("/api/steer", {
@@ -1336,53 +1209,81 @@
   }
   function sendSteerNow(){
     if(!world.ready) return;
-    steerPending = false;
-    // §4A(c): a pending "settling" cue on the pushed pad until a telemetry frame
-    // carries the engine's RE-SETTLEMENT — never echo the input as instant
-    // brightness. On a region-DISARMED set the gesture changes nothing, so show no
-    // cue (it would imply a change that will never come). Only while playing, so a
-    // telemetry frame is guaranteed to clear it.
-    if(world.regionArmed && state === "playing" && padEls[activeRole]){
-      padEls[activeRole].classList.add("settling"); pendingSettle = true;
+    // build the composite region lean from the current bias ledger and emit it.
+    region = fieldRegionVector(fieldBias, fieldCount() || world.M || 0);
+    // §4A(c): a pending "settling" cue until a telemetry frame carries the engine's
+    // RE-SETTLEMENT — never echo the input as instant brightness. On a region-
+    // DISARMED set (or when idle, no telemetry to clear it) show no cue.
+    if(world.regionArmed && state === "playing"){
+      fieldPending = true; fieldSetStatus("settling…", true);
     }
     sendSteer(region.slice());
   }
-  function sendSteerThrottled(){
-    if(!world.ready) return;
-    steerPending = true;
-    if(steerTimer) return;
-    steerTimer = setTimeout(function(){
-      steerTimer = null;
-      if(steerPending) sendSteerNow();
-    }, 80);
-  }
 
-  var dragging = false;
-  function fromEvent(e){
-    var rect = xyPad.getBoundingClientRect();
-    var cx = (e.touches?e.touches[0].clientX:e.clientX);
-    var cy = (e.touches?e.touches[0].clientY:e.clientY);
-    setPuck((cx-rect.left)/rect.width, (cy-rect.top)/rect.height);
-    sendSteerThrottled();
+  // gesture -> INPUT only; never brightness. Ctrl/pinch = zoom (drill only where real
+  // sub-structure clears the floor); plain wheel = bias the hovered square.
+  function fieldOnWheel(ev){
+    ev.preventDefault();
+    if(!world.ready) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var i = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    var notches = -ev.deltaY / 100;              // wheel up = favour (positive bias)
+    if(ev.ctrlKey){                              // Ctrl+scroll / trackpad pinch = zoom
+      fieldZoom(i, notches);
+      return;
+    }
+    if(i < 0 || !notches) return;
+    fieldAddBias(fieldBias, i, notches * FIELD_BIAS_STEP);
+    sendSteerNow();
+    fieldDraw();
   }
-  xyPad.addEventListener("pointerdown", function(e){
-    if(!world.ready) return;
-    if(e.target===puck){ dragging=true; puck.setPointerCapture && puck.setPointerCapture(e.pointerId); return; }
-    dragging=true; fromEvent(e);
-  });
-  window.addEventListener("pointermove", function(e){ if(dragging){ fromEvent(e); } });
-  window.addEventListener("pointerup", function(){ if(dragging){ dragging=false; sendSteerNow(); } });
-  puck.addEventListener("pointerdown", function(e){ if(!world.ready) return; dragging=true; e.stopPropagation(); });
-  puck.addEventListener("keydown", function(e){
-    if(!world.ready) return;
-    var s=0.05, done=true;
-    if(e.key==="ArrowLeft") setPuck(px-s,py);
-    else if(e.key==="ArrowRight") setPuck(px+s,py);
-    else if(e.key==="ArrowUp") setPuck(px,py-s);
-    else if(e.key==="ArrowDown") setPuck(px,py+s);
-    else done=false;
-    if(done){ e.preventDefault(); sendSteerNow(); }
-  });
+  function fieldOnMove(ev){                        // passive hover targeting ONLY — inert
+    var rect = fieldCanvas.getBoundingClientRect();
+    var i = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    if(i !== fieldHover){ fieldHover = i; fieldDraw(); }
+  }
+  function fieldZoom(i, amount){
+    // Self-sizing drill: refuse unless the square's sub-structure clears the noise
+    // floor (round(PR) >= 2). Over the web there is no per-role sub-feed, so this
+    // always refuses honestly — depth ends at role grain.
+    if(amount > 0 && i >= 0){
+      if(fieldClearsFloor(fieldSubVector(i))){
+        /* real sub-structure would open here — none exists over the web API today */
+        fieldSetStatus("", false);
+      } else {
+        fieldSetStatus("atomic — no sub-structure telemetry over the web API", false);
+      }
+    }
+  }
+  var fieldPinch = 0;
+  function fieldTouchDist(ev){
+    var dx = ev.touches[0].clientX - ev.touches[1].clientX;
+    var dy = ev.touches[0].clientY - ev.touches[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+  function fieldTouchStart(ev){
+    if(ev.touches && ev.touches.length === 2){ fieldPinch = fieldTouchDist(ev); }
+  }
+  function fieldTouchMove(ev){                     // two-finger pinch = zoom (same honesty)
+    if(ev.touches && ev.touches.length === 2){
+      ev.preventDefault();
+      var d = fieldTouchDist(ev), delta = d - fieldPinch; fieldPinch = d;
+      var rect = fieldCanvas.getBoundingClientRect();
+      var mx = (ev.touches[0].clientX + ev.touches[1].clientX)/2 - rect.left;
+      var my = (ev.touches[0].clientY + ev.touches[1].clientY)/2 - rect.top;
+      fieldZoom(fieldSquareAt(mx, my), delta);
+    }
+  }
+  function fieldInit(){
+    if(!fieldCanvas) return;
+    fieldCanvas.addEventListener("wheel", fieldOnWheel, { passive:false });
+    fieldCanvas.addEventListener("pointermove", fieldOnMove);
+    fieldCanvas.addEventListener("pointerleave", function(){ fieldHover = -1; fieldDraw(); });
+    fieldCanvas.addEventListener("touchstart", fieldTouchStart, { passive:false });
+    fieldCanvas.addEventListener("touchmove", fieldTouchMove, { passive:false });
+    fieldDraw();
+  }
+  window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
 
   /* ================= LANES (display-only) ================= */
   var lanesWrap = $("lanes"), lanesBuilt = false;
@@ -1504,38 +1405,6 @@
     timeRead.innerHTML = (t>=0?t.toFixed(2):"0.00")+"<small>s</small>";
   }
 
-  /* ================= DRILL OVERLAY (display-only) ================= */
-  var drillBack = $("drillBack"), drillTag = $("drillTag"), drillTitle = $("drillTitle"), unitGrid = $("unitGrid");
-  var lastFocus = null;
-  function openDrill(i){
-    lastFocus = document.activeElement;
-    drillTag.textContent = "role "+i;
-    var units = 36;   // cosmetic makeup view; steering is not done here
-    drillTitle.textContent = units+" units · drilled";
-    unitGrid.innerHTML = "";
-    for(var u=0; u<units; u++){
-      var color = TRACK_COLORS[(u*7+i) % TRACK_COLORS.length];
-      var cell = document.createElement("button");
-      cell.className = "unit";
-      cell.style.background = color;
-      cell.setAttribute("aria-label","unit "+u);
-      cell.addEventListener("click", (function(c){ return function(){
-        unitGrid.querySelectorAll(".unit.sel").forEach(function(n){ n.classList.remove("sel"); });
-        c.classList.add("sel");   // display selection only — no engine call
-      };})(cell));
-      unitGrid.appendChild(cell);
-    }
-    drillBack.classList.add("open"); drillBack.setAttribute("aria-hidden","false");
-    $("drillClose").focus();
-  }
-  function closeDrill(){
-    drillBack.classList.remove("open"); drillBack.setAttribute("aria-hidden","true");
-    if(lastFocus && lastFocus.focus) lastFocus.focus();
-  }
-  $("drillClose").addEventListener("click", closeDrill);
-  drillBack.addEventListener("click", function(e){ if(e.target===drillBack) closeDrill(); });
-  document.addEventListener("keydown", function(e){ if(e.key==="Escape" && drillBack.classList.contains("open")) closeDrill(); });
-
   /* ================= TELEMETRY (SSE, READ-ONLY) ================= */
   function openTelemetry(){
     closeTelemetry();
@@ -1554,21 +1423,12 @@
   function applyTelemetry(d){
     var roles = d && d.roles;
     if(roles && roles.length){
-      for(var i=0;i<padEls.length && i<roles.length;i++){
-        var e = Math.max(0, Math.min(1, roles[i]));
-        var pad = padEls[i];
-        pad.style.setProperty("--tele", e.toFixed(3));
-        var lvl = pad.querySelector("[data-lvl]"); if(lvl) lvl.style.width = (6 + e*94).toFixed(0)+"%";
-        var n = pad.querySelector("[data-n]"); if(n) n.textContent = Math.round(e*100);
-      }
+      fieldApplySettled(roles);   // FILL = settled telemetry (the ONLY brightness write)
       updateMeters(roles);
     }
     if(typeof d.t === "number") updateTape(d.t);
     // the engine's answer has arrived — clear the pending "settling" cue.
-    if(pendingSettle){
-      pendingSettle = false;
-      padEls.forEach(function(p){ p.classList.remove("settling"); });
-    }
+    if(fieldPending){ fieldPending = false; fieldSetStatus("", false); }
   }
 
   /* ================= AUDIO: pull /api/stream (16-bit PCM WAV) via Web Audio ================= */
