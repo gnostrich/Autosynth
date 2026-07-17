@@ -1032,10 +1032,12 @@
       if(w === null) return;
       world.public = !!w.public;
       world.openedSetId = w.opened_set_id || null;
-      // Hosted (public) deploy = play/steer the demo (or a shared set) only. Filter
-      // the TAB SET to [Play, Explore] and drop publish — the visitor never sees a
-      // gated route or a dead tab (§2). One gate, reused.
-      applyTabVisibility(world.public);
+      // KEYED-TRAIN: an ACCESS-KEYED session is an owner even under ETS_PUBLIC, so it
+      // keeps Train. can_train is the backend's owner predicate (keyed || !public);
+      // fall back to !public for older payloads. The tab set follows can_train:
+      // keyless-public visitors get [Play, Explore]; owners (keyed or local) get Train.
+      world.canTrain = (w.can_train !== undefined) ? !!w.can_train : !w.public;
+      applyTabVisibility(!world.canTrain);
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
@@ -1862,8 +1864,9 @@
   /* ================= PUBLISH (owner share toggle, lives in Train) ============= */
   var shareSwitch = $("shareSwitch"), shareNote = $("shareNote"), publishBox = $("publishBox");
   function refreshPublishBox(){
-    // publish exists only for an OWNER with a live trained world, never in public.
-    publishBox.classList.toggle("show", !!world.isTrained && !world.public);
+    // publish exists only for an OWNER with a live trained world. can_train is the
+    // owner predicate (keyed owners keep it under ETS_PUBLIC; keyless-public do not).
+    publishBox.classList.toggle("show", !!world.isTrained && !!world.canTrain);
   }
   function setShareUI(shared){
     shareSwitch.setAttribute("aria-checked", shared ? "true" : "false");

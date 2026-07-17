@@ -573,6 +573,13 @@ class _Handler(BaseHTTPRequestHandler):
             return self.hub.default_session
         return self.hub.session_for_token(self._token())
 
+    def _can_train(self, session) -> bool:
+        """The single owner predicate that fixes all four (public × keyed) combos:
+        a session may train/ingest/reset iff it is an OWNER, i.e. the deploy is keyed
+        (reaching any session required a valid token) OR the session is not public.
+        Only a KEYLESS-public visitor is the demo-only consumer."""
+        return bool(self.hub.keyed or not getattr(session, "public", False))
+
     # --- GET ----------------------------------------------------------------
     def do_GET(self):  # noqa: N802
         path = self.path.split("?", 1)[0].rstrip("/")
@@ -609,6 +616,12 @@ class _Handler(BaseHTTPRequestHandler):
                 "shared": session.shared,
                 "set_id": session.set_id,
                 "opened_set_id": session.opened_set_id,
+                # KEYED-TRAIN (R6 reading): a keyed session is an owner (reaching the
+                # session at all required a valid token), so it keeps full owner
+                # powers even under ETS_PUBLIC. Only KEYLESS public is the demo-only
+                # visitor. can_train is the ONE predicate both layers branch on.
+                "keyed": self.hub.keyed,
+                "can_train": self._can_train(session),
                 # PROG (design §4A): the REAL ordered stage transitions of the last/
                 # running train — the FE renders the staged indicator from THESE only.
                 "train_stages": list(session.train_stages),
@@ -620,6 +633,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "ready": False, "reason": "no playable world loaded"}
             info["public"] = getattr(session, "public", False)
             info["opened_set_id"] = session.opened_set_id
+            # KEYED-TRAIN: expose the owner predicate so the FE shows Train for keyed
+            # sessions (read-only state; no new authority — the gate stays server-side).
+            info["can_train"] = self._can_train(session)
             self._json(200, info)
             return
         if path == "/api/explore":
@@ -692,8 +708,11 @@ class _Handler(BaseHTTPRequestHandler):
         # PUBLIC (hosted, keyless-R6) mode is a play/steer-the-demo deployment only.
         # The corpus surfaces (upload, train, reset) write session state and need the
         # ingest deps that aren't in the hosted image — refuse them cleanly (503)
-        # rather than expose a broken surface. The FE hides these when world.public.
-        if getattr(session, "public", False) and path in (
+        # rather than expose a broken surface. KEYED sessions are OWNERS (a valid token
+        # was required to reach this session), so the key gate SUPERSEDES the R6 demo
+        # restriction: the 503 fires only for KEYLESS public visitors. The FE hides
+        # these when !can_train.
+        if getattr(session, "public", False) and not self.hub.keyed and path in (
                 "/api/ingest", "/api/train", "/api/reset", "/api/share"):
             self._json(503, {"ok": False, "error": "not available in the hosted "
                              "demo — run the companion locally to train your own "
