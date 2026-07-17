@@ -21,6 +21,7 @@ CS boundary (load-bearing, mirrors CS-1..CS-5):
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
@@ -64,6 +65,17 @@ class Companion:
     def session_files(self):
         return sorted(p.name for p in self.session_dir.iterdir()
                       if p.is_file() and p.name != "world.npz")
+
+    def reset(self) -> dict:
+        """Clear the current corpus + world so a fresh corpus can be loaded — the
+        MVP's account-free 'new corpus' action (one corpus at a time; whoever is at
+        the machine resets and drops their own audio). Local-only: no network."""
+        removed = 0
+        for p in list(self.session_dir.iterdir()):
+            if p.is_file():
+                p.unlink(); removed += 1
+        self.last_receipt = None
+        return {"ok": True, "cleared": removed}
 
     # --- the guarded cloud round-trip --------------------------------------
     def run_train(self, seed: int = 0, sweeps: int = 8,
@@ -162,6 +174,12 @@ class _Handler(BaseHTTPRequestHandler):
                              "files": self.companion.session_files()})
             return
 
+        if path == "/api/reset":
+            # account-free "new corpus": clear session + world, LOCAL-ONLY
+            out = self.companion.reset()
+            self._json(200, {**out, "files": self.companion.session_files()})
+            return
+
         if path == "/api/train":
             params = {}
             if body:
@@ -189,10 +207,29 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _require_loopback(host: str) -> str:
+    """Structurally enforce the sealed-box invariant: the companion binds LOOPBACK
+    ONLY (matches the module contract, 'never 0.0.0.0'). A non-loopback host — e.g.
+    0.0.0.0 — is refused, so the one localhost port cannot be widened into a public
+    listener by a stray flag."""
+    if host == "localhost":
+        return host
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        raise SystemExit(f"[companion] refusing host {host!r}: bind loopback only "
+                         f"(127.0.0.1 / ::1 / localhost)")
+    if not ip.is_loopback:
+        raise SystemExit(f"[companion] refusing non-loopback host {host!r}: "
+                         f"bind loopback only — the box is local by design")
+    return host
+
+
 def serve(cloud_url: str = "inproc", host: str = "127.0.0.1", port: int = 8770,
           session_dir: Optional[str] = None) -> ThreadingHTTPServer:
     """Start the companion on loopback. Returns the (already-serving is caller's
     job) server; callers in tests use ``server_close`` to stop."""
+    host = _require_loopback(host)
     comp = Companion(cloud_url=cloud_url, session_dir=session_dir)
     handler = type("_BoundHandler", (_Handler,), {"companion": comp})
     httpd = ThreadingHTTPServer((host, port), handler)

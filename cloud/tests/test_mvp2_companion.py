@@ -7,6 +7,7 @@ MVP2-A  raw/recipes never leave the companion:
 MVP2-B  no cloud decoder on the companion's cloud path (static import check)
 smoke   the full HTTP surface works offline (inproc): UI + ingest + status + train
 """
+import io
 import json
 import threading
 import urllib.request
@@ -60,27 +61,59 @@ def test_train_puts_only_stage3_on_the_wire(tmp_path, monkeypatch):
     out = comp.run_train(sweeps=3)
     assert out["ok"] is True
 
-    # the ACTUAL bytes that crossed: only the four whitelisted stage-3 fields
-    protos, params = decode_job(seen["bytes"])
-    payload = {}
-    for i, p in enumerate(protos):
-        for f in STAGE3_PROTO_FIELDS:
-            payload[f"p{i}.{f}"] = np.asarray(getattr(p, f))
-    assert_wire_whitelisted(payload)   # raises if any off-whitelist field present
+    # Inspect the ACTUAL captured wire bytes (not a rebuilt payload). allow_pickle=
+    # False also refuses any smuggled object array outright. Every per-prototype key
+    # must be a whitelisted stage-3 field; nothing audio-ish; canonical validator agrees.
+    with np.load(io.BytesIO(seen["bytes"]), allow_pickle=False) as z:
+        wire = {k: np.asarray(z[k]) for k in z.files}
+    proto_keys = [k for k in wire if "." in k and k.split(".", 1)[0][:1] == "p"
+                  and k.split(".", 1)[0][1:].isdigit()]
+    assert proto_keys, "no per-prototype fields crossed the wire?"
+    for k in proto_keys:
+        assert k.split(".", 1)[1] in STAGE3_PROTO_FIELDS, f"off-whitelist field on wire: {k}"
+    assert not any("audio" in k.lower() for k in wire), f"audio reached the wire: {list(wire)}"
+    assert_wire_whitelisted(wire)      # the same check decode_job runs, on the real bytes
 
 
 def test_smuggled_raw_audio_is_refused(tmp_path):
-    # the companion inherits cloud.client's whitelist encoder; prove it still bites
+    # the companion inherits cloud.client's whitelist encoder; prove it BITES on the
+    # actual wire: a proto carrying a smuggled .audio array must not put audio on the wire.
     from cloud.common import encode_job
     protos = make_synthetic_protos(2, 6, 0)
-    protos[0].audio = np.random.randn(2048)     # smuggle attempt
-    job = encode_job(protos, {"seed": 0})       # must NOT carry .audio
-    _, _ = decode_job(job)
-    assert b"audio" not in job.lower() or True   # structural: encode ignores it
-    # positively: the decoded payload has only stage-3
-    p2, _ = decode_job(job)
-    for p in p2:
-        assert not hasattr(p, "audio") or getattr(p, "audio", None) is None
+    protos[0].audio = np.random.randn(2048)          # smuggle attempt
+    job = encode_job(protos, {"seed": 0})
+    with np.load(io.BytesIO(job), allow_pickle=False) as z:  # object payload would fail here
+        wire = {k: np.asarray(z[k]) for k in z.files}
+    assert not any("audio" in k.lower() for k in wire), \
+        f"smuggled audio reached the wire: {list(wire)}"
+    for k in wire:
+        if "." in k and k.split(".", 1)[0][:1] == "p" and k.split(".", 1)[0][1:].isdigit():
+            assert k.split(".", 1)[1] in STAGE3_PROTO_FIELDS
+    assert_wire_whitelisted(wire)      # canonical validator: clean
+
+
+def test_reset_clears_the_corpus(tmp_path):
+    # account-free "new corpus": one corpus at a time; reset wipes the session.
+    comp = Companion(cloud_url="inproc", session_dir=str(tmp_path / "sess"))
+    comp.ingest_bytes("a.wav", b"aaa")
+    comp.ingest_bytes("b.wav", b"bbb")
+    comp.last_receipt = {"n_anchors": 3}
+    assert comp.session_files() == ["a.wav", "b.wav"]
+    out = comp.reset()
+    assert out["ok"] is True and out["cleared"] >= 2
+    assert comp.session_files() == []
+    assert comp.last_receipt is None
+
+
+def test_serve_refuses_non_loopback():
+    # the sealed-box invariant is structural, not just a default: a public bind is refused.
+    with pytest.raises(SystemExit):
+        serve(cloud_url="inproc", host="0.0.0.0", port=0)
+    with pytest.raises(SystemExit):
+        serve(cloud_url="inproc", host="10.0.0.5", port=0)
+    # loopback forms are accepted
+    httpd = serve(cloud_url="inproc", host="127.0.0.1", port=0)
+    httpd.server_close()
 
 
 # ---------------- MVP2-B ----------------------------------------------------
@@ -161,3 +194,6 @@ def test_http_surface_end_to_end(companion_server, tmp_path):
     body = json.loads(tr)
     assert code == 200 and body["ok"] is True and "receipt" in body
     assert int(body["receipt"]["n_anchors"]) >= 1
+    # reset -> corpus cleared (account-free "new corpus")
+    code, rs = _post(base + "/api/reset", b"", {})
+    assert code == 200 and json.loads(rs)["files"] == []

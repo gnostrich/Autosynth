@@ -81,7 +81,9 @@
   </header>
 
   <section class="panel">
-    <div class="sec-h"><span class="lbl">Source Audio</span><span class="rule"></span><span class="micro" id="cloudTag">cloud —</span></div>
+    <div class="sec-h"><span class="lbl">Source Audio</span><span class="rule"></span>
+      <button class="act ghost" id="resetBtn" style="padding:6px 12px;font-size:11px;" title="Clear the corpus and start fresh">New corpus</button>
+      <span class="micro" id="cloudTag">cloud —</span></div>
     <div class="drop" id="drop">
       <div style="font-size:15px;margin-bottom:6px;">Drop audio here <b>or click to choose</b></div>
       <div class="note">Files stay on this machine. They're ingested locally — never uploaded.</div>
@@ -185,6 +187,12 @@
       }).catch(function(e){ trainBtn.textContent=old; trainBtn.disabled=false;
         resultWrap.style.display="block"; resultBadge.className="badge err"; resultBadge.textContent="error";
         resultEl.textContent=String(e); });
+  });
+
+  document.getElementById("resetBtn").addEventListener("click",function(){
+    fetch("/api/reset",{method:"POST"}).then(function(r){return r.json();}).then(function(j){
+      renderFiles(j.files||[]); resultWrap.style.display="none";
+    }).catch(function(){});
   });
 
   document.getElementById("mockLink").addEventListener("click",function(e){e.preventDefault();});
