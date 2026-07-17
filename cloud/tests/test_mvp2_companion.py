@@ -118,6 +118,21 @@ def test_steer_is_the_only_settlement_input():
     assert steer < call < play, "set_region must live inside the /api/steer handler only"
 
 
+def test_fe_single_control_and_no_external_calls():
+    # MVP2-D (browser boundary) + CS-1 (no external calls from the page). The served
+    # UI's ONLY engine-settlement control is POST /api/steer; every network call is
+    # same-origin (the local companion) — the browser never talks to Vercel/Railway.
+    import re
+    html = (Path(__file__).resolve().parents[1] / "companion" / "static" / "index.html").read_text()
+    externals = re.findall(r'(?:fetch|EventSource)\(\s*["\'](https?://[^"\']+)', html)
+    assert not externals, f"FE makes external network calls: {externals}"
+    targets = re.findall(r'(?:fetch|EventSource)\(\s*["\'](/[^"\'?]*)', html)
+    assert targets, "no API calls found in the FE?"
+    assert all(t.startswith("/api/") for t in targets), \
+        f"unexpected FE call target(s): {[t for t in targets if not t.startswith('/api/')]}"
+    assert targets.count("/api/steer") == 1, "steer must be the single engine-control call"
+
+
 def test_streaming_and_control_routes_present():
     src = (Path(__file__).resolve().parents[1] / "companion" / "app.py").read_text()
     for route in ('"/api/world"', '"/api/steer"', '"/api/play"', '"/api/stop"',
