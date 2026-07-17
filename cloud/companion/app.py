@@ -644,8 +644,15 @@ class _Handler(BaseHTTPRequestHandler):
             if p is not None:
                 try:
                     info.update(p.static_field())
-                except Exception:
-                    pass          # a world without provenance stays role-grain-only
+                except Exception as exc:
+                    # HONEST degradation, not a silent dodge (auditor note 1):
+                    # a world without provenance legitimately stays role-grain-
+                    # only (prereg wall #1), but the fault is SURFACED in the
+                    # log + payload so a genuine reduction bug cannot hide
+                    # behind the degradation path.
+                    log.warning("static_field unavailable -> role-grain-only "
+                                "field: %s", exc)
+                    info["field_degraded"] = f"{type(exc).__name__}: {exc}"
                 # HONEST track NAMES: the world carries no source filenames, but the
                 # SESSION knows the real ingested names (session track metadata). For
                 # a session's OWN trained world (not a shared/opened set), override the
