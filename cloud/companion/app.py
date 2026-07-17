@@ -150,31 +150,32 @@ class Companion:
                 [str(p) for p in audio], out_path=str(self.trained_world_path),
                 cloud_url=self.cloud_url, seed=seed, sweeps=sweeps, sigma=sigma)
             self.last_receipt = out["receipt"]
-            # Attempt to bring the trained world LIVE. Loading it constructs the
-            # engine, which resolves σ_φ. A freshly-trained world has a new content
-            # hash, so the REGISTERED σ_φ artifact (bound to the demo world) is
-            # STALE for it and ``resolve_sigma`` REFUSES it (loud, by design — it
-            # will not lean on a foreign scale). This is a real wall, surfaced not
-            # patched: see PREREG-cloud-mvp2 "Phase-2 seam: BUILD wired, PLAY blocked
-            # on σ_φ" and OPEN_ENDS #8. We do NOT invent a scale and do NOT repoint
-            # into a crash; we keep the calibrated demo world live and REPORT the
-            # block in the response (honest degradation, not a silent fallback).
+            # Bring the trained world LIVE. The BUILD seam embedded THIS corpus's own
+            # measured σ_φ in the world file, so loading it constructs the engine via
+            # the EMBEDDED σ_φ precedence — the demo world's registered artifact is
+            # never consulted (no staleness raise). The player plays AND steers the
+            # trained world (region/continuity/novelty armed; density/gauge disarmed
+            # at u=0, a measured fact — same as the founding world).
             trained = str(self.trained_world_path)
             from cloud.companion.engine_bridge import StreamPlayer
             try:
                 player = StreamPlayer(trained, seed=self.seed, is_trained=True)
-            except RuntimeError as exc:
-                if "STALE CALIBRATION" not in str(exc):
-                    raise                     # any other engine fault is a real 502
+            except Exception as exc:
+                # BUILD + verify + σ_φ succeeded and the world file is on disk; a
+                # genuine UNEXPECTED failure bringing it live is surfaced (not
+                # hidden) and we keep the calibrated demo world playing rather than
+                # crash the instrument. This is not the old σ_φ wall (resolved above).
                 return {"ok": True, "built": True, "is_trained": False,
                         "world": trained, "receipt": out["receipt"],
-                        "playback": "blocked", "playback_error": str(exc)}
-            # loadable (e.g. once the σ_φ precedence revision lands): go live.
+                        "playback": "error",
+                        "playback_error": f"{type(exc).__name__}: {exc}"}
+            # go live: repoint the instrument at the user's trained world
             self.play_world = trained
             self._is_trained = True
             self._player = player             # reuse the already-loaded player
             return {"ok": True, "built": True, "receipt": out["receipt"],
-                    "world": trained, "is_trained": True, "playback": "live"}
+                    "world": trained, "is_trained": True, "playback": "live",
+                    "sigma_phi_disarmed": out.get("sigma_phi_disarmed", [])}
 
         from cloud.client.cli import train  # imported lazily; guarded path only
 

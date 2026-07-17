@@ -1,23 +1,25 @@
-"""Standalone train->YOUR-corpus seam proof (own process, arch-v6 first).
+"""Standalone train->play+steer-YOUR-corpus seam proof (own process, arch-v6 first).
 
-Mirrors instrument_verify.py's pin discipline. Runs the REAL BUILD seam end to end:
+Mirrors instrument_verify.py's pin discipline. Runs the REAL seam end to end:
 synthesize 2 short WAVs -> local ingest -> stage-3 -> CLOUD anchor-fit (LIVE Railway
-if the token is present, else inproc) -> verify -> local build_index -> a verified,
-CS-clean trained .etsworld referencing the user's LOCAL audio.
+if the token is present, else inproc) -> verify -> local build_index -> MEASURE this
+corpus's own σ_φ -> embed it -> a verified, CS-clean trained .etsworld that PLAYS and
+STEERS, referencing the user's LOCAL audio.
 
-It asserts the HONEST state around the σ_φ PLAY WALL (surfaced, not patched):
+Steps:
   [2] CS-1: the exact bytes handed to post_job decode to ONLY stage-3 (no
       track/audio/provenance) — the whole point of the offload.
-  [3] the trained world file is a VALID .etsworld and references the user's audio.
-  [4] loading it into StreamPlayer RAISES `STALE CALIBRATION` — the wall is REAL:
-      a freshly-trained world's hash != the demo's, so the registered σ_φ artifact
-      is REFUSED (the engine will not lean on a foreign scale; λ is never invented).
-  [5] the calibrated DEMO world still constructs + renders ONE capped bar — the
-      companion keeps playing honestly while the trained world's PLAY is blocked.
+  [3] the trained world file is a VALID .etsworld referencing the user's audio, and
+      `resolve_sigma` returns the EMBEDDED per-corpus σ_φ (NO STALE raise — the
+      registered demo-world artifact is never consulted).
+  [4] StreamPlayer(trained, is_trained=True).world_info()["is_trained"] is True.
+  [5] a u=0 bar AND a nonzero region-steer bar both render finite + eardrum-capped,
+      and the steered arrangement DIFFERS from u=0 — steering is LIVE (the embedded
+      σ_φ armed the region lane), with density/gauge disarmed at u=0 (measured).
 
-Render is slow in this sandbox (bank warmup + one bar); that's expected — on real
-hardware it's realtime. What matters here is the SEAM, the CS wall, and the honest
-σ_φ block, not speed.
+Render is slow in this sandbox (bank warmup + bars); that's expected — on real
+hardware it's realtime. What matters is the SEAM, the CS wall, and that the trained
+world plays AND steers on its OWN measured σ_φ.
 """
 import os
 import sys
@@ -36,24 +38,62 @@ def log(m):
     print(m, flush=True)
 
 
-def _synth_wav(path, sr=44100, seconds=6.0, bpm=120.0, seed=0):
-    """A rhythmic, tonal test clip: periodic transients (so beat detection finds a
-    grid) over a couple of drifting tones. Not music — just an ingestable signal."""
+def _synth_wav(path, sr=44100, seconds=12.0, bpm=120.0, seed=0):
+    """A rhythmic, NON-STATIONARY test clip: percussion on the beat + a melodic
+    sequence that steps through a per-track scale so DIFFERENT BARS carry different
+    role content. That bar-to-bar variety is what makes the untilted (u=0) settlement
+    fluctuate region φ (so the measured per-corpus σ_φ ARMS the region lane, as on a
+    real corpus) — not music, just a non-degenerate ingestable signal."""
     rng = np.random.default_rng(seed)
     n = int(sr * seconds)
     t = np.arange(n) / sr
-    y = 0.15 * np.sin(2 * np.pi * (110.0 + 20.0 * seed) * t)
-    y += 0.10 * np.sin(2 * np.pi * (220.0 + 33.0 * seed) * t)
-    # transients on the beat
-    step = int(sr * 60.0 / bpm)
-    env = np.exp(-np.linspace(0, 40, step))
+    y = np.zeros(n)
+    step = int(sr * 60.0 / bpm)                          # one beat
+    # per-track distinct scale + timbre (harmonic count) so tracks yield distinct anchors
+    base = 110.0 * (2.0 ** (seed / 3.0))
+    scale = base * np.array([1.0, 9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2.0])
+    n_harm = 2 + seed                                    # different timbre per track
+    click_env = np.exp(-np.linspace(0, 40, step))
+    beat = 0
     for start in range(0, n - step, step):
-        click = env * rng.standard_normal(step) * 0.4
-        y[start:start + step] += click
+        # a different scale degree each beat -> bars differ from one another
+        f = scale[(beat * (seed + 1)) % len(scale)]
+        seg = np.zeros(step)
+        tt = np.arange(step) / sr
+        tone_env = np.exp(-np.linspace(0, 6, step))
+        for h in range(1, n_harm + 1):
+            seg += (0.16 / h) * np.sin(2 * np.pi * f * h * tt) * tone_env
+        seg += click_env * rng.standard_normal(step) * 0.30   # percussion transient
+        y[start:start + step] += seg
+        beat += 1
     y += 0.01 * rng.standard_normal(n)
     y = 0.9 * y / (np.max(np.abs(y)) + 1e-9)
     sf.write(path, y.astype(np.float32), sr)
     return path
+
+
+def _real_clips(work, n=4, seconds=45.0, offset=45.0, sr=44100):
+    """Trim segments from DISTINCT real corpus tracks (the actual use case: a DJ
+    ingesting real audio). Real music has the irregular multi-section structure that
+    makes region φ fluctuate at u=0, so the measured per-corpus σ_φ ARMS the region
+    lane — the companion's single steer control. Clips are long enough (45s → a few
+    hundred bars across the set) that region φ genuinely fluctuates; very short clips
+    (~18s) settle to a bar-constant region and disarm it (a measured fact). Returns
+    [] if no corpus/ is present (caller falls back to synthetic)."""
+    import glob
+    import librosa
+    srcs = sorted(glob.glob(os.path.join(ROOT, "corpus", "*.mp3")))
+    if len(srcs) < n:
+        return []
+    picks = [srcs[i] for i in np.linspace(0, len(srcs) - 1, n).astype(int)]
+    out = []
+    for i, s in enumerate(picks):
+        y, _ = librosa.load(s, sr=sr, mono=True, offset=offset, duration=seconds)
+        y = 0.9 * y / (np.max(np.abs(y)) + 1e-9)
+        p = str(work / f"real{i}.wav")
+        sf.write(p, y.astype(np.float32), sr)
+        out.append(p)
+    return out
 
 
 def main():
@@ -68,9 +108,13 @@ def main():
         log("[cloud] token absent -> inproc stand-in")
 
     work = Path(tempfile.mkdtemp(prefix="ets_seam_"))
-    wavs = [_synth_wav(str(work / f"clip{i}.wav"), seed=i, bpm=120 + 8 * i)
-            for i in range(2)]
-    log(f"[0] synthesized {len(wavs)} WAVs under {work}")
+    wavs = _real_clips(work)
+    if wavs:
+        log(f"[0] trimmed {len(wavs)} REAL corpus clips (45s each) under {work}")
+    else:
+        wavs = [_synth_wav(str(work / f"clip{i}.wav"), seed=i, bpm=120 + 8 * i)
+                for i in range(3)]
+        log(f"[0] no corpus/ found -> synthesized {len(wavs)} WAVs under {work}")
 
     # --- CS-1 capture: wrap post_job to record the EXACT wire bytes ------------
     import cloud.client.cli as cli
@@ -118,56 +162,50 @@ def main():
     log(f"    wire keys are stage-3 only; decode_job -> {len(protos_dec)} protos, "
         f"params={sorted(params_dec)}")
 
-    # --- the trained world file is valid + references the user's audio ---------
-    log("[3] trained world is a valid .etsworld referencing the USER'S local audio…")
+    # --- valid world file + resolve_sigma returns the EMBEDDED per-corpus σ_φ ----
+    log("[3] valid .etsworld referencing the user's audio + EMBEDDED σ_φ (no STALE)…")
     from ets.engine.worldfile import load_world
+    from ets.engine.engine import resolve_sigma, disarmed_lanes
     wf = load_world(out_path)
     assert wf.sources["kind"] == "corpus", wf.sources
     assert set(wf.sources["paths"].values()) == set(wavs), \
         "trained world must reference the USER'S local audio, nothing else"
-    log(f"    world_hash={wf.world_hash[:12]} sources->{sorted(wf.sources['paths'])}")
+    assert wf.sigma_phi is not None, "trained world must embed its own σ_φ"
+    sigma = resolve_sigma(wf)                    # must NOT raise STALE; uses embedded
+    assert sigma is not None, "resolve_sigma returned no σ_φ for the trained world"
+    dis = disarmed_lanes(sigma)
+    armed = [ln for ln in ("region", "cont", "novelty") if ln not in dis]
+    assert "region" in armed, f"region lane must be ARMED by the embedded σ_φ; disarmed={dis}"
+    log(f"    world_hash={wf.world_hash[:12]} armed={armed} disarmed(u=0)={dis}")
 
-    # --- the σ_φ PLAY WALL is REAL: load RAISES STALE (no invented scale) -------
-    log("[4] loading into StreamPlayer must RAISE STALE CALIBRATION (the σ_φ wall)…")
+    # --- is_trained truthful + plays + STEERS -----------------------------------
+    log("[4] StreamPlayer(trained, is_trained=True): world_info is_trained is True…")
     from cloud.companion.engine_bridge import StreamPlayer
-    raised = None
-    try:
-        StreamPlayer(out_path, seed=0, is_trained=True)
-    except RuntimeError as exc:
-        raised = str(exc)
-    assert raised is not None and "STALE CALIBRATION" in raised, \
-        f"expected the σ_φ staleness wall on load; got: {raised!r}"
-    log(f"    wall confirmed: {raised.splitlines()[0][:120]}…")
+    from ets.panel.envelope import SAFE_REGION_MAGNITUDE as CAP
+    p0 = StreamPlayer(out_path, seed=0, is_trained=True)
+    info = p0.world_info()
+    assert info["ready"] and info["is_trained"] is True, info
+    M = info["M"]
+    log(f"    world_info: M={M} sr={info['sr']} is_trained={info['is_trained']}")
 
-    # run_train reports this honestly (built=True, playback=blocked), no repoint.
-    from cloud.companion.app import Companion
-    import shutil
-    sess = Path(tempfile.mkdtemp(prefix="ets_seam_sess_"))
-    for w in wavs:
-        shutil.copy(w, sess / Path(w).name)
-    comp = Companion(cloud_url=cloud_url, session_dir=str(sess))
-    demo_world = comp.play_world
-    tr = comp.run_train(sweeps=3)
-    assert tr["ok"] and tr.get("built") and tr.get("playback") == "blocked", tr
-    assert tr["is_trained"] is False and comp.play_world == demo_world, \
-        "blocked playback must NOT repoint the player away from the demo world"
-    log(f"    run_train: built=True, playback=blocked; player stays on the demo world")
+    log("[5] u=0 bar AND a nonzero region-steer bar: both capped, arrangements DIFFER…")
+    p0.set_region([0.0] * M)                     # u=0 arrangement
+    pcm0, roles0 = p0.produce_one_bar()
+    ps = StreamPlayer(out_path, seed=0, is_trained=True)   # fresh state, same seed
+    steer = [(-1.0) ** k * 0.6 * CAP for k in range(M)]    # decisive asymmetric region lean
+    ps.set_region(steer)
+    pcms, roless = ps.produce_one_bar()
+    for tag, pcm in (("u=0", pcm0), ("steer", pcms)):
+        s = np.frombuffer(pcm, dtype="<i2").astype(np.float64) / 32767.0
+        peak = float(np.max(np.abs(s))) if s.size else 0.0
+        assert s.size > 0 and np.all(np.isfinite(s)) and peak <= 0.61, \
+            f"{tag} bar cap/finite breach: size={s.size} peak={peak}"
+        log(f"    {tag:5s} bar: {s.size} samples, peak={peak:.3f} (capped)")
+    assert pcm0 != pcms, ("steered arrangement is identical to u=0 — steering is a "
+                          "NO-OP (the embedded σ_φ did not arm the region lane)")
+    log("    steered arrangement DIFFERS from u=0 → steering is LIVE on the trained world")
 
-    # --- the DEMO world still plays: one real capped bar ------------------------
-    log("[5] the calibrated DEMO world still renders ONE capped bar (slow)…")
-    demo = StreamPlayer(demo_world, seed=0)
-    info = demo.world_info()
-    assert info["ready"] and info["is_trained"] is False, info
-    demo.set_region([0.0] * info["M"])          # u=0 arrangement
-    pcm, roles = demo.produce_one_bar()
-    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float64) / 32767.0
-    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
-    assert samples.size > 0, "no PCM produced from the demo world"
-    assert np.all(np.isfinite(samples)) and peak <= 0.61, f"cap breach: peak={peak}"
-    assert len(roles) == info["M"] and all(np.isfinite(roles)), roles
-    log(f"    demo bar: {samples.size} samples, peak={peak:.3f} (capped)")
-
-    log("SEAM_BUILD_OK_PLAY_BLOCKED_ON_SIGMAPHI")
+    log("SEAM_BUILD_PLAY_STEER_OK")
 
 
 if __name__ == "__main__":

@@ -89,23 +89,22 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   streaming audio + SSE telemetry, functional FE. Auditor FAIL→fixed: (a) sys.path pin
   bug that let root ets shadow the arch-v6 engine — fixed (app.py appends repo-root;
   bridge forces arch-v6 front + fails loud); (b) namespace + clamp reuse. Re-audit pending.
-- **train→YOUR-corpus seam — BUILD ✅ WIRED, PLAY 🔴 blocked on σ_φ (2026-07-17):**
-  `/api/train` on raw audio runs the full LOCAL BUILD seam
+- **train→YOUR-corpus seam — ✅ FULLY WIRED: build + play + steer (2026-07-17):**
+  `/api/train` on raw audio runs the full LOCAL seam
   (`cloud/companion/train_local.py`: local ingest → stage-3 → CLOUD anchor-fit →
-  verify → local `build_index` → `save_world` .etsworld referencing the user's local
-  audio). CS-1 intact: only stage-3 crosses (`encode_job`→`post_job`; verified by
-  `cloud/tools/seam_verify.py`). A `.npz` bundle keeps the geometry-only verify
-  (offline/test path); `reset()` reverts to the founding demo world. **PLAY is
-  blocked by a real σ_φ wall:** a freshly-trained world has a new content hash, so
-  the registered σ_φ artifact (bound to the demo world) is REFUSED by
-  `engine.resolve_sigma` (STALE) rather than reused — the trained world will not even
-  load to play untilted. `run_train` reports `{"built":true,"playback":"blocked"}`
-  and keeps the calibrated demo live; it does NOT invent a scale or fake an artifact
-  (rejected non-solutions listed in PREREG-cloud-mvp2). **Proposed fix (needs
-  sign-off):** revise `resolve_sigma` precedence so a foreign-hash artifact is treated
-  as absent (→ untilted-only, loud refusal on lean) instead of a hard STALE raise;
-  then per-corpus σ_φ calibration (settlement-only `scripts/run_sigma_phi.py` at
-  world-freeze) unlocks live steering — a heavier, deferred item.
+  verify → local `build_index` → **measure this corpus's own σ_φ** (untilted
+  settlement, mirroring `scripts/run_sigma_phi.py` in-process; registered artifact NOT
+  touched) → `save_world` .etsworld with the σ_φ EMBEDDED, referencing the user's
+  local audio) and REPOINTS the instrument at the trained world (`is_trained:true`).
+  Because `resolve_sigma` precedence is `--sigma-phi > embedded > registered`, the
+  embedded σ_φ is used and the demo world's registered artifact is never consulted —
+  the earlier STALE wall is resolved by measuring, not faking. Region/continuity/
+  novelty are armed; density/gauge are non-identifiable at u=0 → disarmed (measured,
+  same as the founding world). CS-1 intact: only stage-3 crosses (`encode_job`→
+  `post_job`); σ_φ calibration is fully local. A `.npz` bundle keeps the geometry-only
+  verify; `reset()` reverts to the demo world. Verified end-to-end against LIVE
+  Railway by `cloud/tools/seam_verify.py` (steered bar ≠ u=0 bar; both eardrum-capped).
+  Cost: one untilted settlement added at train time (disclosed).
 - **Next action (operator):** Railway is deployed (see above); run the companion
   locally to play/steer the demo world and iterate.
 - **TBD — multi-user expansion:** deferred by operator. Sequence = single-user MVP-2 →

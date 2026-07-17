@@ -618,7 +618,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
         </span>
         <h3>Loading the founding demo world…</h3>
-        <p>Play the built-in <b>founding demo world</b> (fully calibrated, steerable) now, or ingest audio + <b>Train on cloud</b> to <b>build</b> <i>your own</i> verified world. Note: playing a freshly-trained world in the companion is currently blocked at the σ_φ calibration-resolution step (surfaced honestly on training; the demo stays live meanwhile).</p>
+        <p>Play the built-in <b>founding demo world</b> now, or ingest audio + <b>Train on cloud</b> to build, play, and steer <i>your own</i> trained world right here. Training also measures a σ_φ calibration for your corpus, so after it finishes the instrument switches to your world — live to play and steer.</p>
       </div>
 
       <div class="inst-inner">
@@ -914,19 +914,22 @@
           var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
           var msg;
           if(j.playback === "live"){
-            // trained world loaded + went live (reachable once the σ_φ precedence
-            // revision lands); the companion repointed the player at it.
-            msg = "\nYour trained world is now LIVE below — play it.";
-          } else if(j.playback === "blocked"){
-            // BUILD succeeded + receipt verified; PLAY is blocked at σ_φ resolution.
-            // Honest: the demo world stays live; we do NOT invent a σ_φ scale.
-            msg = "\nYour world was BUILT and VERIFIED (it references your local audio)." +
-                  "\nPlaying it in the companion is currently blocked at the σ_φ" +
-                  " calibration-resolution step — the freshly-trained world has a new" +
-                  " content hash, so the registered σ_φ artifact (bound to the demo" +
-                  " world) is refused rather than reused (the engine will not lean on a" +
-                  " foreign scale). The calibrated demo world stays live meanwhile." +
-                  "\nBlock: " + (j.playback_error || "STALE CALIBRATION");
+            // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
+            // the companion repointed the player at the user's trained world.
+            var dis = (j.sigma_phi_disarmed || []);
+            msg = "\nYour trained world is now LIVE below — play and steer it." +
+                  "\nTraining also measured a σ_φ calibration for your corpus" +
+                  (dis.length
+                    ? " (the " + dis.join(" & ") + " lane" + (dis.length>1?"s are":" is") +
+                      " non-identifiable at u=0 and disarmed — a measured fact, same as" +
+                      " the founding world; region / continuity / novelty are armed)."
+                    : ".");
+          } else if(j.playback === "error"){
+            // BUILD + verify + σ_φ succeeded; an UNEXPECTED failure bringing it live is
+            // surfaced honestly; the calibrated demo world stays live meanwhile.
+            msg = "\nYour world was BUILT, VERIFIED, and CALIBRATED (it references your" +
+                  " local audio), but bringing it live hit an unexpected error; the demo" +
+                  " world stays live.\nError: " + (j.playback_error || "unknown");
           } else {
             // .npz geometry-only verify path
             msg = "\n(geometry-only verify: receipt confirmed; the instrument keeps" +
