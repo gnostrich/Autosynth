@@ -189,8 +189,15 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   (old R6 public rule hides it — not a new break). The demo build v1 was pulled
   after two live defects.
 - **Defects being fixed (builder in flight, expedited):**
-  (a) WHITE NOISE playback — fan-out stream byte-contract bug; reproduced +
-      pinned by builder commit 9b263a1; fix commit pending.
+  (a) WHITE NOISE playback — RESOLVED AS A WALL, not a stream bug: two
+      independent measurements (builder 9b263a1 + read-only diagnosis) prove
+      the stream/fan-out is BYTE-FAITHFUL; the DEMO WORLD'S OWN ENGINE RENDER
+      is white-noise-like (flatness ~0.844 live AND offline, autocorr ~0).
+      The committed self-contained demo world likely always sounded like this
+      (old checks measured only peak level). Fixing the demo's SOUND = new
+      demo-world content build (engine/world territory: prereg + operator
+      sign-off, registered as its own item). User-trained worlds are the
+      real-music path — the pipeline is faithful.
   (b) TRAIN hidden/blocked for KEYED users — both layers gate on
       session.public alone; diagnosed patch: can_train = hub.keyed or not
       session.public on /api/status + /api/world + the POST gate, FE honors
