@@ -57,6 +57,11 @@ FAITHFULNESS_REGRESSION_SPEC.md and are enforced mechanically where possible.
 - ✅ Upload caps documented/measured (100 MB + 12 files/session).
 - 🅿️ **Corpus persistence** — trained world should survive a container restart (queued
   for the batched deploy; less critical now that OOM restarts are gone).
+- 🅿️ **First-play bank warmup** (the "trained but silent / loading slowly" issue) —
+  first Play builds the sample bank from the real corpus (loads+slices the audio),
+  slow + silent with no feedback. FIX: pre-build the bank during training (instant
+  play) + a "warming up the instrument…" indicator. Confirmed live: after the warmup
+  finished, the trained corpus played. Queued for the batched deploy.
 
 ## 3. THE INSTRUMENT UX
 - ✅ Browser UX mirrors the desktop layout (role pads + XY + tape + transport + library).
