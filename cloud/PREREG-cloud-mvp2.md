@@ -179,3 +179,13 @@ and streams the bytes to the LOCAL container over localhost (127.0.0.1) — a ho
 Railway. Folder-drop (OS file manager → mounted volume, browser never touches the
 bytes) is retained as a max-sealed FALLBACK for power users, not the default. Either
 way only stage-3 leaves, through the one whitelist guard.
+
+**Auth decision (2026-07-17):** MVP-2 ships **SINGLE-USER** first. Auth = one shared
+bearer secret: the operator sets a token in the Railway service env; the local
+container sends it on every POST /train; the service rejects requests without it.
+This closes the open-compute-endpoint risk (a public `/train` = an open bill) with
+minimal machinery — no user store, service stays stateless. **Multi-user is a later
+expansion (TBD), sequenced AFTER one more upgrade** (see `OPEN_ENDS.md`): it needs key
+issuance / revocation / per-key quotas + a store, and a call on single-tenant-per-
+deploy ("their cloud" = each user hosts their own Railway) vs. one shared multi-tenant
+service. Not built now; logged so it isn't lost.

@@ -71,6 +71,21 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   is wanted.
 - **Next action (operator):** say whether you want a futuregarage set; else close.
 
+## 8. Cloud deployment (Railway + Vercel web instrument)  🟢 → building path set
+- **MVP-1 (anchor-fit offload, Railway):** merged, auditor PASS-WITH-NOTES. Service is
+  `$PORT`-ready + `railway.json` committed → GitHub-connected Railway deploy is turnkey.
+- **MVP-2 (browser instrument):** prereg complete (`cloud/PREREG-cloud-mvp2.md`) +
+  design-direction mockup signed-off-pending. Topology: Vercel serves the UI code; a
+  sealed local Docker container renders + holds data + couriers stage-3 to Railway.
+  Decisions locked: keep Vercel web UI mirroring the ui-v5 layout; GUI surfaces via the
+  browser (no X11 passthrough); in-browser drag-drop ingest (folder-drop fallback);
+  **single-user auth** (one shared bearer secret).
+- **Next action (operator):** deploy MVP-1 to Railway (connect the repo) and send the
+  live service URL; that + this prereg = green light to build MVP-2's functional version.
+- **TBD — multi-user expansion:** deferred by operator. Sequence = single-user MVP-2 →
+  **one more upgrade (TBD, to be named)** → multi-user. Needs key issuance/revocation/
+  quotas + a store, and single-tenant-per-deploy vs. shared-multi-tenant call. Parked.
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
