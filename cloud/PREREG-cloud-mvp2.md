@@ -134,3 +134,40 @@ button to Railway, (4) Vercel static build. Prereg (this file) before build; aud
 PASS before merge; one-sentence disclosure of any contemplated divergence; walls
 surfaced not patched; coverage honesty every report. Versioning agent logs each step
 to `LEDGER.md`; the release tuple gains a `deployment: cloud-mvp2` pin on merge.
+
+## MVP-2 amendment — front-end + sandbox decisions (2026-07-17)
+
+Operator confirmed: KEEP the Vercel web UI (mirroring the ui-v5 desktop layout,
+beautified), and asked whether a graphical UX can "spawn out of Docker so safety is
+guaranteed." These resolve to ONE architecture:
+
+- **The browser is how the sealed container shows its face.** Do NOT surface the GUI
+  by X11/display-socket passthrough (`-v /tmp/.X11-unix`, `DISPLAY=...`) or host-audio
+  passthrough — those punch holes in the sandbox (a container holding the host X
+  socket can snoop/inject host input; that is the OPPOSITE of "safety guaranteed").
+  Instead the container speaks HTTP + WebSocket to a browser; the browser is the
+  display AND the speaker. The container needs NO host display and NO host audio dev.
+- **Sealed-container contract.** The local companion is a Docker container whose ONLY
+  host contact is (a) one localhost port (serves/streams the UI + PCM + telemetry,
+  receives gestures) and (b) a mounted DROP FOLDER for the user's audio. Ingest +
+  render run inside; only stage-3 leaves (the whitelist guard is the sole wire exit);
+  receipts verified inside. Two-way safety: the host is isolated from untrusted
+  ingest, and the user's raw audio is isolated from the network.
+- **Audio path.** The container renders PCM locally and streams it over the localhost
+  WS; the browser plays it via Web Audio (AudioWorklet). CS-4 holds: the decoder is
+  local (in-container), never cloud. The live loudness/eardrum cap rides in the engine
+  render, so it carries to the streamed output.
+- **Web UI is a NEW front-end, not a change to the native instrument.** The desktop
+  `architecture-v6` instrument carries invariant **I-13** ("native Qt + OSC only, no
+  web tech"); it stays untouched. The web UI is its own bundle (own folder) mirroring
+  the LAYOUT — role pads, XY vector pad, drill-in, panel/meters, source library, output
+  tape, transport — and talks to the same local container. Native desktop and
+  web-in-browser are two faces on one sealed local engine; both are CS-clean.
+- **Aesthetics.** The web layout is taken 1:1 from the desktop instrument and
+  beautified via a design pass (design subagent, Opus-4.8-or-lower) — a modern dark
+  synth/DAW look. A static design-direction mockup is produced first for sign-off
+  before the functional build.
+
+Net: Vercel serves the pretty UI code; the sealed local Docker container renders +
+holds data + couriers stage-3 to Railway; Railway does the anchor-fit. Nothing here
+weakens CS-1..CS-5 — it strengthens the ingest-safety story by sandboxing it.
