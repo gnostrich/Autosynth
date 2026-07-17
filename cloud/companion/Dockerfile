@@ -46,12 +46,19 @@ WORKDIR /app
 # Copy ONLY what phase-1 play/steer/telemetry needs, and nothing heavy:
 #   * architecture-v6/ets/  — the ui-v5 engine tree (live cap + telemetry); the
 #     render bridge pins it first on sys.path. (NOT architecture-v6/cache|instances.)
+#   * architecture-v6/scripts/run_sigma_phi.py — the REGISTERED σ_φ estimator. The
+#     train->play seam (cloud.companion.train_local._instrument_std) loads this file
+#     by path to reuse its `_std` VERBATIM when it measures + embeds the trained
+#     corpus's own σ_φ. Without it, training raises FileNotFoundError. It is
+#     self-contained (stdlib + numpy) and loading it defines `_std` only — its
+#     calibration main() runs only under __main__, never here.
 #   * ets/                  — root engine-v1, needed for cloud.* imports.
 #   * cloud/                — the companion server + UI (static/index.html) + client.
 #   * demo.etsworld         — the committed, self-contained demo world.
 # Explicitly EXCLUDED (never copied): corpus.etsworld, corpus/, samples/,
 # instantiations/, cache/, and the other architecture-v* trees.
 COPY architecture-v6/ets/ /app/architecture-v6/ets/
+COPY architecture-v6/scripts/run_sigma_phi.py /app/architecture-v6/scripts/run_sigma_phi.py
 COPY ets/ /app/ets/
 COPY cloud/ /app/cloud/
 COPY demo.etsworld /app/demo.etsworld
