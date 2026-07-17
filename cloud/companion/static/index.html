@@ -836,6 +836,11 @@
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
+        // Persist the last-known completion EDGE so the train poller's snapshot
+        // fallback (when its click-time /api/world read rejects on a flaky edge)
+        // uses the REAL baseline, not a hardcoded 0 — else a retrain false-succeeds
+        // off the prior run. Kept current here (page load + after every train).
+        world.train_seq = (w.train_seq)|0;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
         // Hosted (public) deploy now supports upload-your-own-tracks per visitor
         // (R6 phase 2): the Source Audio + Train + New corpus controls stay VISIBLE
@@ -1012,6 +1017,9 @@
           }
         }).catch(function(){ /* transient; keep polling */ });
       }, 8000);
+      // if the fast-path request already resolved (finish set done) before this
+      // interval was assigned, clear it now so no dormant interval leaks.
+      if(done) clearInterval(poll);
     }
     // snapshot the baseline edge (fresh read; fall back to the loaded world / 0).
     fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); })
