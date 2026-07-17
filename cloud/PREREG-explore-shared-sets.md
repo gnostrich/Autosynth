@@ -254,3 +254,36 @@ phased combination). If the signed choice is fork (i), its CS-1 + R1 amendment i
 into `COMPANION_INVARIANTS.md` FIRST, on the record, per that file's enforcement rule.
 Until then: no ingest change, no engine change, no wire change — the existing stage-3
 whitelist remains the sole device→cloud exit.
+
+---
+
+## OPERATOR DECISION — recorded 2026-07-17
+
+The operator has signed the fork, in their own words: "as of now its a simple
+opt in to share their sets, whatevers easiest im not concerned about privacy /
+data infra atm, just the simplest way to demo functionality."
+
+Registered reading (on the record):
+- **Demo-first**: build the SIMPLEST opt-in share + Explore list that
+  demonstrates the functionality. Privacy/data infrastructure hardening is
+  explicitly DEFERRED by the operator for the demo phase — this is a
+  disclosed, operator-authorized scope decision, not a silent invariant drop.
+- Concretely this selects the hosted-companion topology already live on the
+  `ets-web` deployment: users who train there have ALREADY chosen to upload
+  audio to that server (the hosted variant's ingest), so an opt-in "share this
+  set" toggle + a server-side listing + load-into-play adds NO new crossing
+  beyond what the operator has already accepted for the demo. Fork (ii)/(iii)
+  remain the recorded path for the later, hardened version.
+- Standing guardrails that still hold even in the demo (cheap, not deferred):
+  sharing is OPT-IN per set; unshare delists; visitor steering uses only the
+  region-tilt lane with the existing safe envelope; ingest/train/reset remain
+  gated per R6.
+- **BUILD WALL (blocks the build, surfaced not papered over):** the deployed
+  `ets-web` companion (access-key gate, /api/auth, in-proc cloud) runs code
+  that exists in NO branch of this repo — it was deployed from the crashed
+  session's container and its source survives only in Railway's deployment
+  snapshot. The explore build must wait for either (a) the operator recovering
+  that snapshot (Railway dashboard → deployment → source download), or (b) an
+  explicit decision to rebuild the access-key/in-proc delta in-repo from
+  scratch. Until then, building "on top of" the live site is not possible
+  from this repository.
