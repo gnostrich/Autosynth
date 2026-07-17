@@ -18,11 +18,18 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libsndfile1 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Phase-1 PLAY deps. The arch-v6 engine loads these at import time on the play path:
-# python-osc (ets.engine.osc_io), librosa (ets.render.render), scikit-learn
-# (geometry). NOT torch/beat_this — those are ingest/train only (a later phase),
-# kept out to avoid a ~2GB image.
+# PLAY deps: the arch-v6 engine loads these at import on the play path —
+# python-osc (osc_io), librosa (render), scikit-learn (geometry).
 RUN pip install --no-cache-dir numpy scipy soundfile python-osc librosa scikit-learn
+
+# PHASE-2 INGEST deps (upload-your-own-tracks): torch (CPU-only wheel — much
+# smaller than the CUDA build) + beat_this for the beat clock. These add ~1.5 GB
+# and slow the build; they are what makes hosted training possible.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir beat_this
+# BAKE the beat_this checkpoint into the image (it is NOT bundled and otherwise
+# downloads at runtime — which would stall/fail the first training on Railway).
+RUN python -c "from beat_this.inference import File2Beats; File2Beats(checkpoint_path='final0', dbn=False)"
 
 WORKDIR /app
 

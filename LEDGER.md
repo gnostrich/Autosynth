@@ -564,3 +564,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/static/index.html (2026-07-17T10:31:46+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-17T10:31:52+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-17T10:32:08+00:00)
+
+### at `d2c2d57`
+- `Edit` cloud/companion/Dockerfile (2026-07-17T10:38:57+00:00)
