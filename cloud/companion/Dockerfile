@@ -22,7 +22,7 @@ RUN apt-get update \
 # python-osc (ets.engine.osc_io), librosa (ets.render.render), scikit-learn
 # (geometry). NOT torch/beat_this — those are ingest/train only (a later phase),
 # kept out to avoid a ~2GB image.
-RUN pip install --no-cache-dir numpy scipy soundfile python-osc librosa scikit-learn
+RUN pip install --no-cache-dir numpy scipy soundfile python-osc librosa scikit-learn beat_this
 
 WORKDIR /app
 
