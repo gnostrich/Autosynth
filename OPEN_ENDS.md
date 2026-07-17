@@ -229,6 +229,23 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   dashboard action (volume create+attach) or API mutation; then point
   ETS session base at the mount. Register + do after the deep-field swap.
 
+## 16. FRONT DOOR redesign — keyless Explore-driven flow  🟢 (operator-specified 2026-07-17/18, awaiting "build" word; freeze in effect)
+- Operator decisions from live testing, superseding the parked #8 "P+K anonymous
+  view" question:
+  (a) KEYLESS visitors: NO access wall. Land on PLAY in an EMPTY STATE (no world
+      auto-loaded, no noise; honest "pick a set from Explore" pointer). Explore
+      lists opted-in shared sets; opening one loads it into Play (listen+steer).
+      Key unlocks ONLY Train/publish (can_train machinery already does the split).
+  (b) Sharing stays STRICTLY OPT-IN (already implemented + audit-pinned: default
+      OFF, owner-only toggle, unshare revokes). Training never auto-publishes.
+  (c) Demo world: recommend HIDDEN from keyless Explore until its content rebuild
+      (#14a) — operator to confirm listing policy.
+  (d) Build-time consideration: per-set steer RATE caps (deferred in the demo
+      prereg) become relevant once strangers can steer shared sets; envelope
+      bounds magnitude already, caps would bound frequency.
+- Status: specified, registered, NOT building (operator freeze). Trigger phrase:
+  "build the front door".
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
