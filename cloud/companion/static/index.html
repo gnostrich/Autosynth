@@ -819,8 +819,21 @@
     });
   }
 
+  // Session recovery: in public mode a session can be evicted (server redeploy or
+  // the 30-min idle TTL). The server then answers /api/* with 401. Rather than a
+  // cryptic "can't upload", send the user back to the key gate to re-authorize —
+  // GET / serves the gate to an un-authorized caller. Returns true if it redirected.
+  var _reauthing = false;
+  function reauth(code){
+    if(code === 401 && !_reauthing){ _reauthing = true; try{ location.href = "/"; }catch(e){} return true; }
+    return code === 401;
+  }
+
   function loadStatus(){
-    return fetch("/api/status").then(function(r){ return r.json(); }).then(function(s){
+    return fetch("/api/status").then(function(r){
+      if(r.status === 401){ reauth(401); return {}; }
+      return r.json();
+    }).then(function(s){
       renderIngestFiles(s.files || []);
       renderLibrary(s.files || []);
       // s.world (a path or null) is an early hint; /api/world is the authority.
@@ -830,6 +843,7 @@
 
   function loadWorld(){
     return fetch("/api/world").then(function(r){
+      if(r.status === 401){ reauth(401); throw new Error("reauth"); }
       if(!r.ok) throw new Error("world "+r.status);
       return r.json();
     }).then(function(w){
@@ -902,6 +916,7 @@
     arr.forEach(function(f){ chain = chain.then(function(){
       if(errMsg) return null;                 // stop after the first rejection
       return upload(f).then(function(res){
+        if(res.code === 401){ reauth(401); errMsg = "session expired — re-enter your access key"; return null; }
         if(res.code >= 400 || (res.j && res.j.ok === false)){
           errMsg = (res.j && res.j.error) || ("upload rejected (" + res.code + ")");
         }
@@ -987,8 +1002,11 @@
     // A genuine JSON {ok:false} (cap / no-protos) still renders a real failure.
     fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" },
                           credentials:"same-origin", body:JSON.stringify({}) })
-      .then(function(r){ return r.json(); })
-      .then(function(j){ if(j && (j.ok === true || j.ok === false)) finish(j); })
+      .then(function(r){ var st=r.status; return r.json().then(function(j){ return { st:st, j:j }; }); })
+      .then(function(res){
+        if(res.st === 401){ reauth(401); return; }
+        if(res.j && (res.j.ok === true || res.j.ok === false)) finish(res.j);
+      })
       .catch(function(){ /* edge-dropped on a long train — rely on the poller */ });
 
     // ROBUST COMPLETION via the train_seq EDGE. `is_trained` is a persistent LEVEL
@@ -999,8 +1017,11 @@
     function startPolling(seq0){
       poll = setInterval(function(){
         if(done) return;
-        fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); }).then(function(w){
-          if(done) return;
+        fetch("/api/world", { credentials:"same-origin" }).then(function(r){
+          if(r.status === 401){ reauth(401); return null; }
+          return r.json();
+        }).then(function(w){
+          if(done || !w) return;
           if(w && (w.train_seq||0) > seq0){
             if(w.is_trained){
               fetch("/api/status", { credentials:"same-origin" }).then(function(r){ return r.json(); })

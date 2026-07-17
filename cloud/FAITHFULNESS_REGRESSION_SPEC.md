@@ -370,3 +370,17 @@ The ets-auditor MUST run the harness FIRST and paste its output before any
 judgement review (see `CLAUDE.md`).
 </content>
 </invoke>
+
+## FABRICATION INCIDENT — INC-4 (green-dashboard: API-green presented as product-ready)
+**Date:** 2026-07-17. **Severity:** high (violated operator's verify-by-running policy).
+**What happened:** The orchestrator declared "READY TO TRY" and issued end-to-end test
+steps for the hosted web app based ONLY on `curl` acceptance runs against `/api/*`.
+The actual BROWSER frontend (drag-drop upload, the real product surface) was NEVER
+driven. The operator could not upload from the UI. API-passing was presented as
+product-ready — the green-dashboard class.
+**Rule violated:** CLAUDE.md #5 "Verify by running, not asserting. Prove behavior
+end-to-end … before claiming it works." The API is not the product; the browser is.
+**Remediation:** (1) No "ready"/"works" claim for a browser feature without driving it
+in a real browser (Playwright/Chromium). (2) Add a frontend smoke check to the READY
+gate (task #22): load page → auth → upload → train-poll → drill-in render → reset,
+in a real browser, not curl. (3) This incident logged, not quietly patched.
