@@ -108,7 +108,7 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   **one more upgrade (TBD, to be named)** → multi-user. Needs key issuance/revocation/
   quotas + a store, and single-tenant-per-deploy vs. shared-multi-tenant call. Parked.
 
-## 9. ets-web Railway service CRASHED  🔴  (operator input needed, 2026-07-17)
+## 9. ets-web Railway crash  ✅ DIAGNOSED (OOM) + FIXED + REDEPLOYED (2026-07-17)
 - A second Railway service `ets-web` (ets-web-production.up.railway.app, deploy
   `ddcadfb0`) is in **Crashed** state. Its deploy log spams the region-DISARM
   warning (`DISARMED lane leaned: region[0], region[1]` — the HONEST disarm: the
@@ -117,9 +117,13 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   crash cause. The visible log contains no traceback; neither `ddcadfb0` nor the
   healthy `Geodesic-Mixing` service's `43c3e43a` matches any commit in this repo
   (likely Railway deployment IDs). The repo has no `ets-web` config.
-- **Next action (operator):** paste the TAIL of the crashed deploy log (the
-  exit/traceback lines) + the service's start command, or grant Railway access.
-  Separately worth doing: rate-limit the per-steer DISARM warning (log-noise).
+- RESOLVED: with Railway API access the cause was measured — 7.997GB against the
+  8GB cap, six silent OOM kills (per-visitor engines + in-proc training in the
+  lost snapshot code). Fixed by the demo-phase rebuild (shared demo engine +
+  LRU-capped trained worlds + single-training lock), auditor-passed, and
+  redeployed from GitHub main (the service now sources the repo — the lost-code
+  era is over; snapshot ddcadfb0 retained in Railway history for archaeology).
+  Still worth doing sometime: rate-limit the per-steer DISARM warning (log noise).
 
 ## 10. ui-v5 stale hover-inert static assertion on main  ⚪  (disclosed, mooted in ui-v6)
 - `architecture-v6/tests/v5/test_v5b_hover_inert.py::test_tap_surface_has_no_hover_move_channel`
