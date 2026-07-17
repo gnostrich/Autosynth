@@ -1,16 +1,20 @@
-# ETS companion — PUBLIC Railway web app (R6 phase 1).
+# ETS companion — PUBLIC Railway web app (R6 phase 2).
 #
-# Serves the browser instrument UI + /api/* for the COMMITTED self-contained
-# demo world (demo.etsworld: embedded audio, no external files, no copyright).
-# Play + steer + telemetry render SERVER-SIDE, in this container (cloud_url=inproc:
-# this box IS the server, no external calls). Uploading the user's own audio
-# (ingest/train) is a LATER phase and is intentionally NOT enabled here — so this
-# image installs numpy/scipy/soundfile ONLY (no torch/librosa/beat_this), keeping
-# it small and the first deploy fast.
+# Serves the browser instrument UI + /api/* behind a per-visitor session registry
+# and an access-key gate (ETS_ACCESS_KEYS). Ships with the COMMITTED self-contained
+# demo world (demo.etsworld: embedded audio, no external files, no copyright) and
+# ALSO enables upload-your-own-tracks: a key-holder drops audio, trains in this
+# container (cloud_url=inproc: this box IS the server, no external calls), and plays
+# their own corpus. Play/steer/telemetry render SERVER-SIDE.
+#
+# Because ingest is enabled, this image installs the INGEST-only beat-clock stack
+# (torch CPU wheel + beat_this) ON TOP of the play deps (numpy/scipy/soundfile/
+# librosa/scikit-learn/python-osc). torch is used ONLY on the ingestion path (beat
+# detection); the theory/generative render loop stays torch-free.
 #
 # Build context is the REPO ROOT:
 #     docker build -f cloud/companion/Dockerfile -t ets-companion .
-#     docker run --rm -e PORT=8080 -p 8080:8080 ets-companion
+#     docker run --rm -e PORT=8080 -e ETS_ACCESS_KEYS=... -p 8080:8080 ets-companion
 FROM python:3.11-slim
 
 # System libs: libsndfile for soundfile; ffmpeg/llvm for librosa's audio backend.

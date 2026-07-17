@@ -311,24 +311,22 @@ class SessionRegistry:
         return bool(self.access_keys)
 
     # --- session resolution + TTL eviction ---------------------------------
-    def get_or_create(self, sid: Optional[str]):
-        """Return ``(companion, new_sid_or_None, authorized)`` for ``sid``. Mints a
-        fresh session (dir + Companion) when the caller has no valid one. Sweeps and
+    def lookup(self, sid: Optional[str]):
+        """READ-ONLY resolution: return ``(companion_or_None, authorized)`` for an
+        EXISTING session, refreshing its activity clock. NEVER mints — an
+        un-authenticated caller (no valid session cookie) gets ``(None, False)`` and
+        touches no disk/memory. This is what keeps un-authed public traffic (health
+        probes, gate-page loads, drive-by scans) from creating any footprint; a
+        session is born only in :meth:`authorize`, after a valid key. Sweeps and
         evicts idle sessions on every call so disk + memory stay bounded."""
         now = time.monotonic()
         with self._lock:
             self._evict_locked(now)
             rec = self._sessions.get(sid) if sid else None
-            if rec is not None:
-                rec["seen"] = now
-                return rec["comp"], None, bool(rec["auth"])
-            new_sid = secrets.token_hex(16)
-            comp = Companion(cloud_url=self.cloud_url,
-                             session_dir=str(self.base_dir / new_sid), seed=self.seed)
-            comp.public = True
-            self._sessions[new_sid] = {"comp": comp, "seen": now,
-                                       "training": False, "auth": False}
-            return comp, new_sid, False
+            if rec is None:
+                return None, False
+            rec["seen"] = now
+            return rec["comp"], bool(rec["auth"])
 
     def _evict_locked(self, now: float) -> None:
         dead = []
@@ -358,25 +356,43 @@ class SessionRegistry:
     def key_valid(self, key) -> bool:
         """Constant-time membership test of ``key`` in the configured keys. Iterates
         ALL keys (no early-out) so timing never leaks which key matched. Keys are
-        opaque strings and are NEVER logged."""
+        opaque strings and are NEVER logged. A non-ASCII / malformed key raises
+        inside ``compare_digest``; we swallow it and fail CLOSED (never authorizes)
+        so a garbage key surfaces as a clean 401, not a 500."""
         if not key or not self.access_keys:
             return False
         ok = False
         for k in self.access_keys:
-            if hmac.compare_digest(str(key), k):
-                ok = True
+            try:
+                if hmac.compare_digest(str(key), k):
+                    ok = True
+            except (TypeError, ValueError):
+                continue
         return ok
 
-    def authorize(self, sid: Optional[str], key) -> bool:
-        """Bind ``sid`` to authorized iff ``key`` is valid. Returns success."""
+    def authorize(self, sid: Optional[str], key):
+        """Validate ``key`` (constant-time, fail-closed) and, ONLY on success, bind an
+        AUTHORIZED session — minting the Companion + its on-disk dir lazily HERE, the
+        one place a public session is ever created. Returns ``(sid_to_cookie, True)``
+        on success (a fresh sid when the caller had none, else the existing sid),
+        ``(None, False)`` on an invalid key. No key ⇒ no session ⇒ no footprint."""
         if not self.key_valid(key):
-            return False
+            return None, False
+        now = time.monotonic()
         with self._lock:
-            rec = self._sessions.get(sid)
-            if rec is None:
-                return False
-            rec["auth"] = True
-        return True
+            self._evict_locked(now)
+            rec = self._sessions.get(sid) if sid else None
+            if rec is not None:
+                rec["auth"] = True
+                rec["seen"] = now
+                return sid, True
+            new_sid = secrets.token_hex(16)
+            comp = Companion(cloud_url=self.cloud_url,
+                             session_dir=str(self.base_dir / new_sid), seed=self.seed)
+            comp.public = True
+            self._sessions[new_sid] = {"comp": comp, "seen": now,
+                                       "training": False, "auth": True}
+            return new_sid, True
 
     # --- training caps (per-session single + small global cap) -------------
     def acquire_train(self, sid: Optional[str]):
@@ -439,13 +455,14 @@ class _Handler(BaseHTTPRequestHandler):
         if self.registry is None:
             self._comp = self.single_companion
             return
+        # PUBLIC: read-only lookup — never mints. An un-authed caller resolves to
+        # (comp=None, authorized=False) and creates no session; the session (and its
+        # cookie) is born only when a valid key is presented to POST /api/auth.
         sid = self._read_sid()
-        comp, new_sid, authorized = self.registry.get_or_create(sid)
-        self._sid = new_sid or sid
+        comp, authorized = self.registry.lookup(sid)
+        self._sid = sid
         self._authorized = bool(authorized)
-        if new_sid is not None:
-            self._pending_cookie = new_sid
-        self._comp = comp
+        self._comp = comp                   # may be None until authorized
 
     def _read_sid(self) -> Optional[str]:
         raw = self.headers.get("Cookie", "")
@@ -464,7 +481,8 @@ class _Handler(BaseHTTPRequestHandler):
         if sid:
             self.send_header(
                 "Set-Cookie",
-                f"{_SID_COOKIE}={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={_COOKIE_MAX_AGE}")
+                f"{_SID_COOKIE}={sid}; Path=/; HttpOnly; Secure; SameSite=Lax; "
+                f"Max-Age={_COOKIE_MAX_AGE}")
 
     def _public_gate_ok(self, path: str) -> bool:
         """PUBLIC-mode key gate. Everything under /api/* requires a key-authorized
@@ -595,7 +613,13 @@ class _Handler(BaseHTTPRequestHandler):
             if not self.registry.configured:
                 self._json(503, {"ok": False, "error": "access not configured on this server"})
                 return
-            if self.registry.authorize(self._sid, key):
+            cookie_sid, ok = self.registry.authorize(self._sid, key)
+            if ok:
+                # a session was minted (or an existing one confirmed) HERE — emit its
+                # cookie if the caller didn't already carry it.
+                if cookie_sid and cookie_sid != self._sid:
+                    self._pending_cookie = cookie_sid
+                self._sid = cookie_sid
                 self._json(200, {"ok": True, "authorized": True})
             else:
                 self._json(401, {"ok": False, "error": "invalid access key"})
