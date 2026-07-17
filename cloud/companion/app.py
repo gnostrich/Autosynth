@@ -636,6 +636,32 @@ class _Handler(BaseHTTPRequestHandler):
             # KEYED-TRAIN: expose the owner predicate so the FE shows Train for keyed
             # sessions (read-only state; no new authority — the gate stays server-side).
             info["can_train"] = self._can_train(session)
+            # STATIC per-world FIELD telemetry (read-only, once-per-world): the
+            # per-track anchor-mass profiles + per-role unit pools that carry the
+            # field's TRACK and UNIT grains. Same reductions the desktop emits over
+            # /ets/profiles + /ets/unitpool; folded into /api/world so the FE gets
+            # them with the world. No new route, no new authority.
+            if p is not None:
+                try:
+                    info.update(p.static_field())
+                except Exception:
+                    pass          # a world without provenance stays role-grain-only
+                # HONEST track NAMES: the world carries no source filenames, but the
+                # SESSION knows the real ingested names (session track metadata). For
+                # a session's OWN trained world (not a shared/opened set), override the
+                # bridge's generic "track N" with the true ingested filename by track
+                # index (the same T0,T1… order the Source Library shows). Demo /
+                # shared / non-owning sessions keep the honest generic label — never an
+                # invented name.
+                names = dict(info.get("track_names", {}))
+                if session._is_trained and session.opened_set_id is None:
+                    audio = [f for f in session.session_files()
+                             if os.path.splitext(f)[1].lower() in _AUDIO_EXTS]
+                    for tid_str in list(names.keys()):
+                        i = int(tid_str)
+                        if 0 <= i < len(audio):
+                            names[tid_str] = audio[i]
+                info["track_names"] = names
             self._json(200, info)
             return
         if path == "/api/explore":
