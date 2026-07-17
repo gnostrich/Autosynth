@@ -255,6 +255,13 @@
 
   /* ---------- INSTRUMENT wrapper + lock overlay ---------- */
   .instrument{ position: relative; }
+  /* Honest steer state: a corpus whose region lane measured σ=0 disarms region
+     steering — the pads/XY settle no differently. Dim those surfaces + tag them so
+     the operator isn't misled into thinking a dead pad steers. */
+  .instrument.region-disarmed .pads, .instrument.region-disarmed .xy{ opacity:.55; }
+  .instrument.region-disarmed .pads::after{ content:"region steering disarmed on this corpus";
+    display:block; margin-top:8px; font-size: var(--fs-micro); letter-spacing:.1em;
+    text-transform:uppercase; color: var(--tape); font-weight:650; }
   .instrument .inst-inner{ transition: filter .2s ease, opacity .2s ease; }
   .instrument:not(.ready) .inst-inner{ filter: blur(1.6px); opacity:.42; pointer-events:none; user-select:none; }
   .inst-lock{
@@ -830,9 +837,13 @@
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
+        world.regionArmed = (w.region_armed !== false);   // default armed if absent
         enableInstrument();
+        // Honest steer state: a disarmed region means taps settle no differently.
         instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
-          + " · " + world.M + " roles · steer live";
+          + " · " + world.M + " roles · "
+          + (world.regionArmed ? "steer live" : "region DISARMED — steer inactive");
+        instrument.classList.toggle("region-disarmed", !world.regionArmed);
       } else {
         world.ready = false; lockInstrument("world not ready");
       }
@@ -916,14 +927,19 @@
           if(j.playback === "live"){
             // trained world went LIVE: BUILD + verify + embedded per-corpus σ_φ, and
             // the companion repointed the player at the user's trained world.
-            var dis = (j.sigma_phi_disarmed || []);
+            // Compute ARMED from the ACTUAL disarmed set (never hardcode "armed"):
+            // on a small/degenerate corpus region itself can disarm.
+            var dis = (j.sigma_phi_disarmed || []).map(function(l){ return l === "cont" ? "continuity" : l; });
+            var ALL = ["region", "continuity", "novelty", "density", "gauge"];
+            var armed = ALL.filter(function(l){ return dis.indexOf(l) < 0; });
             msg = "\nYour trained world is now LIVE below — play and steer it." +
-                  "\nTraining also measured a σ_φ calibration for your corpus" +
-                  (dis.length
-                    ? " (the " + dis.join(" & ") + " lane" + (dis.length>1?"s are":" is") +
-                      " non-identifiable at u=0 and disarmed — a measured fact, same as" +
-                      " the founding world; region / continuity / novelty are armed)."
-                    : ".");
+                  "\nTraining also measured a σ_φ calibration for your corpus." +
+                  (dis.length ? "\nDisarmed at u=0 (measured σ=0, no tilt — same as the" +
+                     " founding world): " + dis.join(", ") + ".  Armed: " + armed.join(", ") + "." : "");
+            if(dis.indexOf("region") >= 0){
+              msg += "\n⚠ REGION steering is DISARMED on this corpus — the pads / XY will not" +
+                     " change the terrain. Use more, longer, more varied tracks to arm it.";
+            }
           } else if(j.playback === "error"){
             // BUILD + verify + σ_φ succeeded; an UNEXPECTED failure bringing it live is
             // surfaced honestly; the calibrated demo world stays live meanwhile.

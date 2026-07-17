@@ -207,6 +207,44 @@ def test_train_routes_audio_to_seam_and_npz_to_geometry():
     assert "_AUDIO_EXTS" in src, "run_train must route by audio extension"
 
 
+def test_run_train_routes_audio_to_seam_runtime(tmp_path, monkeypatch):
+    # RUNTIME (not just static): raw audio actually drives the seam and repoints to
+    # the trained world. Monkeypatch the seam builder + the player so it runs in the
+    # root-ets suite (no arch-v6 load) yet exercises the real branch logic.
+    import cloud.companion.train_local as tl
+    import cloud.companion.engine_bridge as eb
+    calls = {}
+    def fake_build(audio_paths, out_path, cloud_url, **kw):
+        calls["audio"] = list(audio_paths); calls["out"] = out_path
+        return {"receipt": {"n_anchors": 3}, "sigma_phi_disarmed": []}
+    class FakePlayer:
+        def __init__(self, path, seed=0, is_trained=False):
+            calls["player_path"] = path; calls["is_trained"] = is_trained
+    monkeypatch.setattr(tl, "build_trained_world", fake_build)
+    monkeypatch.setattr(eb, "StreamPlayer", FakePlayer)
+
+    comp = Companion(cloud_url="inproc", session_dir=str(tmp_path / "s"))
+    comp.ingest_bytes("clip.wav", b"RIFF0000WAVE")     # audio extension
+    out = comp.run_train()
+    assert out["ok"] and out["is_trained"] is True and out["playback"] == "live"
+    assert calls.get("audio") and calls.get("is_trained") is True
+    assert comp._is_trained is True and comp.play_world == str(comp.trained_world_path)
+
+
+def test_run_train_routes_npz_away_from_seam_runtime(tmp_path, monkeypatch):
+    # RUNTIME: a .npz bundle takes the geometry-only path and NEVER calls the seam.
+    import cloud.companion.train_local as tl
+    tripped = {"seam": False}
+    monkeypatch.setattr(tl, "build_trained_world",
+                        lambda *a, **k: tripped.__setitem__("seam", True) or {})
+    sess = tmp_path / "s"; sess.mkdir()
+    save_prototypes(str(sess / "protos.npz"), make_synthetic_protos(4, 6, 0))
+    comp = Companion(cloud_url="inproc", session_dir=str(sess))
+    out = comp.run_train(sweeps=3)
+    assert out["ok"] and not out.get("is_trained")
+    assert tripped["seam"] is False, "the .npz path must NOT invoke the audio seam"
+
+
 def test_seam_module_wire_exit_is_only_post_job():
     # CS-1 for the seam: the ONLY thing train_local puts on the wire is the stage-3
     # job via the guarded post_job. It must NOT call cloud.client.cli.train (which

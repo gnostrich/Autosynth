@@ -521,3 +521,11 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/tools/seam_verify.py (2026-07-17T08:21:34+00:00)
 - `Edit` cloud/tools/seam_verify.py (2026-07-17T08:24:08+00:00)
 - `Edit` cloud/tools/seam_verify.py (2026-07-17T08:24:15+00:00)
+
+### at `45e52a1`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T08:33:40+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T08:34:33+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T08:34:40+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T08:35:03+00:00)
+- `Edit` cloud/tests/test_mvp2_companion.py (2026-07-17T08:36:01+00:00)
+- `Edit` release-manifest.json (2026-07-17T08:37:06+00:00)

@@ -89,9 +89,22 @@ class StreamPlayer:
         # build_index -> playable .etsworld), False for the founding/demo world.
         # The UI reads this to label what is actually playing. (The seam is WIRED;
         # see PREREG-cloud-mvp2 "Phase-2 seam WIRED" amendment.)
+        # Which steering lanes are ARMED (their σ_φ scale was identified) vs
+        # DISARMED (measured σ=0 at u=0 → no tilt applied). Reported so the UI can
+        # be honest: a DISARMED region means region-tilt taps settle no differently,
+        # so the steer surface must say so rather than pretend it steers.
+        sig = getattr(self.engine, "sigma", None)
+        lanes = ["region", "cont", "novelty", "density", "gauge"]
+        if sig is None:
+            armed, disarmed = [], list(lanes)
+        else:
+            armed = [ln for ln in lanes if sig.is_identifiable(ln)]
+            disarmed = [ln for ln in lanes if not sig.is_identifiable(ln)]
         return {"ready": True, "M": self.M, "sr": self.sr,
                 "world": Path(self.world_path).name,
                 "is_trained": self.is_trained,
+                "armed": armed, "disarmed": disarmed,
+                "region_armed": ("region" in armed),
                 "bar_seconds": float(self.engine.writer.bar_seconds)}
 
     # --- THE SINGLE ENGINE-CONTROL PATH ------------------------------------

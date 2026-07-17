@@ -371,3 +371,9 @@
 {"head": "be8264d", "path": "cloud/tools/seam_verify.py", "tool": "Edit", "ts": "2026-07-17T08:21:34+00:00"}
 {"head": "be8264d", "path": "cloud/tools/seam_verify.py", "tool": "Edit", "ts": "2026-07-17T08:24:08+00:00"}
 {"head": "be8264d", "path": "cloud/tools/seam_verify.py", "tool": "Edit", "ts": "2026-07-17T08:24:15+00:00"}
+{"head": "45e52a1", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-17T08:33:40+00:00"}
+{"head": "45e52a1", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-17T08:34:33+00:00"}
+{"head": "45e52a1", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-17T08:34:40+00:00"}
+{"head": "45e52a1", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-17T08:35:03+00:00"}
+{"head": "45e52a1", "path": "cloud/tests/test_mvp2_companion.py", "tool": "Edit", "ts": "2026-07-17T08:36:01+00:00"}
+{"head": "45e52a1", "path": "release-manifest.json", "tool": "Edit", "ts": "2026-07-17T08:37:06+00:00"}

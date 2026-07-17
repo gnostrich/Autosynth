@@ -37,12 +37,13 @@
     "id": "cloud-mvp2",
     "location": "cloud/companion/",
     "title": "sealed local companion + browser instrument (drag-drop ingest, guarded cloud train, live play/steer)",
-    "status": "built",
-    "auditor": "phase 1 PASS; phase 2 FAIL->fixed->PASS-WITH-NOTES (2026-07-17)",
+    "status": "built (build+play+steer wired)",
+    "auditor": "phase 1 PASS; phase 2 FAIL->fixed->PASS-WITH-NOTES; phase 3 (seam+sigma_phi) PASS-WITH-NOTES->notes fixed (2026-07-17)",
     "run": "python -m cloud.companion --cloud-url https://geodesic-mixing-production.up.railway.app  (set ETS_TRAIN_TOKEN); open http://localhost:8770",
     "boundary": "loopback-only server; drag-drop ingest stays local (never forwarded); only stage-3 crosses to Railway via the whitelist encoder; render is LOCAL (no cloud decoder); region-tilt is the sole engine-control gesture (door held); eardrum cap on every produced bar; browser makes zero external calls",
-    "seam": "the instrument plays the FOUNDING demo world (steerable live); playing a freshly cloud-trained corpus needs the local build_index seam (ingest->tracks->realization index) — NOT wired, disclosed in UI + /api/world is_trained:false + prereg",
-    "engine": "runs on architecture-v6 ets (engine-v1 + live cap); arch-v6 pinned first on sys.path (verified under the -m import order)"
+    "seam": "WIRED: /api/train on raw audio runs the full train->play seam (local ingest -> cloud anchor-fit -> local build_index -> per-corpus sigma_phi calibration measured+embedded -> playable .etsworld referencing local audio) and REPOINTS the player at the user's trained world (is_trained:true, plays AND steers). CS-1 held (only stage-3 crosses, verified). reset() reverts to the demo. sigma_phi is MEASURED (untilted settlement, no invented floor), not fabricated; no engine edit. Corpus-dependent: region steering arms only when the corpus has bar-to-bar region fluctuation; a degenerate corpus honestly disarms region (surfaced in /api/world armed/disarmed + UI dim + warning).",
+    "engine": "runs on architecture-v6 ets (engine-v1 + live cap); arch-v6 pinned first on sys.path (verified under the -m import order)",
+    "verified": "cloud suite 39/39; seam_verify.py (LIVE Railway): trained world builds, embedded sigma_phi (no STALE), steered bar DIFFERS from u=0 (steering live), all bars eardrum-capped"
   },
   "also_available": {
     "instances": ["futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"],
