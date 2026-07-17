@@ -36,8 +36,20 @@ class StreamPlayer:
     Everything else reads produced state."""
 
     def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None):
-        if _ARCH_V6 not in sys.path:
-            sys.path.insert(0, _ARCH_V6)
+        # Force the ui-v5 engine tree to the FRONT of sys.path (membership isn't
+        # enough — root engine-v1 must not shadow it), THEN assert we actually
+        # resolved the capped engine. If root ets was imported first, fail LOUD
+        # rather than silently render without the eardrum cap / telemetry.
+        while _ARCH_V6 in sys.path:
+            sys.path.remove(_ARCH_V6)
+        sys.path.insert(0, _ARCH_V6)
+        import ets.engine.engine as _eng
+        if not (hasattr(_eng, "_playback_soft_limit") and hasattr(_eng, "bar_role_activity")):
+            raise RuntimeError(
+                "companion resolved the ROOT engine-v1 (missing the live playback "
+                "cap + telemetry). architecture-v6 must own `import ets`; run via "
+                "`python -m cloud.companion` and ensure no root-ets import precedes "
+                f"the bridge. resolved: {getattr(_eng, '__file__', '?')}")
         from ets.engine.engine import Engine, resolve_sigma
         from ets.engine.worldfile import load_world
 
@@ -65,8 +77,14 @@ class StreamPlayer:
 
     # --- world info ---------------------------------------------------------
     def world_info(self) -> dict:
+        # `is_trained` is False: the instrument plays the loaded (founding/demo)
+        # world. Playing a freshly cloud-trained corpus needs the local
+        # build_index seam (materialize the bank/realization index from the
+        # trained artifact) — NOT wired yet. The UI must not present this as the
+        # user's trained world. (see PREREG-cloud-mvp2 seam disclosure)
         return {"ready": True, "M": self.M, "sr": self.sr,
                 "world": Path(self.world_path).name,
+                "is_trained": False,
                 "bar_seconds": float(self.engine.writer.bar_seconds)}
 
     # --- THE SINGLE ENGINE-CONTROL PATH ------------------------------------
@@ -78,13 +96,8 @@ class StreamPlayer:
         if vec.size < self.M:
             vec = np.concatenate([vec, np.zeros(self.M - vec.size, np.float32)])
         vec = vec[:self.M]
-        try:
-            from ets.panel.envelope import SAFE_REGION_MAGNITUDE as _CAP
-        except Exception:
-            _CAP = 1.0
-        peak = float(np.max(np.abs(vec))) if vec.size else 0.0
-        if peak > _CAP:
-            vec = vec * (_CAP / peak)
+        from ets.panel.envelope import clamp_region     # reuse the engine's own wall
+        vec = np.asarray(clamp_region(vec), dtype=np.float32)
         with self._lock:
             self._region = vec
 

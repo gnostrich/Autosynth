@@ -153,10 +153,13 @@ guaranteed." These resolve to ONE architecture:
   render run inside; only stage-3 leaves (the whitelist guard is the sole wire exit);
   receipts verified inside. Two-way safety: the host is isolated from untrusted
   ingest, and the user's raw audio is isolated from the network.
-- **Audio path.** The container renders PCM locally and streams it over the localhost
-  WS; the browser plays it via Web Audio (AudioWorklet). CS-4 holds: the decoder is
-  local (in-container), never cloud. The live loudness/eardrum cap rides in the engine
-  render, so it carries to the streamed output.
+- **Audio path.** The container renders PCM locally and streams it to the browser
+  over **chunked HTTP** (`GET /api/stream`, a streaming WAV) with **SSE**
+  telemetry (`GET /api/telemetry`) — NOT a raw WebSocket (the earlier "WS" wording
+  above is superseded; functionally equivalent and CS-clean). The browser plays the
+  PCM via Web Audio (AudioWorklet). CS-4 holds: the decoder is local (in-container),
+  never cloud. The live loudness/eardrum cap rides in the engine render, so it
+  carries to the streamed output.
 - **Web UI is a NEW front-end, not a change to the native instrument.** The desktop
   `architecture-v6` instrument carries invariant **I-13** ("native Qt + OSC only, no
   web tech"); it stays untouched. The web UI is its own bundle (own folder) mirroring
@@ -199,3 +202,17 @@ expansion (TBD), sequenced AFTER one more upgrade** (see `OPEN_ENDS.md`): it nee
 issuance / revocation / per-key quotas + a store, and a call on single-tenant-per-
 deploy ("their cloud" = each user hosts their own Railway) vs. one shared multi-tenant
 service. Not built now; logged so it isn't lost.
+
+## Phase-2 seam disclosure (2026-07-17, honest wall — surfaced by the auditor)
+
+The phase-2 web instrument **plays a fixed founding/demo world** (`corpus.etsworld`),
+which the user can steer live. It does **NOT** yet play the user's freshly cloud-
+trained corpus. That seam is real and unbuilt: the cloud train returns anchor
+GEOMETRY (`world.npz`); turning it into a playable world needs the LOCAL `build_index`
+step — materialize the source bank / realization index from the trained artifact +
+the user's local tracks — which is not wired. **The instrument therefore demos on the
+founding world, and the UI + `/api/world` (`is_trained:false`) say so plainly** —
+training shows a verified receipt but does not change what plays. Wiring
+train→play-your-corpus (local ingest → tracks → `build_index` → playable world) is the
+next phase-2 seam. This is a faithfulness disclosure, not a CS issue: rendering stays
+local (CS-4 intact); nothing is presented as the user's world when it is not.

@@ -30,8 +30,13 @@ from pathlib import Path
 from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# APPEND (never insert at 0): the ui-v5 engine tree (architecture-v6) must keep the
+# front of sys.path so `import ets` resolves to it, not root engine-v1. Inserting
+# repo-root at 0 here was the bug that let root ets shadow the arch-v6 engine (which
+# alone carries the live cap + telemetry). Repo-root only needs to be reachable for
+# cloud.* imports, so append is sufficient and never clobbers engine priority.
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
 
 _STATIC = Path(__file__).resolve().parent / "static"
 

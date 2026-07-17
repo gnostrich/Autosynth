@@ -454,3 +454,16 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `b0642aa`
 - `Edit` cloud/tests/test_mvp2_companion.py (2026-07-17T07:12:47+00:00)
+
+### at `4e6d1e1`
+- `Edit` cloud/companion/app.py (2026-07-17T07:21:33+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T07:22:11+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T07:22:22+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T07:22:44+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T07:23:58+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T07:24:04+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T07:24:12+00:00)
+- `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T07:24:34+00:00)
+- `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T07:24:48+00:00)
+- `Edit` OPEN_ENDS.md (2026-07-17T07:25:02+00:00)
+- `Edit` cloud/tests/test_mvp2_companion.py (2026-07-17T07:26:10+00:00)

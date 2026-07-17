@@ -133,6 +133,28 @@ def test_fe_single_control_and_no_external_calls():
     assert targets.count("/api/steer") == 1, "steer must be the single engine-control call"
 
 
+def test_entrypoint_resolves_archv6_engine():
+    # The pin bug the auditor caught: under the -m import order, root engine-v1
+    # could shadow architecture-v6 (no live cap). Run the REAL import order in a
+    # subprocess (can't in-process — the root-ets suite already imported ets) and
+    # assert the capped arch-v6 engine wins.
+    import subprocess
+    import sys
+    import textwrap
+    code = textwrap.dedent('''
+        import cloud.companion                 # __init__ imports app (appends repo-root)
+        import cloud.companion.__main__        # runs the arch-v6 pin (like -m)
+        import ets.engine.engine as e
+        assert hasattr(e, "_playback_soft_limit") and hasattr(e, "bar_role_activity"), e.__file__
+        print("PIN_OK", e.__file__)
+    ''')
+    root = str(Path(__file__).resolve().parents[2])
+    r = subprocess.run([sys.executable, "-c", code], cwd=root,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert "PIN_OK" in r.stdout and "architecture-v6" in r.stdout, r.stdout
+
+
 def test_streaming_and_control_routes_present():
     src = (Path(__file__).resolve().parents[1] / "companion" / "app.py").read_text()
     for route in ('"/api/world"', '"/api/steer"', '"/api/play"', '"/api/stop"',

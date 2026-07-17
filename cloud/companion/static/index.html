@@ -617,8 +617,8 @@
         <span class="lk-glyph" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
         </span>
-        <h3>Train a corpus to play</h3>
-        <p>Drop source audio above and run <b>Train on cloud</b>. Once a world is verified, the role pads, XY tilt, live audio and tape come online here.</p>
+        <h3>Loading the founding demo world…</h3>
+        <p>The instrument plays a built-in <b>founding demo world</b> you can steer live. Training a corpus (above) verifies a new world in the cloud — but playing <i>your</i> trained corpus is a separate seam that isn't wired yet.</p>
       </div>
 
       <div class="inst-inner">
@@ -829,7 +829,10 @@
     }).then(function(w){
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
+        world.isTrained = !!w.is_trained;
         enableInstrument();
+        instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
+          + " · " + world.M + " roles · steer live";
       } else {
         world.ready = false; lockInstrument("world not ready");
       }
@@ -906,11 +909,15 @@
         var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
         if(j.ok){
           resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
-          resultMeta.textContent = "anchor-fit returned + receipt checked locally";
+          resultMeta.textContent = "cloud anchor-fit returned + receipt verified locally";
           var r = j.receipt || {};
           var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
-          resultEl.textContent = "world → " + j.world + "\n" + lines.join("\n");
-          // world is now trained — bring the instrument online
+          resultEl.textContent = "trained world → " + j.world +
+            "\n(note: the instrument below plays the founding DEMO world; playing this" +
+            " trained world is a separate seam — not yet wired)\n" + lines.join("\n");
+          // Training does NOT change what plays: loadWorld() only (re)confirms the
+          // founding demo world is available to steer. The trained artifact is NOT
+          // loaded into the player (the build_index seam is unbuilt).
           loadWorld();
         } else {
           resultBadge.className = "badge err"; resultBadge.textContent = "failed";

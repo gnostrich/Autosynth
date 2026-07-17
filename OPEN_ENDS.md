@@ -84,8 +84,17 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   Decisions locked: keep Vercel web UI mirroring the ui-v5 layout; GUI surfaces via the
   browser (no X11 passthrough); in-browser drag-drop ingest (folder-drop fallback);
   **single-user auth** (one shared bearer secret).
-- **Next action (operator):** deploy MVP-1 to Railway (connect the repo) and send the
-  live service URL; that + this prereg = green light to build MVP-2's functional version.
+- **MVP-2 phase 2 (web instrument):** built — local render bridge (reuses the engine's
+  produce_one pipeline + eardrum cap), region-tilt as the only control (door held),
+  streaming audio + SSE telemetry, functional FE. Auditor FAIL→fixed: (a) sys.path pin
+  bug that let root ets shadow the arch-v6 engine — fixed (app.py appends repo-root;
+  bridge forces arch-v6 front + fails loud); (b) namespace + clamp reuse. Re-audit pending.
+- **TBD — train→play-YOUR-corpus seam (unbuilt, disclosed):** the instrument plays the
+  FOUNDING demo world; playing a freshly-trained corpus needs local build_index
+  (ingest → tracks → realization index from the trained artifact). UI + /api/world
+  (is_trained:false) state this plainly. Next phase-2 seam. Not faked.
+- **Next action (operator):** Railway is deployed (see above); run the companion
+  locally to play/steer the demo world and iterate.
 - **TBD — multi-user expansion:** deferred by operator. Sequence = single-user MVP-2 →
   **one more upgrade (TBD, to be named)** → multi-user. Needs key issuance/revocation/
   quotas + a store, and single-tenant-per-deploy vs. shared-multi-tenant call. Parked.
