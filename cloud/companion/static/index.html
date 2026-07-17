@@ -581,7 +581,7 @@
     </header>
 
     <!-- SOURCE AUDIO (phase-1 ingest, local-only) -->
-    <section class="block panel">
+    <section class="block panel" id="sourceSection">
       <div class="sec-h">
         <span class="lbl">Source Audio</span><span class="rule"></span>
         <button class="act ghost" id="resetBtn" style="padding:6px 12px;font-size:11px;" title="Clear the corpus and start fresh">New corpus</button>
@@ -597,7 +597,7 @@
     </section>
 
     <!-- TRAIN (cloud anchor-fit) -->
-    <section class="block panel">
+    <section class="block panel" id="trainSection">
       <div class="sec-h"><span class="lbl">Train (cloud anchor-fit)</span><span class="rule"></span></div>
       <div class="row">
         <button class="act" id="trainBtn" disabled>Train on cloud</button>
@@ -838,6 +838,12 @@
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
+        // Hosted (public) deploy = play/steer the demo only. Hide the upload/train/
+        // reset controls (they 503 server-side there) so nothing broken is shown.
+        if(w.public){
+          var ss=document.getElementById("sourceSection"); if(ss) ss.style.display="none";
+          var ts=document.getElementById("trainSection"); if(ts) ts.style.display="none";
+        }
         enableInstrument();
         // Honest steer state: a disarmed region means taps settle no differently.
         instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
