@@ -166,9 +166,69 @@ def _jsonable_receipt(receipt) -> dict:
     return out
 
 
+# The REAL, ordered stages the seam walks (design §4A). ``build_trained_world``
+# emits each name to ``progress`` at its true boundary — this tuple is the single
+# source of truth for the stage sequence the FE renders. It is NOT decorative: each
+# entry corresponds to a distinct ``_stage_*`` step below that does real work.
+TRAIN_STAGES = ("ingest", "stage3", "cloud_fit", "verify", "build", "sigma_phi", "save")
+
+
+def _stage_ingest(audio_paths: List[str], seed: int):
+    """LOCAL ingest: raw audio -> Track (recipes/provenance stay on device)."""
+    from ets.ingestion.pipeline import ingest
+    return [ingest(path, i, sr=44100) for i, path in enumerate(audio_paths)]
+
+
+def _stage_stage3(tracks, seed: int):
+    """LOCAL stage-3 prototypes: the ONLY thing that may cross the wire."""
+    from ets.geometry import roles
+    return [roles.extract_prototypes(t, seed=seed) for t in tracks]
+
+
+def _stage_cloud_fit(protos, cloud_url: str, seed: int, sweeps: int,
+                     sigma: Optional[float]) -> bytes:
+    """CLOUD anchor-fit via the guarded, whitelist-encoded SINGLE wire exit."""
+    from cloud.common import encode_job
+    from cloud.client.cli import post_job          # the SINGLE wire exit
+    params = {"seed": seed, "sweeps": sweeps, "sigma": sigma}
+    job = encode_job(protos, params)               # stage-3 ONLY (structural)
+    return post_job(job, cloud_url)
+
+
+def _stage_verify(protos, result_bytes: bytes):
+    """Decode + verify the receipt (raises on a tampered world)."""
+    from cloud.common import decode_result, verify_receipt
+    result = decode_result(result_bytes)
+    verify_receipt(protos, result)
+    return result
+
+
+def _stage_build(fstate, protos, tracks, audio_paths: List[str], receipt):
+    """LOCAL realization index + playable World (never crosses the wire)."""
+    from ets.writer import build_index, World, _representative_tatum_len
+    index = build_index(fstate, protos, tracks)
+    world = World(
+        fstate=fstate, protos=protos, tracks=tracks,
+        info=(receipt or {}), index=index,
+        out_tatum_len=_representative_tatum_len(tracks), sr=int(tracks[0].sr))
+    # Source references point at the USER'S LOCAL audio; the engine re-derives unit
+    # audio deterministically via ets.render.load_source_units (G0-style recon, no
+    # choices). The audio itself is NOT embedded and NEVER left the device.
+    sources = {"kind": "corpus",
+               "paths": {int(t.track_id): audio_paths[i]
+                         for i, t in enumerate(tracks)}}
+    return world, sources
+
+
+def _stage_save(out_path: str, world, sources, sigma_phi) -> None:
+    from ets.engine.worldfile import save_world
+    save_world(out_path, world, sources, sigma_phi=sigma_phi)
+
+
 def build_trained_world(audio_paths: List[str], out_path: str,
                         cloud_url: str = "inproc", seed: int = 0,
-                        sweeps: int = 8, sigma: Optional[float] = None) -> dict:
+                        sweeps: int = 8, sigma: Optional[float] = None,
+                        progress=None) -> dict:
     """Ingest local audio -> stage-3 -> CLOUD anchor-fit -> verify -> build_index ->
     save a playable ``.etsworld`` at ``out_path``.
 
@@ -178,50 +238,44 @@ def build_trained_world(audio_paths: List[str], out_path: str,
     This is faithful reuse of ``ets.writer.build_world_from_tracks``; the ONLY
     divergence is that ``fstate`` is the cloud's anchor-fit result rather than the
     local ``anchors.build_world`` call — that is the whole point of the offload.
+
+    ``progress`` (optional callable ``progress(stage_name)``) is invoked at each REAL
+    stage boundary in ``TRAIN_STAGES`` order (design §4A honest progress). It is a
+    read-only observer — it never gates or alters the pipeline, so a caller that
+    passes None gets the identical computation.
     """
     _pin_archv6()
 
-    # --- LOCAL ingest: raw audio -> Track (recipes/provenance stay on device) ---
-    from ets.ingestion.pipeline import ingest
-    from ets.geometry import roles
-    tracks = [ingest(path, i, sr=44100) for i, path in enumerate(audio_paths)]
+    def _p(stage: str) -> None:
+        if progress is not None:
+            progress(stage)
 
-    # --- LOCAL stage-3: the ONLY thing that may cross the wire ------------------
-    protos = [roles.extract_prototypes(t, seed=seed) for t in tracks]
-
-    # --- CLOUD anchor-fit (the guarded, whitelist-encoded wire exit) -----------
-    from cloud.common import encode_job, decode_result, verify_receipt
-    from cloud.client.cli import post_job          # the SINGLE wire exit
-    params = {"seed": seed, "sweeps": sweeps, "sigma": sigma}
-    job = encode_job(protos, params)               # stage-3 ONLY (structural)
-    result_bytes = post_job(job, cloud_url)
-    result = decode_result(result_bytes)
-    verify_receipt(protos, result)                 # raises on a tampered world
-    fstate = result.fstate
-
-    # --- LOCAL: realization index + playable world (never crosses the wire) ----
-    from ets.writer import build_index, World, _representative_tatum_len
-    from ets.engine.worldfile import save_world
-    index = build_index(fstate, protos, tracks)
-    world = World(
-        fstate=fstate, protos=protos, tracks=tracks,
-        info=(result.receipt or {}), index=index,
-        out_tatum_len=_representative_tatum_len(tracks), sr=int(tracks[0].sr))
-
-    # Source references point at the USER'S LOCAL audio; the engine re-derives unit
-    # audio deterministically via ets.render.load_source_units (G0-style recon, no
-    # choices). The audio itself is NOT embedded and NEVER left the device.
-    sources = {"kind": "corpus",
-               "paths": {int(t.track_id): audio_paths[i]
-                         for i, t in enumerate(tracks)}}
-
+    _p("ingest")
+    tracks = _stage_ingest(audio_paths, seed)
+    _p("stage3")
+    protos = _stage_stage3(tracks, seed)
+    _p("cloud_fit")
+    result_bytes = _stage_cloud_fit(protos, cloud_url, seed, sweeps, sigma)
+    _p("verify")
+    result = _stage_verify(protos, result_bytes)
+    _p("build")
+    world, sources = _stage_build(result.fstate, protos, tracks, audio_paths,
+                                  result.receipt)
     # MEASURE this corpus's own σ_φ (untilted settlement) and EMBED it, so the
     # engine plays AND steers the trained world via the embedded precedence — never
     # the demo world's registered artifact. See the module docstring σ_φ RESOLUTION.
-    sigma_phi = _calibrate_sigma_phi(world, tracks)
-    save_world(out_path, world, sources, sigma_phi=sigma_phi)
+    _p("sigma_phi")
+    sigma_phi = _stage_sigma_phi(world, tracks)
+    _p("save")
+    _stage_save(out_path, world, sources, sigma_phi)
 
     disarmed = sorted(k for k, v in sigma_phi["identifiable"].items() if not v)
     return {"ok": True, "world": out_path,
             "receipt": _jsonable_receipt(result.receipt), "is_trained": True,
             "sigma_phi_disarmed": disarmed}
+
+
+def _stage_sigma_phi(world, tracks) -> dict:
+    """Per-corpus σ_φ calibration (thin alias of ``_calibrate_sigma_phi`` so the
+    stage set is uniform and independently injectable in tests)."""
+    return _calibrate_sigma_phi(world, tracks)

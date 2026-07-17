@@ -557,6 +557,74 @@
     header.hd{ padding: var(--sp-3) var(--sp-4); }
   }
 </style>
+  /* ===== TABS (Play / Train / Explore) ===== */
+  .tabs{ display:flex; gap:4px; margin-left:14px; }
+  .tab{ appearance:none; background:transparent; border:1px solid var(--line);
+        color:var(--muted); border-radius:9px; padding:7px 14px; font-size:12.5px;
+        font-weight:600; letter-spacing:.02em; cursor:pointer; }
+  .tab:hover{ color:var(--ink); border-color:var(--accent-deep); }
+  .tab.active{ color:#06110d; background:var(--accent); border-color:var(--accent);
+               box-shadow:0 0 16px -6px var(--accent-glow); }
+  .tab[hidden]{ display:none; }
+  .pane{ display:none; }
+  .pane.active{ display:block; animation:paneIn .18s ease; }
+  @keyframes paneIn{ from{ opacity:0; transform:translateY(3px);} to{ opacity:1; transform:none;} }
+
+  /* ===== world-load overlay: loading / slow / dead are three real states ===== */
+  .inst-lock .hb{ display:inline-block; width:9px; height:9px; border-radius:50%;
+                  background:var(--accent); margin-right:8px; vertical-align:middle;
+                  animation: breathe 1.8s ease-in-out infinite; }
+  .inst-lock.slow .hb{ background:#F2D06B; }
+  .inst-lock.dead .hb{ background:#E86A6A; animation:none; box-shadow:0 0 10px #E86A6A; }
+  .inst-lock .retry{ margin-top:14px; }
+  .inst-lock .retry button{ padding:8px 16px; font-size:12px; }
+  .inst-lock small.state{ display:block; margin-top:8px; color:var(--muted); font-size:12px; }
+
+  /* ===== staged train progress (from REAL /api/status transitions) ===== */
+  .stages{ margin-top:14px; display:none; }
+  .stages.show{ display:block; }
+  .stage{ display:flex; align-items:center; gap:9px; padding:5px 0;
+          font-size:12.5px; color:var(--faint); }
+  .stage .dot2{ width:14px; height:14px; border-radius:50%; border:1.5px solid var(--line);
+                flex:0 0 auto; position:relative; }
+  .stage.done{ color:var(--ink-2); }
+  .stage.done .dot2{ background:var(--accent); border-color:var(--accent); }
+  .stage.done .dot2::after{ content:"✓"; position:absolute; inset:0; color:#06110d;
+       font-size:9px; line-height:14px; text-align:center; font-weight:800; }
+  .stage.active{ color:var(--ink); }
+  .stage.active .dot2{ border-color:var(--accent);
+       animation: breathe 1.4s ease-in-out infinite; }
+
+  /* ===== publish control (owner side, in Train) ===== */
+  .publish{ margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);
+            display:none; }
+  .publish.show{ display:block; }
+  .publish .row{ display:flex; align-items:center; gap:10px; }
+  .switch{ appearance:none; width:42px; height:24px; border-radius:13px; position:relative;
+           background:var(--panel-inset); border:1px solid var(--line); cursor:pointer; }
+  .switch::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px;
+           border-radius:50%; background:var(--muted); transition:.15s; }
+  .switch[aria-checked="true"]{ background:var(--accent-deep); border-color:var(--accent); }
+  .switch[aria-checked="true"]::after{ left:21px; background:#06110d; }
+
+  /* ===== Explore cards ===== */
+  .exp-list{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+  .exp-card{ background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
+             padding:14px; display:flex; flex-direction:column; gap:8px; }
+  .exp-card h4{ margin:0; font-size:14px; }
+  .exp-card .meta{ font-size:11.5px; color:var(--muted); }
+  .exp-card .foot{ display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .badge.disarmed{ background:#E86A6A; color:#1a0505; }
+  .badge.off{ background:var(--panel-inset); color:var(--muted); border:1px solid var(--line); }
+  .exp-empty, .exp-skel, .exp-fail{ color:var(--muted); font-size:13px; padding:8px 0; }
+  .exp-skel i{ display:block; height:64px; border-radius:12px; margin-bottom:12px;
+       background:linear-gradient(90deg,var(--panel-2),var(--panel-inset),var(--panel-2));
+       background-size:200% 100%; animation: skel 1.1s linear infinite; }
+  @keyframes skel{ from{ background-position:200% 0;} to{ background-position:-200% 0;} }
+  /* pending "settling" steer cue (engine's answer, never the echoed input) */
+  .pad.settling::after{ content:"settling…"; position:absolute; right:8px; top:8px;
+       font-size:9px; color:var(--muted); letter-spacing:.04em; }
+</style>
 </head>
 <body>
 <div id="ets">
@@ -571,6 +639,11 @@
           <div class="sub micro">sealed on-device box · steer the terrain</div>
         </div>
       </div>
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
+        <button class="tab active" id="tabPlay" role="tab" data-tab="play" aria-selected="true">Play</button>
+        <button class="tab" id="tabTrain" role="tab" data-tab="train" aria-selected="false">Train</button>
+        <button class="tab" id="tabExplore" role="tab" data-tab="explore" aria-selected="false">Explore</button>
+      </nav>
       <div class="spacer"></div>
       <span class="pill" id="cloudPill"><span class="tick"></span><span id="cloudTag">cloud —</span></span>
       <span class="conn"><span class="dot" id="connDot"></span><span id="connText">connecting…</span></span>
@@ -580,6 +653,8 @@
       </button>
     </header>
 
+    <!-- ================= TRAIN PANE (build MY world; owner-only) ================= -->
+    <div class="pane" id="paneTrain" data-pane="train" role="tabpanel" aria-labelledby="tabTrain">
     <!-- SOURCE AUDIO (phase-1 ingest, local-only) -->
     <section class="block panel" id="sourceSection">
       <div class="sec-h">
@@ -603,13 +678,38 @@
         <button class="act" id="trainBtn" disabled>Train on cloud</button>
         <span class="note" id="trainNote">ingest at least one source, then train.</span>
       </div>
+
+      <!-- STAGED PROGRESS — lit ONLY from real /api/status stage transitions (§4A).
+           No timer-driven fake progress: rows light as the backend reports them. -->
+      <div class="stages" id="trainStages" aria-live="polite">
+        <div class="stage" data-stage="ingest"><span class="dot2"></span>ingest (local)</div>
+        <div class="stage" data-stage="stage3"><span class="dot2"></span>stage-3 encode</div>
+        <div class="stage" data-stage="cloud_fit"><span class="dot2"></span>cloud anchor-fit <span class="hb" style="display:none" id="fitHb"></span></div>
+        <div class="stage" data-stage="verify"><span class="dot2"></span>verify receipt</div>
+        <div class="stage" data-stage="build"><span class="dot2"></span>build index</div>
+        <div class="stage" data-stage="sigma_phi"><span class="dot2"></span>σ_φ calibrate</div>
+        <div class="stage" data-stage="save"><span class="dot2"></span>save world</div>
+      </div>
+
       <div id="resultWrap" style="margin-top:16px;display:none;">
         <div class="row" style="margin-bottom:10px;"><span id="resultBadge" class="badge ok">world verified</span>
           <span class="note" id="resultMeta"></span></div>
         <div class="result" id="result"></div>
       </div>
-    </section>
 
+      <!-- PUBLISH (owner side of Explore; opt-in, default OFF) -->
+      <div class="publish" id="publishBox">
+        <div class="sec-h" style="margin-bottom:8px"><span class="lbl">Share this set</span><span class="rule"></span></div>
+        <div class="row">
+          <button class="switch" id="shareSwitch" role="switch" aria-checked="false" aria-label="Share this trained set"></button>
+          <span class="note" id="shareNote">off — your trained set is private. Toggle to list it in Explore.</span>
+        </div>
+      </div>
+    </section>
+    </div><!-- /paneTrain -->
+
+    <!-- ================= PLAY PANE (the instrument) ================= -->
+    <div class="pane active" id="panePlay" data-pane="play" role="tabpanel" aria-labelledby="tabPlay">
     <!-- INSTRUMENT (phase-2 live surface) -->
     <div class="sec-h">
       <span class="lbl">Instrument</span>
@@ -730,6 +830,19 @@
         </div>
       </div>
     </div>
+    </div><!-- /panePlay -->
+
+    <!-- ================= EXPLORE PANE (other people's shared sets) ================= -->
+    <div class="pane" id="paneExplore" data-pane="explore" role="tabpanel" aria-labelledby="tabExplore">
+      <section class="block panel">
+        <div class="sec-h">
+          <span class="lbl">Explore — shared sets</span><span class="rule"></span>
+          <button class="act ghost" id="exploreRefresh" style="padding:6px 12px;font-size:11px;">Refresh</button>
+        </div>
+        <p class="note" style="margin:4px 0 14px">Open a shared set into <b>Play</b> and steer it with the same region-tilt lane. One instrument, many sources.</p>
+        <div id="exploreList" class="exp-list"><div class="exp-skel"><i></i><i></i></div></div>
+      </section>
+    </div><!-- /paneExplore -->
 
   </div>
 
@@ -804,20 +917,100 @@
   var region = [];           // last computed region vector (length M)
   var activeRole = 0;
   var es = null;             // telemetry EventSource
+  var backendAlive = true;   // last /api/health outcome (drives dead-vs-loading)
+  var worldLoadStart = Date.now();
+  var SLOW_AFTER_MS = 45000; // generous ceiling (sandbox renders ~100x slower)
+  var pendingSettle = false; // a steer gesture is awaiting the engine's settled answer
+
+  /* ================= ROUTING TO ACCESS PAGE (401) ================= */
+  // Any gated call returning 401 means the session token expired / is missing; land
+  // on the server-served access page (keyed deploys). Same-origin navigation only.
+  function gotoAccess(){ try{ window.location.replace("/"); }catch(e){} }
+
+  /* ================= TABS: PLAY / TRAIN / EXPLORE ================= */
+  var PANES = { play:$("panePlay"), train:$("paneTrain"), explore:$("paneExplore") };
+  var TABBTN = { play:$("tabPlay"), train:$("tabTrain"), explore:$("tabExplore") };
+  var currentTab = "play";
+  function switchTab(name){
+    if(!PANES[name] || TABBTN[name].hidden) return;
+    currentTab = name;
+    Object.keys(PANES).forEach(function(k){
+      var on = (k === name);
+      PANES[k].classList.toggle("active", on);
+      TABBTN[k].classList.toggle("active", on);
+      TABBTN[k].setAttribute("aria-selected", on ? "true" : "false");
+    });
+    if(name === "explore") loadExplore();
+  }
+  Object.keys(TABBTN).forEach(function(k){
+    TABBTN[k].addEventListener("click", function(){ switchTab(k); });
+  });
+  function applyTabVisibility(pub){
+    // PUBLIC (visitor): only [Play, Explore]; Train removed from the bar entirely
+    // (never a disabled/dead tab). Reuses the same world.public signal.
+    TABBTN.train.hidden = !!pub;
+    if(pub && currentTab === "train") switchTab("play");
+  }
 
   /* ================= HEALTH / STATUS / WORLD ================= */
   var connDot = $("connDot"), connText = $("connText"), cloudTag = $("cloudTag"), cloudPill = $("cloudPill");
 
   function loadHealth(){
-    return fetch("/api/health").then(function(r){ return r.json(); }).then(function(h){
+    return fetch("/api/health").then(function(r){
+      if(!r.ok) throw new Error("health "+r.status);
+      return r.json();
+    }).then(function(h){
+      backendAlive = true;
       connDot.className = "dot on"; connText.textContent = "companion live";
       var c = h && h.cloud;
       if(c === "inproc"){ cloudTag.textContent = "cloud — offline (inproc)"; cloudPill.classList.remove("live"); }
       else if(c){ cloudTag.textContent = "cloud → " + String(c).replace(/^https?:\/\//,""); cloudPill.classList.add("live"); }
       else { cloudTag.textContent = "cloud —"; }
     }).catch(function(){
+      // health poll FAILED — this is the ONE signal that declares the backend dead.
+      // The breathing conn.dot stops (it only pulses while polls succeed), and if the
+      // world isn't up yet the overlay switches to the loud dead state (§4a).
+      backendAlive = false;
       connDot.className = "dot bad"; connText.textContent = "no companion";
+      if(!world.ready) setOverlayDead();
     });
+  }
+
+  /* ============ WORLD-LOAD OVERLAY: loading / slow / dead (§4a) ============
+     Three DISTINGUISHABLE messages from three REAL signals — never one spinner:
+       loading = health ok + world not ready (within the ceiling), live heartbeat;
+       slow    = same, but over the (generous) time ceiling — NOT a failure;
+       dead    = health poll FAILED — the heartbeat stops, loud + retry.            */
+  var instLock = $("instLock");
+  function _overlay(cls, title, sub){
+    instLock.classList.remove("slow", "dead");
+    if(cls) instLock.classList.add(cls);
+    var beat = (cls === "dead") ? '<span class="hb"></span>' : '<span class="hb"></span>';
+    instLock.innerHTML =
+      '<span class="lk-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>' +
+      '<h3>' + beat + title + '</h3>' +
+      '<p>' + sub + '</p>' +
+      (cls === "dead"
+        ? '<div class="retry"><button class="act ghost" id="ovRetry">retry now</button></div>'
+        : '');
+    if(cls === "dead"){
+      var b = $("ovRetry");
+      if(b) b.addEventListener("click", function(){ loadHealth().then(loadWorld); });
+    }
+  }
+  function setOverlayLoading(){
+    var slow = (Date.now() - worldLoadStart) > SLOW_AFTER_MS;
+    if(slow){
+      _overlay("slow", "still loading — taking longer than expected",
+        "The render can be genuinely slow (this sandbox is ~100x slower than hardware). This is not a failure — the heartbeat above is live.");
+    } else {
+      _overlay("", "loading the demo world…",
+        "The heartbeat is live: it stops the instant the companion goes quiet, so a frozen page can’t be mistaken for a working one. Or open <b>Train</b> to build your own world.");
+    }
+  }
+  function setOverlayDead(){
+    _overlay("dead", "lost the companion backend",
+      "It may have crashed or restarted — the heartbeat has stopped. Retrying automatically…");
   }
 
   function loadStatus(){
@@ -831,30 +1024,39 @@
 
   function loadWorld(){
     return fetch("/api/world").then(function(r){
+      if(r.status === 401){ gotoAccess(); return null; }   // token expired -> access page
       if(!r.ok) throw new Error("world "+r.status);
       return r.json();
     }).then(function(w){
+      if(w === null) return;
+      world.public = !!w.public;
+      world.openedSetId = w.opened_set_id || null;
+      // Hosted (public) deploy = play/steer the demo (or a shared set) only. Filter
+      // the TAB SET to [Play, Explore] and drop publish — the visitor never sees a
+      // gated route or a dead tab (§2). One gate, reused.
+      applyTabVisibility(world.public);
       if(w && w.ready && w.M > 0){
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
-        // Hosted (public) deploy = play/steer the demo only. Hide the upload/train/
-        // reset controls (they 503 server-side there) so nothing broken is shown.
-        if(w.public){
-          var ss=document.getElementById("sourceSection"); if(ss) ss.style.display="none";
-          var ts=document.getElementById("trainSection"); if(ts) ts.style.display="none";
-        }
         enableInstrument();
         // Honest steer state: a disarmed region means taps settle no differently.
         instHint.textContent = (w.is_trained ? "trained world" : "founding demo world")
+          + (world.openedSetId ? " · shared set" : "")
           + " · " + world.M + " roles · "
           + (world.regionArmed ? "steer live" : "region DISARMED — steer inactive");
         instrument.classList.toggle("region-disarmed", !world.regionArmed);
+        refreshPublishBox();
       } else {
-        world.ready = false; lockInstrument("world not ready");
+        world.ready = false;
+        // backend answered but the world isn't ready yet: loading vs slow, never dead.
+        setOverlayLoading();
       }
     }).catch(function(){
-      world.ready = false; lockInstrument("world not loaded");
+      // /api/world itself failed: treat as backend trouble; the health poll owns the
+      // dead-vs-slow decision, so don't declare death here — just stay in loading.
+      world.ready = false;
+      if(!backendAlive) setOverlayDead(); else setOverlayLoading();
     });
   }
 
@@ -909,9 +1111,12 @@
     fetch("/api/reset", { method:"POST" }).then(function(r){ return r.json(); }).then(function(j){
       renderIngestFiles(j.files || []); renderLibrary(j.files || []);
       $("resultWrap").style.display = "none";
-      // a reset clears the world too — lock the instrument and stop any playback
+      trainStages.classList.remove("show");
+      publishBox.classList.remove("show"); setShareUI(false);
+      // a reset reverts to the demo world — stop playback, then reload it into Play.
       if(state !== "idle") stopPlayback();
-      world.ready = false; lockInstrument("corpus reset · train again");
+      world.ready = false; world.isTrained = false; world.openedSetId = null;
+      worldLoadStart = Date.now(); setOverlayLoading(); loadWorld();
     }).catch(noop);
   });
 
@@ -920,10 +1125,22 @@
   trainBtn.addEventListener("click", function(){
     trainBtn.disabled = true; var old = trainBtn.textContent; trainBtn.textContent = "training…";
     resultWrap.style.display = "none";
+    // show the honest staged indicator and light it from REAL /api/status transitions
+    // (never a timer-driven fake stepper — rows advance only as the backend reports).
+    trainStages.classList.add("show"); renderStages([], true);
+    var poll = setInterval(function(){ pollTrainStages(true); }, 1000);
+    var stopPoll = function(){ clearInterval(poll); };
     fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({}) })
       .then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); })
       .then(function(res){
+        stopPoll(); pollTrainStages(false);   // final pass: mark reported stages done
+        if(res.code === 401){ gotoAccess(); return; }
         var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
+        if(res.code === 429 || j.busy){
+          resultBadge.className = "badge err"; resultBadge.textContent = "busy";
+          resultMeta.textContent = ""; resultEl.textContent = j.error || "a training is already running — try again shortly";
+          return;
+        }
         if(j.ok){
           resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
           resultMeta.textContent = "cloud anchor-fit returned + receipt verified locally";
@@ -966,6 +1183,7 @@
           resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
         }
       }).catch(function(e){
+        stopPoll();
         trainBtn.textContent = old; trainBtn.disabled = false;
         resultWrap.style.display = "block"; resultBadge.className = "badge err"; resultBadge.textContent = "error";
         resultEl.textContent = String(e);
@@ -1116,6 +1334,14 @@
   function sendSteerNow(){
     if(!world.ready) return;
     steerPending = false;
+    // §4A(c): a pending "settling" cue on the pushed pad until a telemetry frame
+    // carries the engine's RE-SETTLEMENT — never echo the input as instant
+    // brightness. On a region-DISARMED set the gesture changes nothing, so show no
+    // cue (it would imply a change that will never come). Only while playing, so a
+    // telemetry frame is guaranteed to clear it.
+    if(world.regionArmed && state === "playing" && padEls[activeRole]){
+      padEls[activeRole].classList.add("settling"); pendingSettle = true;
+    }
     sendSteer(region.slice());
   }
   function sendSteerThrottled(){
@@ -1335,6 +1561,11 @@
       updateMeters(roles);
     }
     if(typeof d.t === "number") updateTape(d.t);
+    // the engine's answer has arrived — clear the pending "settling" cue.
+    if(pendingSettle){
+      pendingSettle = false;
+      padEls.forEach(function(p){ p.classList.remove("settling"); });
+    }
   }
 
   /* ================= AUDIO: pull /api/stream (16-bit PCM WAV) via Web Audio ================= */
@@ -1572,9 +1803,114 @@
   }
   function clearStreamError(){ streamErr.classList.remove("show"); streamErr.textContent = ""; }
 
+  /* ================= EXPLORE (shared sets: list -> load into Play) ============ */
+  var exploreList = $("exploreList");
+  $("exploreRefresh").addEventListener("click", loadExplore);
+  function loadExplore(){
+    exploreList.innerHTML = '<div class="exp-skel"><i></i><i></i></div>';
+    fetch("/api/explore").then(function(r){
+      if(r.status === 401){ gotoAccess(); return null; }
+      if(!r.ok) throw new Error("explore "+r.status);
+      return r.json();
+    }).then(function(j){
+      if(j === null) return;
+      renderExplore((j && j.sets) || []);
+    }).catch(function(){
+      // a FAILED load is distinct from an EMPTY list — never show empty on error.
+      exploreList.innerHTML = '<div class="exp-fail">couldn’t load shared sets — <button class="act ghost" id="expRetry" style="padding:4px 10px;font-size:11px">retry</button></div>';
+      var b = $("expRetry"); if(b) b.addEventListener("click", loadExplore);
+    });
+  }
+  function renderExplore(sets){
+    if(!sets.length){ exploreList.innerHTML = '<div class="exp-empty">no shared sets published yet</div>'; return; }
+    exploreList.innerHTML = "";
+    sets.forEach(function(s){
+      var card = document.createElement("div"); card.className = "exp-card";
+      var avail = (s.availability === "available");
+      var badges = "";
+      if(!s.region_armed) badges += '<span class="badge disarmed">disarmed</span>';
+      if(s.mine) badges += '<span class="badge off">yours</span>';
+      card.innerHTML =
+        '<h4>'+escapeHtml(s.name || "shared set")+'</h4>'+
+        '<div class="meta">by '+escapeHtml(s.owner || "owner")+'</div>'+
+        '<div class="foot">'+badges+'<span class="rule"></span>'+
+          (avail ? '<button class="act" data-open="'+escapeHtml(s.id)+'" style="padding:7px 14px;font-size:12px">Open in Play</button>'
+                 : '<span class="note">owner offline / unavailable</span>')+
+        '</div>';
+      exploreList.appendChild(card);
+    });
+    exploreList.querySelectorAll("[data-open]").forEach(function(b){
+      b.addEventListener("click", function(){ openSet(b.getAttribute("data-open")); });
+    });
+  }
+  function openSet(id){
+    fetch("/api/open", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ set_id:id }) })
+      .then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+      .then(function(j){
+        if(j === null) return;
+        if(j.ok){
+          if(state !== "idle") stopPlayback();
+          world.ready = false; worldLoadStart = Date.now();
+          switchTab("play"); setOverlayLoading(); loadWorld();
+        } else {
+          loadExplore();   // EXP-B: revoked between list and open -> re-list honestly
+        }
+      }).catch(noop);
+  }
+
+  /* ================= PUBLISH (owner share toggle, lives in Train) ============= */
+  var shareSwitch = $("shareSwitch"), shareNote = $("shareNote"), publishBox = $("publishBox");
+  function refreshPublishBox(){
+    // publish exists only for an OWNER with a live trained world, never in public.
+    publishBox.classList.toggle("show", !!world.isTrained && !world.public);
+  }
+  function setShareUI(shared){
+    shareSwitch.setAttribute("aria-checked", shared ? "true" : "false");
+    shareNote.textContent = shared
+      ? "on — listed in Explore. Visitors can open + steer it (region-tilt only). Toggle off to delist."
+      : "off — your trained set is private. Toggle to list it in Explore.";
+  }
+  shareSwitch.addEventListener("click", function(){
+    var on = shareSwitch.getAttribute("aria-checked") !== "true";
+    fetch("/api/share", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ on:on }) })
+      .then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+      .then(function(j){ if(j && j.ok) setShareUI(!!j.shared); })
+      .catch(noop);
+  });
+
+  /* ============ STAGED TRAIN PROGRESS (lit ONLY from real /api/status) ======== */
+  var trainStages = $("trainStages");
+  function renderStages(names, running){
+    var rows = trainStages.querySelectorAll(".stage");
+    var active = (running && names.length) ? names[names.length - 1] : null;
+    rows.forEach(function(row){
+      var s = row.getAttribute("data-stage");
+      var seen = names.indexOf(s) >= 0;
+      row.classList.toggle("done", seen && s !== active);
+      row.classList.toggle("active", s === active);
+    });
+    var hb = $("fitHb"); if(hb) hb.style.display = (active === "cloud_fit") ? "inline-block" : "none";
+  }
+  function pollTrainStages(running){
+    return fetch("/api/status").then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(s){
+        if(s) renderStages((s.train_stages || []).map(function(e){ return e.stage; }), running !== false);
+      }).catch(noop);
+  }
+
+  /* ================= LIVENESS POLL (heartbeat; its STOPPING is visible) ======= */
+  var HEALTH_MS = 3000;
+  function pollTick(){
+    loadHealth().then(function(){
+      if(!world.ready) loadWorld();      // keep trying to bring the world up
+    });
+  }
+
   /* ================= INIT ================= */
   updateTape(0);
+  worldLoadStart = Date.now();
   loadHealth().then(loadStatus).then(loadWorld);
+  setInterval(pollTick, HEALTH_MS);       // heartbeat + world-ready + dead detection
 })();
 </script>
 </body>

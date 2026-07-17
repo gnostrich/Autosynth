@@ -287,3 +287,62 @@ Registered reading (on the record):
   explicit decision to rebuild the access-key/in-proc delta in-repo from
   scratch. Until then, building "on top of" the live site is not possible
   from this repository.
+
+---
+
+## BUILD PLAN — demo phase (registered 2026-07-17, operator delegated "your call")
+
+Scope (one prereg'd build, `cloud/` only; engine untouched; ui-v6 untouched):
+
+1. **Rebuild the lost ets-web delta IN-REPO** (the deployed code exists only in
+   Railway snapshot ddcadfb0; functionality fully characterized from live
+   probes + logs + deploy metadata): access-key gate (`ETS_ACCESS_KEYS`
+   comma-separated; `/api/auth` issues a session token; all API routes gated;
+   access page), per-visitor server-side sessions, in-proc cloud mode.
+2. **OOM fix designed in** (root cause measured: 7.997 GB peak against the
+   8 GB cap; per-visitor engine worlds + in-proc training): ONE shared demo
+   engine for all visitors; per-visitor TRAINED worlds behind an LRU cache
+   (`ETS_MAX_LOADED_WORLDS`, default 2) with idle eviction; at most ONE
+   in-proc training at a time (second gets an honest busy/queue response).
+3. **Opt-in share + EXPLORE** (the operator-signed demo feature): per-set
+   share toggle (opt-in, default OFF), server-side listing, Explore list +
+   load-into-play, unshare delists immediately.
+4. **Tab IA per `cloud/DESIGN-companion-tabs-v1.md`**: PLAY / TRAIN / EXPLORE;
+   keyless visitor = access page (present behavior); honest progress states
+   per design §4A — staged train progress from REAL backend stage transitions
+   (train seam records its stage in session state; `/api/status` exposes it),
+   loading/slow/dead distinguishable on the world-load overlay.
+
+Invariant reading (disclosed): R6 gates ingest/train/reset for the PUBLIC
+(keyless) surface — unchanged. ACCESS-KEYED visitors are authorized users of
+the hosted companion (the operator issues the keys), so keyed training is the
+companion's normal owner power, not a public-mode regression. Hosted ingest =
+audio uploads to the operator's own server — the operator-accepted demo
+topology recorded above. R1–R5, CS-1..CS-5 otherwise untouched; steering
+remains region-tilt-lane-only with the safe envelope; no cloud decoder.
+
+Harness (must bite): existing cloud suite stays green + EXP-A..E from this
+prereg + AUTH (keyless 401 on every gated route; bad key rejected; keyed ok)
++ MEM (the shared-demo singleton is actually shared; the LRU cap evicts; a
+second concurrent train is refused honestly) + PROG (train stages appear in
+/api/status in order; no stage skipped or fabricated).
+
+Deploy sequencing: builder → ets-auditor PASS (notes fixed) → merge to main →
+connect Railway service to GitHub main → deploy → verify live (health + auth
++ play path) → record. Rollback point: Railway deployment ddcadfb0 (running
+image retained in deployment history) + the operator's snapshot download.
+
+## AUDIT RESULT — demo-phase build (2026-07-17)
+
+ets-auditor: **PASS-WITH-NOTES** on commit 113217e. All claims verified (scope
+clean; keyless byte-faithful; gate sound incl. traversal guard; memory bounds
+real with leak-hunt clean; share/unshare revokes, EXP-D demo-analog reading
+ACCEPTED; steering single-lane with envelope+cap; progress signal-bound; 61/61
+tests + standalone verifier reproduced by the auditor).
+- MUST-FIX (governance) — R1's server-side-library clause amended on the
+  record in COMPANION_INVARIANTS.md (opt-in shared sets, demo phase,
+  attribution preserved): DONE in this commit.
+- Notes: per-set steer rate caps deferred to the hardened fork (operator-
+  scoped); CatalogEntry.owner_token dead code (remove in hardened pass);
+  eviction-cuts-live-listeners now disclosed in engine_bridge.py; catalog
+  text escaping present, catalog-trust question stays open for hardened fork.

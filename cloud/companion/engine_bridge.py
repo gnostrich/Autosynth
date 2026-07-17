@@ -77,9 +77,16 @@ class StreamPlayer:
         self._bar_index = 0
         # latest read-only telemetry (roles 0..1, elapsed seconds) — for /api/telemetry
         self.telemetry = {"roles": [0.0] * self.M, "t": 0.0, "bar": 0}
-        # produced PCM waiting to be streamed (bytes of int16 mono @ sr)
-        import queue
-        self._pcm_q: "queue.Queue[bytes]" = queue.Queue(maxsize=64)
+        # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
+        # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
+        # set several visitors opened) can serve concurrent listeners without any
+        # listener stealing another's audio. Steer + telemetry AND TRANSPORT
+        # (play/stop) are shared state on a shared engine — a disclosed
+        # consequence of one engine per world: concurrent listeners co-play one
+        # live mix. An LRU-evicted engine stops mid-stream for any current
+        # listener (the memory bound is real; the world file reloads on demand).
+        self._subscribers: set = set()
+        self._sub_lock = threading.Lock()
 
     # --- world info ---------------------------------------------------------
     def world_info(self) -> dict:
@@ -156,16 +163,39 @@ class StreamPlayer:
         return pcm, roles
 
     # --- transport / streaming ---------------------------------------------
+    def subscribe(self):
+        """Register a NEW listener queue and ensure the produce loop is running.
+        Each /api/stream connection gets its own queue (fan-out) so concurrent
+        listeners on a shared engine never steal each other's PCM."""
+        import queue
+        q: "queue.Queue[bytes]" = queue.Queue(maxsize=64)
+        with self._sub_lock:
+            self._subscribers.add(q)
+        self.start()
+        return q
+
+    def unsubscribe(self, q) -> None:
+        with self._sub_lock:
+            self._subscribers.discard(q)
+
     def _loop(self):
         while self._playing.is_set():
             try:
                 pcm, _ = self.produce_one_bar()
             except Exception:
                 break
-            try:
-                self._pcm_q.put(pcm, timeout=2.0)
-            except Exception:
-                pass
+            with self._sub_lock:
+                subs = list(self._subscribers)
+            for q in subs:
+                try:
+                    q.put_nowait(pcm)
+                except Exception:
+                    # subscriber fell behind: drop its oldest bar, keep it current.
+                    try:
+                        q.get_nowait()
+                        q.put_nowait(pcm)
+                    except Exception:
+                        pass
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -176,26 +206,34 @@ class StreamPlayer:
 
     def stop(self):
         self._playing.clear()
-        # drain
-        try:
-            while True:
-                self._pcm_q.get_nowait()
-        except Exception:
-            pass
+        # drain every subscriber queue
+        with self._sub_lock:
+            subs = list(self._subscribers)
+        for q in subs:
+            try:
+                while True:
+                    q.get_nowait()
+            except Exception:
+                pass
 
     def wav_header(self, data_len: int = 0xFFFFFFFF - 44) -> bytes:
         """A streaming WAV header (mono int16 @ sr) with an open-ended size."""
         return _wav_header(self.sr, 1, data_len)
 
     def stream_chunks(self):
-        """Yield the WAV header then PCM chunks as bars are produced, until stop."""
-        yield self.wav_header()
+        """Yield the WAV header then this listener's PCM chunks as bars are produced,
+        until stop. Each caller gets its OWN fan-out queue (see :meth:`subscribe`)."""
         import queue
-        while self._playing.is_set():
-            try:
-                yield self._pcm_q.get(timeout=1.0)
-            except queue.Empty:
-                continue
+        yield self.wav_header()
+        q = self.subscribe()
+        try:
+            while self._playing.is_set():
+                try:
+                    yield q.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+        finally:
+            self.unsubscribe(q)
 
 
 def _to_int16(audio: np.ndarray) -> bytes:
