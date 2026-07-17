@@ -95,6 +95,13 @@ def clears_noise_floor(w) -> bool:
 # which is constructed holding the private token. This is a runtime tripwire
 # (paired with the static AST check in the harness): a gesture handler that
 # tries to write brightness has no token and raises.
+#
+# DISCLOSED LIMIT (auditor note 1, 2026-07-17): Python offers no true
+# capability sealing — code that imports this module can read
+# `_TELEMETRY_TOKEN` and forge a write. The token is a TRIPWIRE against
+# accidental misuse, not a sandbox; the load-bearing teeth are the harness's
+# TRANSITIVE static check (tests/field/test_field_inv.py), the single-lane
+# wire spy, and the byte-identical delete test (tests/field/test_field_d_*).
 
 _TELEMETRY_TOKEN = object()
 

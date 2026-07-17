@@ -93,3 +93,23 @@ Engine tree: zero diffs. `cloud/`: zero diffs. Root `ets/`: zero diffs.
    profile, never the truncated set).
 5. The unit-square brightness wall (track-grain) — confirm the tooltip + docs
    state it and no code fakes per-unit weight.
+
+## Audit result (2026-07-17)
+
+ets-auditor (Opus-class, read-only, adversarial): **PASS-WITH-NOTES — zero
+must-fix; merge may proceed.** All claims a–l verified (change surface isolated
+to ui-v6/** + root docs; engine byte-identical; FIELD-INV bites; single-lane
+wire; real-writer FIELD-A/B; deleted-test honesty; walls real; zero new test
+failures vs the untouched baseline — ui-v6 failures a strict subset).
+
+Notes, all NOTE-class, all addressed before merge:
+1. `_TELEMETRY_TOKEN` is a forgeable module global (inherent Python limit) →
+   now disclosed in field.py; the load-bearing teeth are the static + wire +
+   byte-identical tests, as the auditor observed.
+2. The FIELD-INV static check was direct-call-only → strengthened to a
+   TRANSITIVE call-graph check (handler → same-module helper → writer is now
+   flagged), with a new laundered-echo bite fixture proving it. 30/30 green.
+3. Root ledger entry for ui-v6 missing → the versioning agent found LEDGER.md
+   is GENERATED from LEDGER_DATA.json (direct edits are wiped by the rebuild
+   hook — a surfaced wall, not papered over) and added the ui-v6 entry at the
+   true source (plus backfilled missing historical rows), then regenerated.

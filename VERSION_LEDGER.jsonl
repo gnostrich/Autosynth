@@ -416,3 +416,6 @@
 {"head": "807daf3", "path": "ui-v6/REPORT-uiv6-field-build.md", "tool": "Write", "ts": "2026-07-17T15:44:27+00:00"}
 {"head": "807daf3", "path": "LEDGER.md", "tool": "Edit", "ts": "2026-07-17T15:46:46+00:00"}
 {"head": "f0868df", "path": "LEDGER_DATA.json", "tool": "Edit", "ts": "2026-07-17T15:51:45+00:00"}
+{"head": "2a00205", "path": "ui-v6/tests/field/test_field_inv.py", "tool": "Edit", "ts": "2026-07-17T15:54:53+00:00"}
+{"head": "2a00205", "path": "ui-v6/tests/field/test_field_inv.py", "tool": "Edit", "ts": "2026-07-17T15:55:03+00:00"}
+{"head": "2a00205", "path": "ui-v6/ets/instrument/field.py", "tool": "Edit", "ts": "2026-07-17T15:55:11+00:00"}

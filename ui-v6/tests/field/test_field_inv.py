@@ -41,17 +41,37 @@ def _called_names(fn_node: ast.AST):
 
 
 def _input_handler_violations(source: str):
-    """Names of brightness writers reachable directly from input handlers in
-    `source`. The shared static check used both on the REAL module (must be
-    empty) and on the echo fixture (must be non-empty — proves it bites)."""
+    """Names of brightness writers reachable from input handlers in `source` —
+    TRANSITIVELY: a handler that delegates to a private helper (any function
+    defined in the same source) which reaches a writer is flagged too, so the
+    check cannot be dodged by one level of indirection (auditor note 2,
+    2026-07-17). The shared static check is used both on the REAL module (must
+    be empty) and on the echo fixtures (must be non-empty — proves it bites)."""
     tree = ast.parse(source)
-    bad = []
+    # call graph over every function/method defined in the source, by name.
+    calls_of = {}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and node.name in INPUT_HANDLERS:
-            for called in _called_names(node):
-                if called in BRIGHTNESS_WRITERS:
-                    bad.append((node.name, called))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            calls_of.setdefault(node.name, set()).update(_called_names(node))
+
+    def reachable_writers(fn: str, seen=None):
+        seen = set() if seen is None else seen
+        if fn in seen:
+            return set()
+        seen.add(fn)
+        out = set()
+        for called in calls_of.get(fn, ()):
+            if called in BRIGHTNESS_WRITERS:
+                out.add(called)
+            if called in calls_of:                  # same-source helper: follow
+                out |= reachable_writers(called, seen)
+        return out
+
+    bad = []
+    for handler in INPUT_HANDLERS:
+        if handler in calls_of:
+            for w in sorted(reachable_writers(handler)):
+                bad.append((handler, w))
     return bad
 
 
@@ -114,10 +134,27 @@ class EchoField:
 '''
 
 
+_LAUNDERED_ECHO_SRC = '''
+class LaunderedEchoField:
+    """FORBIDDEN pattern, hidden one call deep: handler -> helper -> writer."""
+    def _apply(self, lvl):
+        self.model.telemetry_writer().apply_roleactivity([lvl])   # echo!
+    def wheelEvent(self, ev):
+        self._apply(ev.angleDelta().y() / 120.0)
+'''
+
+
 def test_static_check_bites_on_echo_fixture():
     assert _input_handler_violations(_ECHO_WIDGET_SRC), \
         "the FIELD-INV static check failed to flag a direct input->brightness " \
         "echo — the check does not bite"
+
+
+def test_static_check_bites_transitively_through_helpers():
+    """Auditor note 2 (2026-07-17): the check must follow a handler that
+    launders the write through a same-module helper."""
+    assert _input_handler_violations(_LAUNDERED_ECHO_SRC), \
+        "the FIELD-INV static check missed a handler->helper->writer chain"
 
 
 def test_runtime_guard_bites_on_echo_without_capability():
