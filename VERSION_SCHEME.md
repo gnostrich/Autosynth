@@ -57,7 +57,8 @@ psytech trained model. That string is the whole answer to "what am I running."
 | `ui-v2` | `architecture-v2/` | knob renaming (display-only) |
 | `ui-v3` | `architecture-v4/` | instrument surface (pads/tape/cue) |
 | `ui-v4` | `architecture-v5/` | interaction fixes (hover/pad/slew) — superseded by ui-v5 |
-| `ui-v5` | `architecture-v6/` | connected playable instrument (role pads + XY + tape + transport), drill-in (unit fine-steer), read-only telemetry light-up, live loudness/eardrum-safety cap, library browser — **ACTIVE** (auditor PASS + operator-approved door-test typing refinement, 2026-07-16) |
+| `ui-v5` | `architecture-v6/` | connected playable instrument (role pads + XY + tape + transport), drill-in (unit fine-steer), read-only telemetry light-up, live loudness/eardrum-safety cap, library browser — superseded by `ui-v6`; **preserved IMMUTABLE** as the rollback/A-B point (auditor PASS 2026-07-16) |
+| `ui-v6` | `ui-v6/` | THE FIELD: one unified push/zoom surface of squares (replaces pad grid + XY pad + drill-in), brightness = live settled telemetry, hover-scroll bias via the existing region-tilt lane, self-sizing zoom drill by the participation-ratio noise floor — **ACTIVE** (FIELD-INV + FIELD-A..E harness; see `ui-v6/PREREG-uiv6-field.md`) |
 | `instance:psytech` | repo root (embedded founding) + pointer `instantiations/psytech/` | **ACTIVE** |
 | `instance:futuregarage` | `instantiations/futuregarage/` (full fork) | trained, on `engine-v1` |
 

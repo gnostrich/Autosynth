@@ -1,9 +1,9 @@
-"""ETS Feature 3 — the INSTRUMENT HALF: pad grid + tape/now-playing view +
-transport + cue/PFL.
+"""ETS instrument half (ui-v6): THE FIELD + tape/now-playing view + transport +
+cue/PFL.
 
-Nature (PREREG-feature3.md): a READ / TAP / MONITOR layer OUTSIDE the trained
-object. It lets the player SEE what the machine already chose (from the
-provenance the engine already produces), DRIVE it via the ONE existing
+Nature: a READ / PUSH / MONITOR layer OUTSIDE the trained object. It lets the
+player SEE what the machine already chose (from the read-only telemetry /
+provenance the engine already produces), BIAS it via the ONE existing
 region-tilt lane, and PREVIEW privately on a cue bus. It PINS nothing and opens
 NO new write path into settlement.
 
@@ -14,32 +14,33 @@ Boundary law (why this is a SEPARATE package, not part of ets.panel):
     NOT live inside ets.panel.
   * This package therefore imports ets.panel (to drive the region lane through
     the panel's EXISTING emitter path) but the trained object never imports it.
-  * The pure display models (`model`) read provenance/occupancy as plain numpy
-    structured arrays by COLUMN NAME — they import nothing from the trained
-    object (render/engine/writer/functional/geometry). That column-name contract
-    is what keeps the F3-B "door" static-check green: no monitor path reaches
-    settlement, F, render, or provenance-generation.
+  * The pure display models (`model`, `field.FieldModel`) read telemetry /
+    provenance as plain data — they import nothing from the trained object
+    (render/engine/writer/functional/geometry). That contract is what keeps the
+    F3-B "door" static-check green: no monitor path reaches settlement, F,
+    render, or provenance-generation.
 
-The ONLY sanctioned gesture→engine path is a transient/held spike on the
-existing region-tilt lane (ets.instrument.tap → ets.panel region path →
+The ONLY sanctioned gesture→engine path is the field's composite bias on the
+existing region-tilt lane (ets.instrument.field → ets.panel region path →
 /ets/lanes). Transport, cue, audition, and every readout are monitor-only.
+Governing invariant (FIELD-INV): you push → the engine re-settles → the display
+shows the ENGINE'S ANSWER; a square's fill brightness is its settled weight
+from telemetry, never the input echoed back.
 """
 from __future__ import annotations
 
 # Only the PURE, Qt-free, trained-object-free pieces are re-exported at package
-# import time. Widgets (pads/tape/app) import PySide6 and are imported directly
+# import time. Widgets (field/tape/app) import PySide6 and are imported directly
 # by the caller that has a Qt app, keeping headless/data tests light.
 from ets.instrument.model import (
     SoundingCell, sounding_cells, cells_at, track_palette,
     PadModel, TapeModel, MonitorState,
 )
-from ets.instrument.tap import RegionTapEnvelope, RegionTapController
 from ets.instrument.transport import Transport
 from ets.instrument.cue import CueMonitor
 
 __all__ = [
     "SoundingCell", "sounding_cells", "cells_at", "track_palette",
     "PadModel", "TapeModel", "MonitorState",
-    "RegionTapEnvelope", "RegionTapController",
     "Transport", "CueMonitor",
 ]

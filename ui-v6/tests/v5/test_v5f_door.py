@@ -89,10 +89,15 @@ def test_new_emission_helpers_route_through_the_single_push():
         assert "send_message" not in calls, f"{name} opened a direct send"
         assert "emit_tolerances" not in calls and "emit_hello" not in calls
 
-    # the pad reaches the engine only through the existing region path.
+    # ui-v6: the XY pad is REMOVED (the FIELD subsumes it); no _xy wiring may
+    # remain, and the field's whole-vector entry routes via the single _push.
     init = (ETS / "panel" / "widget.py").read_text()
-    assert "_xy.changed.connect(self._on_region_vector)" in init, \
-        "the XY pad is not wired to the existing region path"
+    assert "_xy.changed.connect" not in init, \
+        "a live XY pad wiring survived the ui-v6 removal"
+    srv = _fn(src, "set_region_vector")
+    srv_calls = {c.func.attr for c in ast.walk(srv)
+                 if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+    assert "_push" in srv_calls and "send_message" not in srv_calls
     # _push is still the one lane emit (calls emitter.emit, no new address).
     push = _fn(src, "_push")
     attrs = {c.func.attr for c in ast.walk(push)

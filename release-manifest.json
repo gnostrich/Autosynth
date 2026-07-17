@@ -1,6 +1,6 @@
 {
   "_comment": "The active ETS release — a pinned tuple across the version axes (see VERSION_SCHEME.md). This file is the single source of truth for 'what am I running'.",
-  "release": "engine-v1 · ui-v5 · psytech (local) | cloud: anchor-fit offload (cloud-mvp1)",
+  "release": "engine-v1 · ui-v6 · psytech (local) | cloud: anchor-fit offload (cloud-mvp1)",
   "engine": {
     "id": "engine-v1",
     "location": "repo root (ets/, corpus.etsworld, ets/calibration/)",
@@ -8,14 +8,15 @@
     "verified_by": "scripts/verify_version.py against verification/canonical_manifest.json"
   },
   "ui": {
-    "id": "ui-v5",
-    "location": "architecture-v6/",
-    "title": "connected playable instrument (role pads + XY + tape + transport), drill-in (unit fine-steer), read-only telemetry light-up, live loudness/eardrum-safety cap, library browser",
-    "status": "merged",
-    "auditor": "PASS (substantive) + operator-approved door-test typing refinement (2026-07-16)",
+    "id": "ui-v6",
+    "location": "ui-v6/",
+    "title": "THE FIELD — one unified push/zoom surface of squares (replaces pad grid + XY pad + drill-in); brightness = live settled telemetry; hover-scroll bias via the existing region-tilt lane; self-sizing zoom drill (participation-ratio noise floor)",
+    "status": "built (audit pending)",
+    "auditor": "PENDING — ets-auditor pass required before merge",
     "runs_on": "engine-v1",
     "offline_byte_identical": true,
-    "single_region_tilt_authority": true
+    "single_region_tilt_authority": true,
+    "rollback": "ui-v5 (architecture-v6/, immutable; tag pre-uiv6-field-2026-07-17)"
   },
   "instance": {
     "id": "psytech",
@@ -31,7 +32,12 @@
     "boundary": "only stage-3 gauge-invariant cost matrices + masses cross device->cloud (CS-1..CS-5, verified biting); raw audio + stage-2 recipes never uploaded; no cloud decoder; world returns with device-verifiable receipts",
     "wall": "NCE LAMBDA fit + scramble exam stay DEVICE-LOCAL (they consume stage-2 recipe data -> cannot cross CS-1); full cloud training is a follow-up needing a prototype-only exam reformulation",
     "deploy": "LIVE on Railway (project 'thorough-serenity', service Geodesic-Mixing) at https://geodesic-mixing-production.up.railway.app — deployed from a code-only build context (ets/ + cloud/ only; no corpus/worlds/samples uploaded). Single-user bearer gate ACTIVE (ETS_TRAIN_TOKEN): unauthenticated /train -> 401; authorized real stage-3 job -> 200 + verifiable receipt (end-to-end confirmed 2026-07-17). /health probe green.",
-    "deploy_verified": {"health": "200", "unauth_train": "401", "authorized_train": "200 + receipt verified", "roundtrip_s": 0.58}
+    "deploy_verified": {
+      "health": "200",
+      "unauth_train": "401",
+      "authorized_train": "200 + receipt verified",
+      "roundtrip_s": 0.58
+    }
   },
   "deployment_mvp2": {
     "id": "cloud-mvp2",
@@ -46,8 +52,18 @@
     "verified": "cloud suite 39/39; seam_verify.py (LIVE Railway): trained world builds, embedded sigma_phi (no STALE), steered bar DIFFERS from u=0 (steering live), all bars eardrum-capped"
   },
   "also_available": {
-    "instances": ["futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"],
-    "ui_history": ["ui-v1 (founding panel)", "ui-v2 (architecture-v2, knob naming)", "ui-v3 (architecture-v4, instrument surface)", "ui-v4 (architecture-v5, interaction fixes)"],
-    "sealed": ["engine-v2-x (_sealed/architecture-v3-sampler-FAILED, failed sampler)"]
+    "instances": [
+      "futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"
+    ],
+    "ui_history": [
+      "ui-v1 (founding panel)",
+      "ui-v2 (architecture-v2, knob naming)",
+      "ui-v3 (architecture-v4, instrument surface)",
+      "ui-v4 (architecture-v5, interaction fixes)",
+      "ui-v5 (architecture-v6, pads+XY+drill instrument — immutable rollback for ui-v6)"
+    ],
+    "sealed": [
+      "engine-v2-x (_sealed/architecture-v3-sampler-FAILED, failed sampler)"
+    ]
   }
 }

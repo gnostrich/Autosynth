@@ -42,19 +42,16 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
 - **Next action (operator):** confirm `git log -1` on the running checkout matches origin
   HEAD of the branch; if not, pull and re-run.
 
-## 3. Pad navigation stickiness  🟢  (ready; independent of #1)
-- Bug: `w=1/dist` weighting pins you to the nearest region — can't roam across terrains.
-- Fix designed: soft (Gaussian/softmax) kernel. ui-v5 forked (`architecture-v6/`), prereg
-  written (`PREREG-uiv5-padfeel.md`), builder NOT started (paused for triage).
-- **Next action (me):** spawn builder for the roam fix (+ emit-throttle IF #1 = emit flood).
+## 3. Pad navigation stickiness  ✅ CLOSED by ui-v6 (2026-07-17)
+- The soft-kernel roam fix shipped in ui-v5; ui-v6 then REMOVED the XY pad entirely —
+  the FIELD surface (`ui-v6/`, PREREG-uiv6-field.md) subsumes it (biasing toward
+  material IS the blend). No further action.
 
-## 4. MPC pad grid — not wired live  🟡  (decision)
-- The grid exists but is a disconnected display; live light-up needs the engine→UI
-  provenance feed, which is a WALLED item (new OSC address breaks the closed message
-  space H-6). By design the pads are a VIEW + region-bias, NOT a sample-trigger keyboard.
-- **Decision needed:** (a) leave as-is (dot pad is the instrument); (b) build the live
-  provenance feed via a pre-registered H-6 revision (light-up + connected grid); (c) drop
-  the grid. Recommend deciding AFTER #1/#3 so play works first.
+## 4. MPC pad grid — not wired live  ✅ RESOLVED by the FIELD directive (2026-07-17)
+- The operator's FIELD directive replaced the pad grid (and XY + drill) with ONE
+  unified field of squares (`ui-v6/`), lit from the existing read-only telemetry —
+  no new OSC address, H-6 intact. The old surface is preserved immutable in
+  `architecture-v6/` as the rollback/A-B point.
 
 ## 5. Thin-UI packaging refactor  ⚪  (deferred, disclosed)
 - "Thin ui-vN" is blocked by the shared `ets` namespace (engine+UI same package). Needs a
@@ -110,6 +107,27 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
 - **TBD — multi-user expansion:** deferred by operator. Sequence = single-user MVP-2 →
   **one more upgrade (TBD, to be named)** → multi-user. Needs key issuance/revocation/
   quotas + a store, and single-tenant-per-deploy vs. shared-multi-tenant call. Parked.
+
+## 9. ets-web Railway service CRASHED  🔴  (operator input needed, 2026-07-17)
+- A second Railway service `ets-web` (ets-web-production.up.railway.app, deploy
+  `ddcadfb0`) is in **Crashed** state. Its deploy log spams the region-DISARM
+  warning (`DISARMED lane leaned: region[0], region[1]` — the HONEST disarm: the
+  σ_φ instrument measured zero untilted region fluctuation on that corpus/world;
+  u transmits, no tilt). That warning is expected behavior, per-steer, NOT a
+  crash cause. The visible log contains no traceback; neither `ddcadfb0` nor the
+  healthy `Geodesic-Mixing` service's `43c3e43a` matches any commit in this repo
+  (likely Railway deployment IDs). The repo has no `ets-web` config.
+- **Next action (operator):** paste the TAIL of the crashed deploy log (the
+  exit/traceback lines) + the service's start command, or grant Railway access.
+  Separately worth doing: rate-limit the per-steer DISARM warning (log-noise).
+
+## 10. ui-v5 stale hover-inert static assertion on main  ⚪  (disclosed, mooted in ui-v6)
+- `architecture-v6/tests/v5/test_v5b_hover_inert.py::test_tap_surface_has_no_hover_move_channel`
+  fails on main: `RegionTapPads` gained a `mouseMoveEvent` in the merged drill
+  sprint (it only cancels the hold-timer and emits nothing — the INVARIANT holds;
+  the static check is stale). architecture-v6 is immutable history now, so it is
+  disclosed rather than patched; ui-v6 deletes the widget and carries the
+  invariant on the field (`tests/v5/test_v5b_hover_inert.py`, field edition).
 
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →

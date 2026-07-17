@@ -92,9 +92,11 @@ def _control_calls(src: str) -> set:
             if isinstance(n, ast.Attribute) and n.attr in FORBIDDEN_CALLS}
 
 
-def test_the_only_engine_bound_gesture_is_the_region_tap():
+def test_the_only_engine_bound_gesture_is_the_region_bias():
     """The single panel entry the instrument calls to DRIVE (control-mutate) the
-    engine is `tap_region_anchor` (the existing region-tilt lane). It must NOT
+    engine is the existing region-tilt lane: in ui-v6 the FIELD's composite
+    bias via `set_region_vector` (the whole-vector twin of `tap_region_anchor`,
+    same `_push`/`/ets/lanes` path). It must NOT
     name any other control-mutating panel/engine entry (settle / write_bar /
     put_lanes / _push / _on_region* / _on_scalar / emit_tolerances).
 
@@ -105,15 +107,15 @@ def test_the_only_engine_bound_gesture_is_the_region_tap():
     test's INTENT is unchanged — the sole gesture→engine CONTROL path is the
     region tap — while the read-only subscription handshake is correctly allowed."""
     called = set()
-    tap_seen = False
+    bias_seen = False
     for p, src in _sources():
         for n in ast.walk(ast.parse(src)):
             if isinstance(n, ast.Attribute):
-                if n.attr == "tap_region_anchor":
-                    tap_seen = True
+                if n.attr in ("set_region_vector", "tap_region_anchor"):
+                    bias_seen = True
                 if n.attr in FORBIDDEN_CALLS:
                     called.add((p.name, n.attr))
-    assert tap_seen, "the region tap entry (tap_region_anchor) is never used"
+    assert bias_seen, "the region bias entry (set_region_vector) is never used"
     assert not called, (
         f"instrument calls a non-sanctioned control entry: {called} — the only "
         "gesture→engine path is the region tap (PREREG-feature3 hard lines)")
@@ -128,17 +130,18 @@ def test_the_only_engine_bound_gesture_is_the_region_tap():
         "emit_hello is a read-only telemetry subscription, not a control entry"
 
 
-def test_region_tap_reaches_the_engine_only_via_the_existing_emitter():
-    """`Panel.tap_region_anchor` must route through the SAME `_push`/emitter as
-    the existing region path — no new OSC address, no second channel. (Proven on
-    the panel source: the method body calls _push and touches no new emitter.)"""
+def test_region_bias_reaches_the_engine_only_via_the_existing_emitter():
+    """Both region entries (`set_region_vector` — the field's path — and
+    `tap_region_anchor`) must route through the SAME `_push`/emitter as the
+    existing region path — no new OSC address, no second channel. (Proven on
+    the panel source: each method body calls _push and touches no new emitter.)"""
     panel_src = (INSTR.parents[0] / "panel" / "widget.py").read_text()
     tree = ast.parse(panel_src)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "tap_region_anchor")
-    calls = {c.func.attr for c in ast.walk(fn)
-             if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
-    assert "_push" in calls, "tap_region_anchor must push via the existing path"
-    # it must not open its own send_message / emitter address.
-    assert "send_message" not in calls, \
-        "tap_region_anchor opened a direct OSC send (second channel)"
+    for name in ("set_region_vector", "tap_region_anchor"):
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == name)
+        calls = {c.func.attr for c in ast.walk(fn)
+                 if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+        assert "_push" in calls, f"{name} must push via the existing path"
+        assert "send_message" not in calls, \
+            f"{name} opened a direct OSC send (second channel)"

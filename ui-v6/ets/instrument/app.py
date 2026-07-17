@@ -1,19 +1,24 @@
-"""The INSTRUMENT window (F3): the existing panel + the pad grid + tape view +
+"""The INSTRUMENT window (ui-v6): the existing panel + THE FIELD + tape view +
 transport + cue, wired together. Native Qt only (I-13).
+
+The FIELD replaces the ui-v5 pad grid + tap surface in this monitor window too:
+one surface of squares, fills fed ONLY from the MonitorState a feeder (offline
+render provenance, out of this package) populates — via the field model's
+capability-guarded telemetry writer (FIELD-INV). The ONLY gesture that leaves
+for the engine is the field's composite bias, routed:
+
+    FieldView.bias_changed -> FieldModel.region_vector()
+                           -> panel.set_region_vector -> /ets/lanes
 
 Composition law: this module imports ets.panel (the control surface) and the
 instrument widgets, and NOTHING from the trained object (render/engine/writer/
-functional/geometry). It receives a `MonitorState` that some feeder (the engine,
-offline, out of this package) fills; the widgets READ it. The ONLY gesture that
-leaves for the engine is the region tap/hold, routed:
+functional/geometry).
 
-    RegionTapPads → RegionTapController → panel.tap_region_anchor → /ets/lanes
-
-Live provenance feed is a DISCLOSED WALL (see the Feature-3 report): streaming the
-engine's provenance to this second process would need a new inbound OSC address,
-which breaks the closed message space (H-6). So the tape/pad DISPLAY is fed from a
-MonitorState that an offline render (or a future spec-revised feed) populates; the
-window is fully functional against that, and the tap/transport/cue paths are live.
+Offline honesty: this monitor is fed from provenance (per-track activity); no
+role-activity or profile telemetry exists here, so ROLE squares appear with the
+world's public anchor count K but glow only if a feeder supplies levels, and
+TRACK squares carry no profile (rendered ATOMIC — no fake drill affordance).
+The connected instrument (ets.instrument.live) is the full-depth field.
 """
 from __future__ import annotations
 
@@ -25,9 +30,8 @@ from PySide6.QtWidgets import (
 )
 
 from ets.instrument.cue import CueMonitor
+from ets.instrument.field import FieldModel, FieldView
 from ets.instrument.model import MonitorState
-from ets.instrument.pads import RegionTapPads, TrackPadGrid
-from ets.instrument.tap import RegionTapController
 from ets.instrument.tape import TapeView
 from ets.instrument.transport import Transport
 
@@ -45,22 +49,23 @@ class InstrumentWindow(QWidget):
         root = QVBoxLayout(self)
         root.addWidget(self.panel)
 
-        # material pads (display) + tape/now-playing view.
+        # THE FIELD (display fed from the monitor's provenance-derived
+        # activity) + tape/now-playing view.
+        self.field_model = FieldModel()
+        self._field_writer = self.field_model.telemetry_writer()
+        if n_anchors > 0:
+            # structural init from the world's PUBLIC anchor count: real roles,
+            # zero glow until a feeder supplies settled levels (real-or-absent).
+            self._field_writer.apply_roleactivity([0.0] * int(n_anchors))
         mid = QHBoxLayout()
-        self.pad_grid = TrackPadGrid(self.monitor.pads, self)
+        self.field = FieldView(self.field_model, self)
         self.tape_view = TapeView(self.monitor.tape, self)
-        mid.addWidget(self.pad_grid)
+        mid.addWidget(self.field)
         mid.addWidget(self.tape_view, 2)
         root.addLayout(mid)
 
-        # region tap/hold surface → the ONE sanctioned engine path.
-        self.tap_pads = RegionTapPads(n_anchors, self)
-        self.tap = RegionTapController(
-            n_anchors, region_sink=self.panel.tap_region_anchor)
-        self.tap_pads.tapped.connect(self.tap.tap)
-        self.tap_pads.held.connect(self.tap.hold)
-        self.tap_pads.released.connect(self.tap.release)
-        root.addWidget(self.tap_pads)
+        # field bias -> the ONE sanctioned engine path (panel region lane).
+        self.field.bias_changed.connect(self._push_field_bias)
 
         # transport + cue controls.
         ctl = QHBoxLayout()
@@ -82,20 +87,22 @@ class InstrumentWindow(QWidget):
         self._timer.start(tick_ms)
 
     def set_anchor_count(self, K: int) -> None:
-        self.tap_pads.set_anchor_count(K)
-        self.tap.set_anchor_count(K)
+        self._field_writer.apply_roleactivity([0.0] * int(K))
+
+    def _push_field_bias(self) -> None:
+        K = self.panel.u.n_anchors
+        if K > 0:
+            self.panel.set_region_vector(self.field_model.region_vector(K))
 
     def _on_tick(self) -> None:
         dt = self._tick_s
-        # ease the region tap envelopes onto the lane (the sanctioned path).
-        self.tap.advance(dt)
-        for i in range(self.tap.n_anchors):
-            self.tap_pads.set_value(i, self.tap.value(i))
-        # advance the playhead over produced output; refresh the display.
+        # feed the field from the monitor's provenance-derived per-track
+        # activity (the capability-guarded path), then advance the playhead.
+        self._field_writer.apply_nowplaying(dict(self.monitor.pads.activity))
         pos = self.transport.tick(dt)
         self.monitor.tape.set_playhead(pos)
         self._pos.setText(f"t {self.transport.seconds:.2f}s")
-        self.pad_grid.update()
+        self.field.update()
         self.tape_view.update()
 
 
@@ -122,6 +129,7 @@ def main(argv=None) -> int:
         win.repaint()
         app.processEvents()
         print(f"[instrument] smoke ok (anchors={args.anchors}, "
+              f"squares={len(win.field.current_squares())}, "
               f"lanes={list(panel.lane_control_ids)})")
         return 0
     return app.exec()

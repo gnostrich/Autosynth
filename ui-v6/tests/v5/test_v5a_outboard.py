@@ -73,7 +73,7 @@ def test_main_out_byte_identical_with_and_without_v5_interaction(tmp_path):
 
     # construct + exercise the v5 interaction surface in-process, then re-render.
     from PySide6.QtWidgets import QApplication
-    from ets.panel.widget import Panel, _RegionXYPad
+    from ets.panel.widget import Panel
     from ets.panel.envelope import RegionSlew, clamp_region, SAFE_REGION_MAGNITUDE
     QApplication.instance() or QApplication([])
     panel = Panel(emitter=None, n_anchors=4)
@@ -89,12 +89,20 @@ def test_main_out_byte_identical_with_and_without_v5_interaction(tmp_path):
         def ignore(self):
             pass
 
-    pad = panel._xy
-    pad.mousePressEvent(_Ev(120, 40))    # arm
-    pad.mouseMoveEvent(_Ev(130, 30))     # move (armed)
-    pad.mousePressEvent(_Ev(130, 30))    # drop
+    # ui-v6: the region surface is the FIELD; exercise the same region path
+    # (whole-vector + single-anchor entries) plus a field gesture in-process.
+    import numpy as _np
+    panel.set_region_vector(_np.array([0.8, -0.4, 0.0, 0.2], dtype=_np.float32))
+    panel.tap_region_anchor(1, 0.5)
     for _ in range(30):
         panel.tick_slew()
+    from ets.instrument.field import FieldModel, FieldView
+    fm = FieldModel()
+    fm.telemetry_writer().apply_roleactivity([0.5, 0.1, 0.9, 0.2])
+    fv = FieldView(fm)
+    fv.resize(240, 200)
+    fm.add_bias(("role", 2), -0.5)
+    fv.repaint()
     _ = clamp_region(np.array([9.0, -9.0, 0.0, 0.0], dtype=np.float32))
     _ = RegionSlew().step([1.0, 0.0])
     _ = SAFE_REGION_MAGNITUDE

@@ -1,63 +1,58 @@
-"""F3.2 pad tap/hold behaviour (via the existing region lane) + the affordance-
-honesty fixes (disarmed lanes render visibly disabled).
+"""Field bias behaviour (via the existing region lane) + the affordance-honesty
+fixes (disarmed lanes render visibly disabled). ui-v6 FIELD edition: the pad
+tap/hold envelope (ets.instrument.tap) is removed with the pad surface; the
+bias accumulator replaces it as the gesture state.
 
 These are not one of the five neutrality nets (A..E) but they pin the two live
-behaviours those nets bound: that a tap actually drives the region lane (and only
-it), and that a disarmed lane is shown disabled.
+behaviours those nets bound: that a bias actually drives the region lane (and
+only it), and that a disarmed lane is shown disabled.
 """
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
-from ets.instrument.tap import RegionTapController, RegionTapEnvelope
-from ets.panel.lanes import spec as lane_spec
+from ets.instrument.field import FieldModel
 
 
-def test_tap_is_a_transient_spike_that_eases_to_zero():
-    env = RegionTapEnvelope(peak=3.0, lag_s=0.1)
-    env.tap()
-    assert env.value == 3.0 and env.state == "transient"
-    # eases toward zero over the lane's constraint-lag.
-    for _ in range(200):
-        env.advance(0.02)
-    assert env.value == 0.0 and env.state == "idle"
+def test_bias_accumulates_and_unwinds_to_zero():
+    m = FieldModel()
+    m.telemetry_writer().apply_roleactivity([0.1, 0.1])
+    k = ("role", 1)
+    m.add_bias(k, 0.5)
+    m.add_bias(k, 0.25)
+    assert m.bias_of(k) == pytest.approx(0.75)
+    # scrolling back down unwinds the lean symmetrically to exactly zero
+    # (and a zero bias leaves no residue in the ledger).
+    m.add_bias(k, -0.75)
+    assert m.bias_of(k) == 0.0
+    assert float(m.region_vector(2)[1]) == 0.0
 
 
-def test_hold_sustains_until_release_then_eases():
-    env = RegionTapEnvelope(peak=3.0, lag_s=0.1)
-    env.hold()
-    for _ in range(50):
-        env.advance(0.02)
-    assert env.value == 3.0 and env.state == "held"     # sustained
-    env.release()
-    for _ in range(200):
-        env.advance(0.02)
-    assert env.value == 0.0                              # eases after release
-
-
-def test_tap_controller_drives_only_the_region_lane_of_the_panel():
+def test_bias_drives_only_the_region_lane_of_the_panel():
     from PySide6.QtWidgets import QApplication
+    from ets.panel.envelope import SAFE_REGION_MAGNITUDE
     from ets.panel.widget import Panel
     QApplication.instance() or QApplication([])
     panel = Panel(emitter=None, n_anchors=4)
     before = panel.u.copy()
 
-    ctl = RegionTapController(4, region_sink=panel.tap_region_anchor)
-    ctl.tap(1)
-    # the tap landed on region anchor 1 (the sanctioned lane) at full scale.
-    assert panel.u.u_region[1] == pytest.approx(lane_spec("region").hi)
-    # NOTHING else moved: other anchors, the scalar leans, and T_s are untouched.
+    m = FieldModel()
+    m.telemetry_writer().apply_roleactivity([0.1] * 4)
+    m.add_bias(("role", 1), 1.0)
+    panel.set_region_vector(m.region_vector(4))
+    # the bias landed on region anchor 1 (the sanctioned lane) at the cap.
+    assert panel.u.u_region[1] == pytest.approx(SAFE_REGION_MAGNITUDE)
+    # NOTHING else moved: other anchors, the scalar leans, and T_s untouched.
     assert panel.u.u_region[0] == 0.0 and panel.u.u_region[2] == 0.0
     assert (panel.u.u_density, panel.u.u_continuity, panel.u.u_gauge,
             panel.u.u_novelty, panel.u.T_s) == (
         before.u_density, before.u_continuity, before.u_gauge,
         before.u_novelty, before.T_s)
 
-    # easing ticks bring the lane back toward zero (living loop, not a latch).
-    for _ in range(400):
-        ctl.advance(0.02)
-    assert panel.u.u_region[1] == pytest.approx(0.0, abs=1e-3)
+    # unwinding the bias brings the lane back to zero (living loop, no latch).
+    m.add_bias(("role", 1), -1.0)
+    panel.set_region_vector(m.region_vector(4))
+    assert panel.u.u_region[1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_disarmed_lanes_render_visibly_disabled():
@@ -69,7 +64,6 @@ def test_disarmed_lanes_render_visibly_disabled():
     panel.apply_disarmed(["region", "gauge"])          # engine-side ids
     assert not panel._strips["gauge"].isEnabled()
     assert not panel._region.isEnabled()
-    assert not panel._xy.isEnabled()
     # a lane the engine reports as ARMED is live.
     panel.apply_disarmed(["gauge"])                     # region now armed
     assert panel._region.isEnabled()

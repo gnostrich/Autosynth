@@ -1,5 +1,7 @@
-"""Native PySide6 panel widget (spec §8, §12) — the six lanes (strips + XY
-vector pad for REGION), the two declared tolerance knobs (LEASH/COMMA), meter
+"""Native PySide6 panel widget (spec §8, §12) — the six lanes (strips for
+REGION; ui-v6 removed the XY vector pad — the FIELD surface in
+ets.instrument.field subsumes it), the two declared tolerance knobs
+(LEASH/COMMA), meter
 jacks (the slide/loop pairs; the prior conflated drift jack was DELETED
 outright in directive-v1 Feature 2 Stage 1), clock display, MIDI CC learn.
 Headless-testable under QT_QPA_PLATFORM=offscreen.
@@ -21,7 +23,7 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox, QDoubleSpinBox, QGroupBox, QGridLayout, QHBoxLayout, QLabel,
@@ -270,11 +272,17 @@ class _RegionStrips(QGroupBox):
         sl.blockSignals(False)
 
 
-class _RegionXYPad(QWidget):
-    """The XY VECTOR PAD view of the REGION lane (spec §8 lane 1: "growable
-    channel strips / XY vector pad") — a POSITION-BASED pick-and-place surface
-    (Kaoss / vector-synth idiom). A UI affordance over the SAME u_region vector;
-    it introduces no lane and emits only through the one region path (C-3).
+# ui-v6: the XY VECTOR PAD (`_RegionXYPad`) is REMOVED. The FIELD surface
+# (ets.instrument.field) subsumes it: biasing toward material IS the blend, and
+# the field shows the real anchor geometry the XY pad only proxied. The REGION
+# lane keeps its §8-exhaustive control in `_RegionStrips` above; region tilt
+# still flows only through the one region path (`_push` -> /ets/lanes).
+# The prior XY implementation is intact one version back (architecture-v6/).
+
+
+class _RemovedRegionXYPad_uiv6:
+    """Tombstone for the removed XY pad (documentation only; never
+    instantiated). Original interaction model, for the record:
 
     Interaction model (architecture-v5 B2, ui-v5 pad-feel):
 
@@ -302,176 +310,6 @@ class _RegionXYPad(QWidget):
     above the safe envelope (B3.1 / V5-D).
     """
 
-    changed = Signal(object)   # full (K,) region lean vector
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self._K = 0
-        self._armed = False                   # dot follows the cursor iff armed
-        self._dot: Optional[QPointF] = None   # parked/following dot; None = centre
-        self.setMinimumSize(140, 140)
-        # Tracking is on ONLY so an armed dot can follow a button-up cursor; a
-        # disarmed move is ignored (passive hover is inert — B1/B2).
-        self.setMouseTracking(True)
-        self.setToolTip(_FACE["region"].tooltip())   # display-layer face alias
-
-    # --- geometry -------------------------------------------------------------
-    def _center(self):
-        return self.width() / 2.0, self.height() / 2.0
-
-    def _ring_radius(self) -> float:
-        return 0.42 * min(self.width(), self.height())
-
-    def _anchor_xy(self, i: int):
-        cx, cy = self._center()
-        r = self._ring_radius()
-        ang = 2.0 * math.pi * i / max(1, self._K)
-        return cx + r * math.cos(ang), cy + r * math.sin(ang)
-
-    def _clamp_to_ring(self, pt: QPointF) -> QPointF:
-        """Project a point into the safe ring: the dot cannot leave it (the ring
-        is the painted SAFE_REGION_MAGNITUDE wall — B3.1)."""
-        cx, cy = self._center()
-        dx, dy = pt.x() - cx, pt.y() - cy
-        d = math.hypot(dx, dy)
-        R = self._ring_radius()
-        if d > R and d > 0:
-            dx, dy = dx * R / d, dy * R / d
-        return QPointF(cx + dx, cy + dy)
-
-    def set_anchor_count(self, K: int) -> None:
-        self._K = int(K)
-        self.update()
-
-    @property
-    def is_armed(self) -> bool:
-        return self._armed
-
-    def _dominant(self) -> Optional[int]:
-        v = self._vector()
-        if v.size == 0 or float(np.max(np.abs(v))) <= 0.0:
-            return None
-        return int(np.argmax(np.abs(v)))
-
-    def _sigma(self, R: float) -> float:
-        """Kernel width = the ANCHOR-RING SPACING, derived from the ring geometry
-        (not a hand-picked magic number). K anchors sit evenly on the ring, so the
-        spacing between two NEIGHBOURING anchors is the chord 2·R·sin(π/K); that
-        is exactly the width over which a dot should blend from one region to its
-        neighbour. For K=1 (no neighbour) any positive width normalizes to the one
-        anchor, so we floor it at R."""
-        K = self._K
-        sigma = 2.0 * R * math.sin(math.pi / K) if K >= 2 else R
-        return max(sigma, 1e-6)
-
-    def _vector(self) -> np.ndarray:
-        """Region lean vector from the DOT POSITION via a SOFT (Gaussian) kernel
-        over distance to each anchor: w[i] = exp(-(d_i/σ)²), normalized, with σ the
-        anchor-ring spacing (see `_sigma`). Unlike the old inverse-distance
-        weighting — which spiked to ~all-mass at an anchor and PINNED the operator
-        to the nearest region — the soft kernel makes a dot placed BETWEEN anchors
-        genuinely blend its neighbours, so sweeping the pad changes the dominant
-        region smoothly and the whole surface is roamable (ui-v5 BUG-2).
-
-        Magnitude = SAFE_REGION_MAGNITUDE * (dot distance from centre / ring
-        radius); the dot at centre (or unset) gives an even/neutral, zero-magnitude
-        lean. The scale uses the safe cap, never the raw lane max, so the pad is a
-        clamped control (B3.1): each normalized weight ≤ 1 and throw ≤ 1, so no
-        component can exceed the cap."""
-        K = self._K
-        u = np.zeros(K, dtype=np.float32)
-        if K == 0 or self._dot is None:
-            return u
-        cx, cy = self._center()
-        x, y = self._dot.x(), self._dot.y()
-        R = self._ring_radius()
-        throw = min(1.0, math.hypot(x - cx, y - cy) / max(1e-6, R))
-        sigma = self._sigma(R)
-        w = np.zeros(K)
-        for i in range(K):
-            ax, ay = self._anchor_xy(i)
-            d = math.hypot(x - ax, y - ay)
-            w[i] = math.exp(-((d / sigma) ** 2))
-        s = w.sum()
-        w = (w / s) if s > 0.0 else np.full(K, 1.0 / K)   # degenerate -> even blend
-        u[:] = (SAFE_REGION_MAGNITUDE * throw) * w
-        return u
-
-    # --- interaction: pick-and-place ------------------------------------------
-    def mousePressEvent(self, ev) -> None:
-        """CLICK toggles arm/drop. Arm: dot jumps to cursor and follows. Drop:
-        park the dot where it is, stop following. Both set the region TARGET
-        (`changed`); the timer glides the wire to it (ui-v5 BUG-1)."""
-        if self._K <= 0:
-            ev.ignore()
-            return
-        self._dot = self._clamp_to_ring(ev.position())
-        self._armed = not self._armed          # arm on the 1st click, drop on the 2nd
-        self.changed.emit(self._vector())
-        self.update()
-        ev.accept()
-
-    def mouseMoveEvent(self, ev) -> None:
-        """Armed: the dot follows the cursor, updating the region TARGET (the
-        panel slews the wire toward it on its timer — ui-v5 BUG-1). Disarmed:
-        INERT — a passive hover changes and emits nothing (B1/B2)."""
-        if not self._armed:
-            ev.ignore()
-            return
-        self._dot = self._clamp_to_ring(ev.position())
-        self.changed.emit(self._vector())
-        self.update()
-        ev.accept()
-
-    # no wheelEvent: the pad is position-based; there is no scroll/throw channel.
-
-    def paintEvent(self, _ev) -> None:
-        qp = QPainter(self)
-        cx, cy = self._center()
-        R = self._ring_radius()
-        qp.setPen(QPen(Qt.gray, 1))
-        qp.drawRect(0, 0, self.width() - 1, self.height() - 1)
-
-        # the safe-envelope RING (= SAFE_REGION_MAGNITUDE); highlighted when armed
-        # so the operator sees armed vs parked at a glance.
-        qp.setPen(QPen(Qt.red if self._armed else Qt.darkGray, 2 if self._armed else 1))
-        qp.drawEllipse(QPointF(cx, cy), R, R)
-
-        dom = self._dominant()
-        for i in range(self._K):
-            ax, ay = self._anchor_xy(i)
-            if i == dom:
-                qp.setPen(QPen(Qt.red, 2))
-                qp.drawEllipse(QPointF(ax, ay), 5, 5)
-            else:
-                qp.setPen(QPen(Qt.gray, 1))
-                qp.drawEllipse(QPointF(ax, ay), 3, 3)
-            qp.drawText(int(ax) + 6, int(ay) + 4, f"a{i}")
-
-        # centre mark
-        qp.setPen(QPen(Qt.gray, 1))
-        qp.drawEllipse(QPointF(cx, cy), 2, 2)
-
-        if self._dot is not None:
-            # centre -> dot vector line, then the filled draggable dot.
-            qp.setPen(QPen(Qt.blue, 1))
-            qp.drawLine(QPointF(cx, cy), self._dot)
-            qp.setPen(QPen(Qt.black, 1))
-            qp.setBrush(Qt.blue if self._armed else Qt.darkBlue)
-            qp.drawEllipse(self._dot, 6, 6)
-            qp.setBrush(Qt.NoBrush)
-
-        # numeric lean readout: dominant anchor + its lean.
-        v = self._vector()
-        state = "ARMED" if self._armed else "parked"
-        if v.size and dom is not None:
-            qp.setPen(QPen(Qt.black, 1))
-            qp.drawText(6, self.height() - 6,
-                        f"{state}  lean a{dom}={float(v[dom]):.2f}")
-        else:
-            qp.setPen(QPen(Qt.black, 1))
-            qp.drawText(6, self.height() - 6, f"{state}  (centre)")
-        qp.end()
 
 
 class _ToleranceKnob(QWidget):
@@ -563,12 +401,10 @@ class Panel(QWidget):
         self._region = _RegionStrips(self)
         self._region.set_anchor_count(n_anchors)
         self._region.changed.connect(self._on_region)
-        self._xy = _RegionXYPad(self)
-        self._xy.set_anchor_count(n_anchors)
-        self._xy.changed.connect(self._on_region_vector)
+        # ui-v6: no XY pad here — the FIELD (ets.instrument.field) is the
+        # continuous region surface, feeding the SAME set_region_vector path.
         region_col = QVBoxLayout()
         region_col.addWidget(self._region)
-        region_col.addWidget(self._xy)
         lane_row.addLayout(region_col)
 
         # The four scalar direction lanes + the sharpness lane.
@@ -696,22 +532,6 @@ class Panel(QWidget):
             self._region.set_anchor(i, float(v[i]))
         self._push()
 
-    def _on_region_vector(self, vec) -> None:
-        """The XY pad view sets the whole region lean at once (same lane). It
-        updates ONLY the region TARGET (and mirrors it onto the strip sliders,
-        display); it does NOT push to the wire. An armed pad fires this on EVERY
-        mouseMove — pushing here would flood the engine with raw region jumps and
-        the live writer could not settle per bar (the reported grate, ui-v5
-        BUG-1). Instead the single timer (`tick_slew`, ~30 Hz) advances the slew
-        one bounded step toward this target, so a fast drag leaves the panel as
-        ONE smooth glide at a controlled rate, and a drop settles exactly on the
-        final target. No new channel: the wire emit is still `_push`."""
-        vec = np.asarray(vec, dtype=np.float32).reshape(-1)
-        n = min(self.u.n_anchors, vec.shape[0])
-        self.u.u_region[:n] = vec[:n]
-        for i in range(min(self._region.anchor_count, n)):
-            self._region.set_anchor(i, float(vec[i]))
-
     def _region_target(self) -> np.ndarray:
         """The clamped region TARGET (safe-envelope wall, B3.1). Reads only the
         panel's own control state — never settlement/F/render."""
@@ -754,7 +574,6 @@ class Panel(QWidget):
     def set_anchor_count(self, K: int) -> None:
         self.u.resize_region(K)
         self._region.set_anchor_count(K)
-        self._xy.set_anchor_count(K)
         # keep the outbound slew sized to the world support (preserves overlap).
         self._region_slew.reset(clamp_region(self.u.u_region))
 
@@ -815,7 +634,6 @@ class Panel(QWidget):
                 strip.setEnabled(eng_id not in dis)
         region_disarmed = "region" in dis
         self._region.setEnabled(not region_disarmed)
-        self._xy.setEnabled(not region_disarmed)
 
     # --- meters (display only) ------------------------------------------------
     def refresh_meters(self) -> None:
