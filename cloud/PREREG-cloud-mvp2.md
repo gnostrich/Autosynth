@@ -171,3 +171,11 @@ guaranteed." These resolve to ONE architecture:
 Net: Vercel serves the pretty UI code; the sealed local Docker container renders +
 holds data + couriers stage-3 to Railway; Railway does the anchor-fit. Nothing here
 weakens CS-1..CS-5 — it strengthens the ingest-safety story by sandboxing it.
+
+**Ingest-drop decision (2026-07-17):** PRIMARY = **in-browser drag-and-drop / file-
+select** (operator's call — most user-friendly). The browser reads the dropped files
+and streams the bytes to the LOCAL container over localhost (127.0.0.1) — a hop
+*within the machine*, never an internet upload; the bytes reach neither Vercel nor
+Railway. Folder-drop (OS file manager → mounted volume, browser never touches the
+bytes) is retained as a max-sealed FALLBACK for power users, not the default. Either
+way only stage-3 leaves, through the one whitelist guard.
