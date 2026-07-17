@@ -417,3 +417,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `6f73d04`
 - `Edit` cloud/PREREG-cloud-mvp2.md (2026-07-17T01:36:56+00:00)
+
+### at `b9c04f3`
+- `Edit` release-manifest.json (2026-07-17T06:28:46+00:00)
+- `Edit` OPEN_ENDS.md (2026-07-17T06:28:53+00:00)

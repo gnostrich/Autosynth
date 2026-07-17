@@ -30,7 +30,8 @@
     "auditor": "PASS-WITH-NOTES (2026-07-16)",
     "boundary": "only stage-3 gauge-invariant cost matrices + masses cross device->cloud (CS-1..CS-5, verified biting); raw audio + stage-2 recipes never uploaded; no cloud decoder; world returns with device-verifiable receipts",
     "wall": "NCE LAMBDA fit + scramble exam stay DEVICE-LOCAL (they consume stage-2 recipe data -> cannot cross CS-1); full cloud training is a follow-up needing a prototype-only exam reformulation",
-    "deploy": "deploy-ready (cloud/service/Dockerfile); verified locally as the cloud stand-in; real provisioning is the operator's cloud-account step"
+    "deploy": "LIVE on Railway (project 'thorough-serenity', service Geodesic-Mixing) at https://geodesic-mixing-production.up.railway.app — deployed from a code-only build context (ets/ + cloud/ only; no corpus/worlds/samples uploaded). Single-user bearer gate ACTIVE (ETS_TRAIN_TOKEN): unauthenticated /train -> 401; authorized real stage-3 job -> 200 + verifiable receipt (end-to-end confirmed 2026-07-17). /health probe green.",
+    "deploy_verified": {"health": "200", "unauth_train": "401", "authorized_train": "200 + receipt verified", "roundtrip_s": 0.58}
   },
   "also_available": {
     "instances": ["futuregarage (instantiations/futuregarage/, full fork, on engine-v1)"],
