@@ -651,3 +651,43 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `113217e`
 - `Edit` cloud/COMPANION_INVARIANTS.md (2026-07-17T17:05:20+00:00)
+
+### at `8038a62`
+- `Write` cloud/PREREG-web-field.md (2026-07-17T17:22:28+00:00)
+
+### at `c70f2a9`
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:23:03+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:23:10+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:23:21+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:23:47+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:24:00+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:24:04+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:24:11+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:24:18+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:24:30+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:25:55+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:26:05+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:26:13+00:00)
+- `Write` cloud/tests/test_web_field.py (2026-07-17T17:28:00+00:00)
+- `Edit` cloud/tests/test_web_field.py (2026-07-17T17:28:18+00:00)
+- `Write` cloud/tests/test_fe_render_smoke.py (2026-07-17T17:29:04+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T17:29:13+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T17:31:25+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-17T17:37:52+00:00)
+- `Write` cloud/tests/test_stream_decode.py (2026-07-17T17:38:21+00:00)
+- `Edit` cloud/tests/test_stream_decode.py (2026-07-17T17:38:48+00:00)
+- `Edit` cloud/tests/test_stream_decode.py (2026-07-17T17:38:51+00:00)
+
+### at `9b263a1`
+- `Edit` cloud/companion/app.py (2026-07-17T17:40:22+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T17:40:30+00:00)
+- `Edit` cloud/companion/app.py (2026-07-17T17:40:37+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:40:57+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-17T17:41:06+00:00)
+
+### at `da17e92`
+- `Write` cloud/tests/test_public_keyed_gate.py (2026-07-17T17:41:54+00:00)
+
+### at `bd00042`
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T17:43:39+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-17T17:43:45+00:00)

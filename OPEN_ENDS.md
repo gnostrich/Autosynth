@@ -183,6 +183,42 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   the operator should re-state them; they will be registered and, where
   hook-shaped, wired into the same enforcement layer.
 
+## 14. IN-FLIGHT: fixed demo build v2 (audio + keyed-Train + web FIELD)  🔴  (live tracker, 2026-07-17 evening)
+- **Live site state:** STOPGAP deployed (pre-demo commit e174b60 via pinned
+  deploy): play/steer the demo works, keyless, NO upload/train on the site
+  (old R6 public rule hides it — not a new break). The demo build v1 was pulled
+  after two live defects.
+- **Defects being fixed (builder in flight, expedited):**
+  (a) WHITE NOISE playback — RESOLVED AS A WALL, not a stream bug: two
+      independent measurements (builder 9b263a1 + read-only diagnosis) prove
+      the stream/fan-out is BYTE-FAITHFUL; the DEMO WORLD'S OWN ENGINE RENDER
+      is white-noise-like (flatness ~0.844 live AND offline, autocorr ~0).
+      The committed self-contained demo world likely always sounded like this
+      (old checks measured only peak level). Fixing the demo's SOUND = new
+      demo-world content build (engine/world territory: prereg + operator
+      sign-off, registered as its own item). User-trained worlds are the
+      real-music path — the pipeline is faithful.
+  (b) TRAIN hidden/blocked for KEYED users — both layers gate on
+      session.public alone; diagnosed patch: can_train = hub.keyed or not
+      session.public on /api/status + /api/world + the POST gate, FE honors
+      can_train. Regression matrix for all four public×keyed combos required.
+  (c) WEB FIELD surface (the operator's directive, web half) — prereg
+      committed (cloud/PREREG-web-field.md); replaces role pads + XY on the
+      web Play tab.
+- **New merge/deploy GATES (standing, learned today the hard way):**
+  render gate (Playwright: no CSS-as-text, tabs switch panes), served-bytes
+  check on the LIVE app page post-deploy (not just the access page), decoded-
+  audio check (stream must decode to non-flat spectrum), deploys pinned to an
+  explicit commit SHA (no branch-tip trust — no webhook exists).
+- **Design question for operator (from the gate diagnosis, unresolved):** in
+  public+keyed mode, anonymous visitors currently hit the access wall instead
+  of a Play+Explore demo view. Decide: access-wall-only, or keyless demo play
+  alongside keyed full powers.
+- **Also pending:** operator interested in CO-PLAY as a first-class feature
+  (composed multi-player biases, presence indicators) — offered, not yet
+  confirmed as registered work. Railway token rotation after infra work ends.
+  ddcadfb0 snapshot download (crashed-session archaeology) still optional.
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.

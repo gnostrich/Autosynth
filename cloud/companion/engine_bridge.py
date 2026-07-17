@@ -154,6 +154,17 @@ class StreamPlayer:
         sched = bar_schedule(self.world, r.rows, self.s_phase)
         audio, _prov = render_schedule(sched, self._bank)
         audio = _playback_soft_limit(audio)                  # LIVE-only eardrum cap
+        # STREAM MONO CONTRACT (live-only, like the soft limit): `wav_header` declares
+        # ONE channel, and the FE frames the byte stream as mono int16. If a render
+        # ever returns a 2-D (multi-channel) buffer, `_to_int16` would emit INTERLEAVED
+        # samples that the mono header mislabels — the exact "sample alignment / dtype
+        # mismatch" failure mode that decodes as white-noise garbage. Collapse to mono
+        # here so the emitted PCM can never disagree with the header. For the demo world
+        # (mono render) this is a no-op — the streamed bytes stay byte-identical to
+        # `produce_one`, verified in tests/test_stream_decode.py.
+        audio = np.asarray(audio)
+        if audio.ndim > 1:
+            audio = audio.mean(axis=tuple(range(1, audio.ndim)))
         roles = bar_role_activity(r.rows, self._bank, self.world.fstate.B)
         roles = [float(x) for x in np.asarray(roles).reshape(-1)[:self.M]]
         self._bar_index = int(r.bar)
