@@ -329,6 +329,19 @@
   }
   .pad.active{ border-color: var(--accent); }
   .pad.active .ring{ box-shadow: inset 0 0 0 1px var(--accent-deep), inset 0 -30px 44px -20px var(--accent-glow), 0 0 26px -2px var(--accent-glow); }
+  /* visible drill affordance in the pad's top-right corner */
+  .pad .drillbtn{
+    position:absolute; top:8px; right:8px; z-index:2;
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 7px; border-radius:999px;
+    font-size:9px; letter-spacing:.1em; text-transform:uppercase; font-weight:700;
+    color: var(--muted); background: var(--panel-inset);
+    border:1px solid var(--line-soft); cursor:pointer;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .pad .drillbtn:hover{ color: var(--accent); border-color: var(--accent-deep); }
+  .pad .drillbtn:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .pad.active .drillbtn{ color: var(--ink-2); border-color: var(--accent-deep); }
   .pad .idx{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--muted); font-weight:650; position:relative; }
   .pad.active .idx{ color: var(--accent); }
   .pad .big{ position:relative; }
@@ -381,6 +394,8 @@
   }
   .puck:active{ cursor: grabbing; }
   .puck:focus-visible{ outline:none; box-shadow: 0 0 0 5px var(--accent-glow), var(--focus); }
+  /* generous invisible hit area so the handle is easy to grab (no extra friction) */
+  .puck::before{ content:""; position:absolute; inset:-13px; border-radius:50%; }
   .puck::after{ content:""; position:absolute; inset:8px; border-radius:50%; background: rgba(255,255,255,.7); }
   .xy .readout{ display:flex; gap: var(--sp-5); margin-top: var(--sp-4); flex-wrap:wrap; }
   .xy .readout .k{ font-size: var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color: var(--faint); font-weight:650; }
@@ -634,7 +649,7 @@
         <section class="pads panel">
           <div class="sec-h" style="margin-bottom:2px">
             <span class="lbl">Role Pads</span><span class="rule"></span>
-            <span class="hint">tap to steer region tilt · tap-hold to drill</span>
+            <span class="hint">tap to steer region tilt · ⋯ drill (or tap-hold / d) for real units</span>
           </div>
           <div class="pad-row" id="padRow" style="margin-top:12px"><!-- pads injected from /api/world M --></div>
         </section>
@@ -646,7 +661,7 @@
             <div class="sec-h" style="margin-bottom:2px">
               <span class="lbl">Region Tilt · XY</span><span class="rule"></span>
             </div>
-            <div class="pad-xy" id="xyPad" tabindex="0" role="application" aria-label="Region tilt vector pad — click to place, drag to move">
+            <div class="pad-xy" id="xyPad" tabindex="0" role="application" aria-label="Region tilt vector pad — grab the puck and drag to steer; scroll to nudge">
               <svg class="grid-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                 <g stroke="currentColor" stroke-width=".25" style="color:var(--line)">
                   <path d="M25 0V100M50 0V100M75 0V100M0 25H100M0 50H100M0 75H100"/>
@@ -1094,6 +1109,7 @@
         b.setAttribute("aria-label","Role "+idx+", steer region tilt");
         b.innerHTML =
           '<span class="halo"></span><span class="ring"></span>'+
+          '<span class="drillbtn" role="button" tabindex="0" aria-label="Drill into role '+idx+'" title="Drill into role '+idx+' — real units">⋯ drill</span>'+
           '<span class="idx">role '+idx+'</span>'+
           '<span class="big"><div class="n num" data-n>—</div><div class="u">energy</div></span>'+
           '<span class="lvl"><i data-lvl></i></span>';
@@ -1104,6 +1120,14 @@
         var cancel = function(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
         b.addEventListener("pointerup", cancel);
         b.addEventListener("pointerleave", cancel);
+        // VISIBLE drill affordance: a normal click opens the drill. stopPropagation
+        // keeps it from triggering the pad's click-to-steer / tap-hold timer.
+        var db = b.querySelector(".drillbtn");
+        db.addEventListener("pointerdown", function(e){ e.stopPropagation(); });
+        db.addEventListener("click", function(e){ e.stopPropagation(); openDrill(idx); });
+        db.addEventListener("keydown", function(e){
+          if(e.key==="Enter"||e.key===" "){ e.preventDefault(); e.stopPropagation(); openDrill(idx); }
+        });
         b.addEventListener("keydown", function(e){
           if(e.key==="Enter"||e.key===" "){ e.preventDefault(); activateRole(idx, true); }
           if(e.key.toLowerCase()==="d"){ openDrill(idx); }
@@ -1220,14 +1244,27 @@
     setPuck((cx-rect.left)/rect.width, (cy-rect.top)/rect.height);
     sendSteerThrottled();
   }
-  xyPad.addEventListener("pointerdown", function(e){
+  // GRAB MODEL: only pressing DOWN on the puck (the handle) starts a drag.
+  // Clicking empty pad space does NOT teleport the puck (no inadvertent jump);
+  // hovering never moves it (pointermove only acts while a grab is held).
+  puck.addEventListener("pointerdown", function(e){
     if(!world.ready) return;
-    if(e.target===puck){ dragging=true; puck.setPointerCapture && puck.setPointerCapture(e.pointerId); return; }
-    dragging=true; fromEvent(e);
+    dragging = true;
+    puck.setPointerCapture && puck.setPointerCapture(e.pointerId);
+    e.stopPropagation();
+    e.preventDefault();
   });
   window.addEventListener("pointermove", function(e){ if(dragging){ fromEvent(e); } });
   window.addEventListener("pointerup", function(){ if(dragging){ dragging=false; sendSteerNow(); } });
-  puck.addEventListener("pointerdown", function(e){ if(!world.ready) return; dragging=true; e.stopPropagation(); });
+  // FINE NUDGE: a deliberate wheel/scroll gesture over the pad steps the puck a
+  // little and commits it. Never fires on hover alone (requires an actual wheel).
+  xyPad.addEventListener("wheel", function(e){
+    if(!world.ready) return;
+    e.preventDefault();
+    var step = 0.02 * (e.deltaY>0 ? 1 : -1);   // scroll down → puck moves down
+    setPuck(px, py + step);
+    sendSteerThrottled();
+  }, { passive:false });
   puck.addEventListener("keydown", function(e){
     if(!world.ready) return;
     var s=0.05, done=true;
