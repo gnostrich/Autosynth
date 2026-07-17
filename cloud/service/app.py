@@ -8,6 +8,7 @@ what the same call produces locally on the same input.
 from __future__ import annotations
 
 import argparse
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Root ETS anchor-fit, imported UNCHANGED. This is the ONLY training call the
@@ -83,9 +84,14 @@ def serve(host: str = "127.0.0.1", port: int = 8765) -> None:
 
 
 def main() -> None:
+    # Deploy-time binding is env-driven so a PaaS (Railway/Fly/etc.) can inject the
+    # public port. Defaults keep local runs bound to loopback:8765; the container
+    # sets HOST=0.0.0.0 and the platform sets PORT. Explicit CLI flags still win.
+    # This is transport plumbing ONLY — it does not touch the stage-3 whitelist,
+    # the anchor-fit, or the no-decoder guarantee.
     ap = argparse.ArgumentParser(description="ETS cloud training service (stand-in)")
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
     serve(**vars(ap.parse_args()))
 
 

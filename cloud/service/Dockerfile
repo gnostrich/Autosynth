@@ -19,6 +19,8 @@ COPY ets/ /srv/ets/
 COPY cloud/ /srv/cloud/
 
 ENV PYTHONUNBUFFERED=1
+# Bind to all interfaces inside the container; a PaaS (Railway/Fly/etc.) injects
+# $PORT and the service picks it up (see app.main). EXPOSE is documentation only.
+ENV HOST=0.0.0.0
 EXPOSE 8765
-# Bind to all interfaces inside the container; the operator maps the port out.
-CMD ["python", "-m", "cloud.service", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["python", "-m", "cloud.service"]
