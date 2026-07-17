@@ -13,14 +13,16 @@
 #     docker run --rm -e PORT=8080 -p 8080:8080 ets-companion
 FROM python:3.11-slim
 
-# libsndfile is the only system lib soundfile needs at runtime.
+# System libs: libsndfile for soundfile; ffmpeg/llvm for librosa's audio backend.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsndfile1 \
+    && apt-get install -y --no-install-recommends libsndfile1 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Phase-1 runtime deps ONLY. NOT torch/librosa/beat_this (ingest/train is a later
-# phase; adding them here would bloat the image to ~2GB and slow the first deploy).
-RUN pip install --no-cache-dir numpy scipy soundfile
+# Phase-1 PLAY deps. The arch-v6 engine loads these at import time on the play path:
+# python-osc (ets.engine.osc_io), librosa (ets.render.render), scikit-learn
+# (geometry). NOT torch/beat_this — those are ingest/train only (a later phase),
+# kept out to avoid a ~2GB image.
+RUN pip install --no-cache-dir numpy scipy soundfile python-osc librosa scikit-learn
 
 WORKDIR /app
 
