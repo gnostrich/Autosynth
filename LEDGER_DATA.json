@@ -27,7 +27,35 @@
       "location": "architecture-v3/ (full-fork of v2 machine + relabel)",
       "marker": "tag pre-arch-v3-2026-07-16 (immutable pre-change marker)",
       "driving_directive": "ETS directive — architecture-v3 temperature-sampler fix (Bugs 1 & 2): one coordinated exam-gated A (sampling-ensemble sigma recalibration) + B (derived-threshold StreamHalt) + C (mirror-geometry temperature sampler). Root cause report: reports/2026-07-16-steering-divergence-and-silences.md",
-      "audit": "PREREG committed (prereg-arch-v3-temperature-sampler-2026-07-16); BUILD PENDING (builder to implement A+B+C; auditor PASS + 6 acceptance criteria before merge)"
+      "audit": "PREREG committed (prereg-arch-v3-temperature-sampler-2026-07-16); BUILD PENDING (builder to implement A+B+C; auditor PASS + 6 acceptance criteria before merge). NOTE (2026-07-17): under the formal VERSION_SCHEME.md this experiment is now identified as engine-v2-x and SEALED at _sealed/architecture-v3-sampler-FAILED/ (failed ear test); the engine line stays at engine-v1. See VERSIONS.md."
+    },
+    {
+      "version": "ui-v3 (= architecture-v4; UX/FE 'Feature 3' — instrument surface)",
+      "location": "architecture-v4/ (UX/FE line, runs on engine-v1)",
+      "marker": "prereg architecture-v4/PREREG-feature3.md (no dedicated local tag recorded in VERSIONS.md / VERSION_SCHEME.md)",
+      "driving_directive": "Feature 3 — the instrument half: pad grid + tape view + tap/hold (region-tilt only) + transport + cue. Read/tap/monitor layer, ZERO engine diffs.",
+      "audit": "COMPLETE / superseded (by ui-v4). ets-auditor PASS; 17 instrument + 43 panel/h6 tests green."
+    },
+    {
+      "version": "ui-v4 (= architecture-v5; UX/FE interaction bugfixes)",
+      "location": "architecture-v5/ (UX/FE line, runs on engine-v1; fork of architecture-v4)",
+      "marker": "prereg architecture-v5/PREREG-v5-interaction.md (no dedicated local tag recorded in VERSIONS.md / VERSION_SCHEME.md)",
+      "driving_directive": "Interaction bugfixes: hover-scroll everywhere (no hover-move); XY pad position-based pick-and-place; UX-layer anti-divergence (safe-envelope clamp + slew-limited emits).",
+      "audit": "SUPERSEDED by ui-v5; retained as immutable history."
+    },
+    {
+      "version": "ui-v5 (= architecture-v6; connected playable instrument)",
+      "location": "architecture-v6/ (UX/FE line, runs on engine-v1); preserved IMMUTABLE as the rollback / A-B point",
+      "marker": "auditor PASS 2026-07-16; preregs architecture-v6/PREREG-uiv5-padfeel.md + architecture-v6/PREREG-uiv5-playable-instrument.md (no dedicated local tag recorded in VERSIONS.md / VERSION_SCHEME.md)",
+      "driving_directive": "Connected playable instrument: role pads (tap -> precision region-tilt) + XY pad (pick-and-place) + tape + transport; drill-in (unit-tap -> fine-steer toward that unit's anchor-profile); read-only OSC telemetry light-up; live loudness/eardrum-safety cap (attenuate-only RMS cap + soft-knee + hard ceiling, LIVE-ONLY, offline byte-identical); library browser (display-only). Single region-tilt authority.",
+      "audit": "MERGED, then SUPERSEDED by ui-v6. ets-auditor PASS (2026-07-16) + operator-approved door-test typing refinement; f3b door test bites (single region-tilt authority). Engine status quo (engine-v1)."
+    },
+    {
+      "version": "ui-v6 (\"THE FIELD\"; = ui-v6/; UX/FE axis, 2026-07-17)",
+      "location": "ui-v6/ (full-copy fork of architecture-v6/ = ui-v5), runs_on engine-v1; architecture-v6/ preserved IMMUTABLE as the rollback / A-B point",
+      "marker": "base commit 5ff6abd (main tip), local tag pre-uiv6-field-2026-07-17; prereg ui-v6/PREREG-uiv6-field.md (written before build); build report ui-v6/REPORT-uiv6-field-build.md",
+      "driving_directive": "operator FIELD directive — ONE unified surface of squares you push (hover-scroll bias) and zoom (drill) REPLACES the pad grid, the XY/vector pad, and the hierarchical drill-in entirely. Control/display layer only; ZERO engine diffs (F, world, LAMBDA, settlement, writer, render, provenance untouched; no new OSC address). Governing FIELD-INV: a square's brightness = live settled weight from read-only telemetry, never the input echoed (capability-guarded writer + static AST check, with bite fixtures). Bias enters ONLY via the panel's existing region-tilt lane (set_region_vector -> clamp -> slew -> /ets/lanes), soft-saturating and never hard-mute (crate/membership stays separate); drill depth self-sized by the participation-ratio noise-floor criterion (same anchors.effective_rank formula, restated not imported). Key files: ets/instrument/field.py (FieldModel/FieldView), live.py + app.py rewired, ets/panel/widget.py (XY vector pad removed; _RegionStrips kept as the section-8 region control), deleted ets/instrument/pads.py + tap.py, new harness ui-v6/tests/field/ (29 tests: FIELD-INV + FIELD-A..E) plus adapted pi/v5/instrument suites.",
+      "audit": "Built; full harness green locally; ets-auditor pass PENDING. Root docs updated: VERSIONS.md, VERSION_SCHEME.md, release-manifest.json (ui -> ui-v6, audit pending), OPEN_ENDS.md (#3 closed, #4 resolved, new #9 ets-web Railway crash needs operator input, new #10 stale ui-v5 hover-inert assertion disclosed)."
     }
   ],
   "instances": [
