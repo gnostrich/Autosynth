@@ -243,8 +243,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/world":
             p = self.companion.player()
-            self._json(200, p.world_info() if p is not None
-                       else {"ready": False, "reason": "no playable world loaded"})
+            info = p.world_info() if p is not None else {
+                "ready": False, "reason": "no playable world loaded"}
+            info["public"] = getattr(self.companion, "public", False)
+            self._json(200, info)
             return
         if path == "/api/stream":
             self._stream_audio()
@@ -284,6 +286,18 @@ class _Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/")
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b""
+
+        # PUBLIC (hosted) mode is a play/steer-the-demo deployment only. The
+        # corpus surfaces (upload, train, reset) write shared container state and
+        # need the ingest deps that aren't in the hosted image — so refuse them
+        # cleanly here (503) rather than expose a broken/abusable surface. They
+        # work in the LOCAL app. The FE hides these controls when world.public.
+        if getattr(self.companion, "public", False) and path in (
+                "/api/ingest", "/api/train", "/api/reset"):
+            self._json(503, {"ok": False, "error": "not available in the hosted "
+                             "demo — run the companion locally to train your own "
+                             "audio", "public": True})
+            return
 
         if path == "/api/ingest":
             # LOCAL-ONLY: store bytes, never forward. Filename via X-Filename.
@@ -435,6 +449,7 @@ def serve(cloud_url: str = "inproc", host: str = "127.0.0.1", port: int = 8770,
     reached only by the explicit opt-in."""
     host = host if public else _require_loopback(host)
     comp = Companion(cloud_url=cloud_url, session_dir=session_dir)
+    comp.public = bool(public)   # play/steer-only hosted mode: gates ingest/train/reset
     handler = type("_BoundHandler", (_Handler,), {"companion": comp})
     httpd = ThreadingHTTPServer((host, port), handler)
     httpd.companion = comp
