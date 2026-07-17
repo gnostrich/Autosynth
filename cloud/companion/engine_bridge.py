@@ -80,8 +80,11 @@ class StreamPlayer:
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
         # set several visitors opened) can serve concurrent listeners without any
-        # listener stealing another's audio. Steer + telemetry are shared state on a
-        # shared engine (a disclosed consequence of one engine per world).
+        # listener stealing another's audio. Steer + telemetry AND TRANSPORT
+        # (play/stop) are shared state on a shared engine — a disclosed
+        # consequence of one engine per world: concurrent listeners co-play one
+        # live mix. An LRU-evicted engine stops mid-stream for any current
+        # listener (the memory bound is real; the world file reloads on demand).
         self._subscribers: set = set()
         self._sub_lock = threading.Lock()
 
