@@ -565,15 +565,13 @@ class _Handler(BaseHTTPRequestHandler):
             return "text/css"
         return "application/octet-stream"
 
-    def _drain(self, length: int) -> None:
-        """Consume (and discard, in bounded chunks) an unwanted request body so the
-        connection stays usable after a rejection — never buffering it whole."""
-        remaining = int(length or 0)
-        while remaining > 0:
-            chunk = self.rfile.read(min(remaining, 65536))
-            if not chunk:
-                break
-            remaining -= len(chunk)
+    def _reject(self, code: int, obj: dict) -> None:
+        """Reject a POST WITHOUT reading its (possibly large / not-yet-sent) body:
+        send the response and mark the connection to close so the unread body is
+        discarded by TCP. Used for the size caps and the un-authorized gate, where
+        the whole point is to refuse before buffering the upload."""
+        self.close_connection = True
+        self._json(code, obj)
 
     # --- POST ---------------------------------------------------------------
     def do_POST(self):  # noqa: N802
@@ -604,19 +602,21 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         # PUBLIC key gate on every other POST (auth-required). LOCAL: always passes.
-        if not self._public_gate_ok(path):
-            self._drain(length)
+        # A rejected POST may carry a large body we never read -> close, don't drain.
+        if pub and path not in ("/api/health",) and not self._authorized:
+            self._reject(401, {"ok": False, "error": "unauthorized — enter your access key",
+                               "auth_required": True})
             return
 
         if path == "/api/ingest":
             # Store the dropped bytes in THIS session's dir; never forward (CS-1).
-            # PUBLIC: enforce the per-session upload caps BEFORE buffering the body,
-            # so an oversized/too-many upload is rejected without holding it in RAM.
+            # PUBLIC: enforce the per-session upload caps on the DECLARED length BEFORE
+            # buffering the body, so an oversized/too-many upload is rejected without
+            # ever reading it into RAM (reject + close, never drain).
             if pub:
                 ok, code, err = self.registry.check_ingest(comp, length)
                 if not ok:
-                    self._drain(length)
-                    self._json(code, {"ok": False, "error": err})
+                    self._reject(code, {"ok": False, "error": err})
                     return
             body = self.rfile.read(length) if length else b""
             fn = self.headers.get("X-Filename", "drop.bin")
