@@ -238,8 +238,11 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
       Key unlocks ONLY Train/publish (can_train machinery already does the split).
   (b) Sharing stays STRICTLY OPT-IN (already implemented + audit-pinned: default
       OFF, owner-only toggle, unshare revokes). Training never auto-publishes.
-  (c) Demo world: recommend HIDDEN from keyless Explore until its content rebuild
-      (#14a) — operator to confirm listing policy.
+  (c) Demo world: DECIDED (operator, 2026-07-18): NO founding demo surfaced on
+      the site for now — hidden from keyless Explore AND not auto-loaded for
+      keyed users' empty state either; "we'll zero in on the right one later."
+      #14a's content rebuild is PARKED until the operator picks the material
+      (it remains committed in the repo for R5's fresh-clone/local path).
   (d) Build-time consideration: per-set steer RATE caps (deferred in the demo
       prereg) become relevant once strangers can steer shared sets; envelope
       bounds magnitude already, caps would bound frequency.
