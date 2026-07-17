@@ -14,19 +14,27 @@ Endpoints:
   GET  /                 -> the browser instrument UI (static)
   GET  /api/health       -> liveness
   GET  /api/status       -> session state (ingested files, last world)
-  POST /api/ingest       -> store dropped bytes in the local session dir.
-                            LOCAL-ONLY: this handler NEVER contacts the cloud.
-  POST /api/train        -> ingest the session -> stage-3 -> cloud anchor-fit ->
-                            verify receipt -> write the world locally.
+  POST /api/ingest       -> store dropped bytes in this session's dir.
+  POST /api/train        -> ingest the session -> stage-3 -> anchor-fit ->
+                            verify receipt -> write the playable world.
 
-CS boundary (load-bearing, mirrors CS-1..CS-5):
-  * The user's dropped audio lands in ``session_dir`` and stays there. /api/ingest
-    has no code path to the network.
-  * The ONLY cloud call is ``cloud.client.train`` -> ``cloud.client.post_job``,
-    which whitelist-encodes ONLY stage-3 (cost/mass/slot_hist/band_profile). It is
-    structurally incapable of putting raw audio / recipes on the wire.
-  * No renderer/decoder is imported here on the cloud path (no cloud decoder). Any
-    audio the user hears is rendered LOCALLY (phase 2), never in the cloud.
+Audio boundary — READ THIS (R3(b) is LOCKED; see cloud/COMPANION_INVARIANTS.md):
+  * WHERE THE SERVER RUNS decides where the raw audio lives:
+      - LOCAL loopback mode (default): the server runs ON the user's device, so the
+        dropped audio in ``session_dir`` never leaves the machine. Here the sealed
+        CS-1 model holds end-to-end.
+      - PUBLIC / hosted mode (the Railway deploy): the server IS the remote box, so
+        the browser UPLOADS the raw audio to Railway and it is processed there. Under
+        R3(b) this is the DECLARED, operator-approved behavior — raw audio DOES leave
+        the device. No surface may claim otherwise (COMPANION_INVARIANTS R3 honesty
+        requirement). A private/on-device mode is a planned upgrade [R3(a)].
+  * The stage-3 whitelist STILL binds the INTERNAL encoder hop: when a separate cloud
+    anchor-fit is used, ``cloud.client.train`` -> ``post_job`` whitelist-encodes ONLY
+    stage-3 (cost/mass/slot_hist/band_profile) and is structurally incapable of
+    putting raw audio / recipes on that wire (test_mvp_a). In the hosted deploy that
+    hop is in-process (``cloud_url=inproc``), so it never leaves the box at all.
+  * CS-4 (decoder-free cloud path) still holds structurally: no renderer/decoder is
+    imported at this module's top level; the LOCAL render bridge is imported lazily.
 """
 from __future__ import annotations
 
@@ -134,10 +142,22 @@ class Companion:
         files AND the trained world, repoints the instrument back to the founding
         demo world, drops the cached player, and clears the trained flag. After a
         reset the instrument plays the demo again and reports is_trained:false."""
+        # Clear the WHOLE session dir (files AND any sub-dirs / caches) so nothing —
+        # uploaded audio, the trained world, world.npz, or any intermediate — piles
+        # up across corpora. rmtree the tree, then recreate the empty dir. (Eviction
+        # already rmtree's abandoned sessions; reset gives the same full wipe on
+        # demand.) All local: no network.
         removed = 0
         for p in list(self.session_dir.iterdir()):
-            if p.is_file():
-                p.unlink(); removed += 1
+            try:
+                if p.is_dir() and not p.is_symlink():
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink()
+                removed += 1
+            except FileNotFoundError:
+                pass
+        self.session_dir.mkdir(parents=True, exist_ok=True)
         self.last_receipt = None
         # revert the instrument to the founding demo world
         self.play_world = self._demo_world
@@ -549,6 +569,16 @@ class _Handler(BaseHTTPRequestHandler):
                 "ready": False, "reason": "no playable world loaded"}
             info["public"] = getattr(self._comp, "public", False)
             self._json(200, info)
+            return
+        if path == "/api/units":
+            # READ-ONLY drill-in provenance: the last produced bar's real placed units
+            # grouped by role, with real source-track ids. No engine-control semantics
+            # (issues no settlement); gated + per-session like every other /api/* here.
+            p = self._comp.player()
+            if p is None:
+                self._json(409, {"ok": False, "error": "no playable world"})
+                return
+            self._json(200, {"ok": True, **p.last_bar_units()})
             return
         if path == "/api/stream":
             self._stream_audio()

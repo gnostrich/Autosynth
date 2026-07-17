@@ -502,7 +502,8 @@
   }
   .unit:hover{ transform: scale(1.08); outline: 1.5px solid var(--ink); }
   .unit:focus-visible{ outline:none; box-shadow: var(--focus); }
-  .unit.sel{ outline:2px solid var(--accent); box-shadow: 0 0 14px -1px var(--accent-glow); opacity:1; }
+  .unit.sel{ outline:2px solid var(--accent); box-shadow: 0 0 14px -1px var(--accent-glow); opacity:1 !important; }
+  .drill-note{ grid-column:1/-1; font-size: var(--fs-tiny); color: var(--muted); padding: var(--sp-4) 0; line-height:1.5; }
   .drill .cap{ font-size: var(--fs-tiny); color: var(--muted); margin-top: var(--sp-4); line-height:1.5; }
   .drill .cap b{ color: var(--ink-2); font-weight:600; }
 
@@ -568,7 +569,7 @@
         <span class="glyph" aria-hidden="true"></span>
         <div>
           <h1><b>ETS</b> — Equilibrium Tape Synth</h1>
-          <div class="sub micro">sealed on-device box · steer the terrain</div>
+          <div class="sub micro">cloud-trained instrument · steer the terrain</div>
         </div>
       </div>
       <div class="spacer"></div>
@@ -580,7 +581,7 @@
       </button>
     </header>
 
-    <!-- SOURCE AUDIO (phase-1 ingest, local-only) -->
+    <!-- SOURCE AUDIO (drag-drop ingest; uploaded to the cloud for training, R3(b)) -->
     <section class="block panel" id="sourceSection">
       <div class="sec-h">
         <span class="lbl">Source Audio</span><span class="rule"></span>
@@ -588,12 +589,12 @@
       </div>
       <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop audio files here or click to choose">
         <div class="big">Drop audio here <b>or click to choose</b></div>
-        <div class="note">Files stay on this machine. They're ingested locally — never uploaded.</div>
+        <div class="note">Your tracks are uploaded to the cloud and trained there.</div>
         <input type="file" id="picker" multiple hidden>
       </div>
       <div class="files" id="files"><div class="empty">no files ingested yet</div></div>
-      <div class="seal"><span class="lock" aria-hidden="true">🔒</span>
-        <span>Only gauge-invariant <b>stage-3</b> cost matrices leave this box — raw audio and recipes never do.</span></div>
+      <div class="seal"><span class="lock" aria-hidden="true">☁️</span>
+        <span>Your audio is uploaded to the cloud (Railway) and processed there to build your world. A fully private mode is a planned upgrade.</span></div>
     </section>
 
     <!-- TRAIN (cloud anchor-fit) -->
@@ -712,7 +713,7 @@
           <section class="tape-panel panel">
             <div class="sec-h" style="margin-bottom:2px">
               <span class="lbl">Output Tape</span><span class="rule"></span>
-              <span class="hint">playhead from telemetry · waveform not wired yet</span>
+              <span class="hint">settled-render audio · playhead from telemetry</span>
             </div>
             <div class="tape-scroll">
               <div class="tape" id="tape">
@@ -743,7 +744,7 @@
         <button class="xbtn" id="drillClose" aria-label="Close drill">×</button>
       </div>
       <div class="unit-grid" id="unitGrid"></div>
-      <p class="cap"><b>Not wired yet.</b> A faithful drill-in shows the role's real units colored by their real source track — that data (per-bar unit→track provenance) exists on the server but is not yet piped to this view. Rather than show invented cells, this surface is disarmed until it is wired to real provenance.</p>
+      <p class="cap">Each cell is one <b>real unit</b> the equilibrium placed in the <b>last produced bar</b> for this role, colored by its <b>real source track</b> (from render provenance; brighter = larger settled mass). Display only — steering is done from the pad face and the XY tilt.</p>
     </section>
   </div>
 
@@ -854,7 +855,7 @@
     });
   }
 
-  /* ================= SOURCE INGEST (phase-1, local-only) ================= */
+  /* ================= SOURCE INGEST (upload to cloud, R3(b)) ================= */
   var drop = $("drop"), picker = $("picker"), filesEl = $("files");
   var trainBtn = $("trainBtn"), trainNote = $("trainNote");
 
@@ -937,7 +938,7 @@
         var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
         if(j.ok){
           resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
-          resultMeta.textContent = "cloud anchor-fit returned + receipt verified locally";
+          resultMeta.textContent = "cloud training returned + receipt verified";
           var r = j.receipt || {};
           var lines = Object.keys(r).map(function(k){ return k + ": " + JSON.stringify(r[k]); });
           var msg;
@@ -1245,17 +1246,53 @@
     $("libCount").textContent = files.length + " loaded";
   }
 
-  /* ================= TAPE BASELINE (no fabricated waveform) =================
-     The real settled-render waveform is NOT wired to this SVG yet, so we draw an
-     HONEST empty tape: a flat baseline only. No synthetic envelope stands in for
-     real audio (that would be a fabrication). The playhead below IS real — it is
-     driven by the engine's per-bar telemetry `t`. A real waveform (drawn from the
-     decoded /api/stream PCM) is a follow-up; until then this surface shows nothing
-     it cannot back. */
-  (function buildTapeBaseline(){
-    var wav = $("wav"), H=150, mid=H/2;
-    wav.innerHTML =
+  /* ================= TAPE WAVEFORM (REAL settled-render PCM) =================
+     The envelope is drawn from the ACTUAL decoded /api/stream PCM (the settled render
+     the engine produces + eardrum-caps), tapped in feedPCM() as it decodes. We fold
+     each incoming column-worth of samples into a rolling peak envelope (newest at the
+     right) and redraw on a rAF. Nothing synthetic: an empty stream draws a flat
+     baseline. The playhead is the real telemetry `t`. */
+  var WAV = { W:720, H:150, COLS:240, peaks:null, accMax:0, accN:0, perCol:1000, dirty:true };
+  WAV.peaks = new Float32Array(WAV.COLS);
+  function waveConfig(){ WAV.perCol = Math.max(1, Math.round((world.sr||48000) * TAPE_WINDOW / WAV.COLS)); }
+  function waveReset(){ WAV.peaks.fill(0); WAV.accMax = 0; WAV.accN = 0; WAV.dirty = true; }
+  function wavePush(samples, n){
+    // fold real decoded samples into the rolling per-column peak envelope
+    for(var i=0;i<n;i++){
+      var a = samples[i]; if(a<0) a=-a;
+      if(a > WAV.accMax) WAV.accMax = a;
+      if(++WAV.accN >= WAV.perCol){
+        WAV.peaks.copyWithin(0, 1);            // scroll left
+        WAV.peaks[WAV.COLS-1] = WAV.accMax;    // newest peak at right edge
+        WAV.accMax = 0; WAV.accN = 0; WAV.dirty = true;
+      }
+    }
+  }
+  function drawWave(){
+    var wav = $("wav"), W=WAV.W, H=WAV.H, mid=H/2, step=W/WAV.COLS, GAIN=1.6;
+    var top = "M0 "+mid, bot = "";
+    for(var c=0;c<WAV.COLS;c++){
+      var x = (c*step);
+      var amp = Math.min(1, WAV.peaks[c]*GAIN) * mid * 0.86;
+      top += " L"+x.toFixed(1)+" "+(mid-amp).toFixed(1);
+    }
+    top += " L"+W+" "+mid;
+    for(var d=WAV.COLS-1; d>=0; d--){
+      var xd = (d*step);
+      var ampd = Math.min(1, WAV.peaks[d]*GAIN) * mid * 0.86;
+      bot += " L"+xd.toFixed(1)+" "+(mid+ampd).toFixed(1);
+    }
+    bot += " L0 "+mid;
+    var grad = '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0" stop-color="var(--tape)" stop-opacity="0.9"/>'+
+      '<stop offset="0.5" stop-color="var(--accent)" stop-opacity="0.55"/>'+
+      '<stop offset="1" stop-color="var(--tape)" stop-opacity="0.9"/></linearGradient></defs>';
+    wav.innerHTML = grad + '<path d="'+top+" "+bot+' Z" fill="url(#wg)" opacity="0.85"/>'+
       '<line x1="0" y1="'+mid+'" x2="720" y2="'+mid+'" stroke="var(--line)" stroke-width="0.6"/>';
+  }
+  (function waveTick(){
+    if(WAV.dirty){ WAV.dirty = false; drawWave(); }
+    (window.requestAnimationFrame || function(f){ setTimeout(f,33); })(waveTick);
   })();
 
   var playhead = $("playhead"), tapePlayed = $("tapePlayed"), timeRead = $("timeRead");
@@ -1271,19 +1308,69 @@
     timeRead.innerHTML = (t>=0?t.toFixed(2):"0.00")+"<small>s</small>";
   }
 
-  /* ================= DRILL OVERLAY (display-only) ================= */
+  /* ================= DRILL OVERLAY (display-only, REAL provenance) =================
+     The drill-in renders the LAST produced bar's REAL placed units for a role, read
+     from GET /api/units (which mirrors render()'s ProvenanceStream grouped by role).
+     Each cell is a real unit colored by a STABLE colour keyed to its real source
+     track_id, lit by its real settled mass. No fabricated cells, no engine-control
+     call — /api/units is read-only. Before any bar is produced the view says so
+     honestly ("press play"). */
   var drillBack = $("drillBack"), drillTag = $("drillTag"), drillTitle = $("drillTitle"), unitGrid = $("unitGrid");
   var lastFocus = null;
+  // Fixed palette used ONLY to give each REAL source track a stable, distinct color
+  // in the drill-in (the cell's identity — track_id, unit_id, mass — is the real
+  // provenance from /api/units; the color is just a legible index into that real id,
+  // not itself data). Deterministic per track_id so a track keeps its color.
+  var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0",
+                      "#F2D06B","#6BE0D2","#F09CC5","#9AE86A","#6AC0E8"];
+  function trackColor(tid){
+    var n = TRACK_COLORS.length;
+    return TRACK_COLORS[((tid % n) + n) % n];   // stable per real track_id
+  }
+  function renderDrill(i, snap){
+    unitGrid.innerHTML = "";
+    var roles = snap && snap.roles;
+    var pool = (roles && (roles[i] || roles[String(i)])) || [];
+    if(!snap || snap.bar < 0){
+      drillTitle.textContent = "role "+i+" · awaiting audio";
+      unitGrid.innerHTML = '<div class="drill-note">No bar produced yet — press <b>play</b> to populate this role from real render provenance.</div>';
+      return;
+    }
+    if(!pool.length){
+      drillTitle.textContent = "role "+i+" · 0 units";
+      unitGrid.innerHTML = '<div class="drill-note">No units fell under this role in the last produced bar.</div>';
+      return;
+    }
+    drillTitle.textContent = "role "+i+" · "+pool.length+" unit"+(pool.length===1?"":"s")+" (last bar)";
+    var maxMass = 0;
+    pool.forEach(function(u){ if(u.mass > maxMass) maxMass = u.mass; });
+    pool.forEach(function(u){
+      var cell = document.createElement("button");
+      cell.className = "unit";
+      cell.style.background = trackColor(u.track_id|0);
+      cell.style.opacity = (0.45 + 0.55*(maxMass>0 ? (u.mass/maxMass) : 1)).toFixed(3);
+      cell.setAttribute("aria-label","unit "+u.unit_id+" · source track "+u.track_id);
+      cell.title = "track T"+u.track_id+" · unit "+u.unit_id+" · mass "+(+u.mass).toFixed(3);
+      cell.addEventListener("click", (function(c){ return function(){
+        unitGrid.querySelectorAll(".unit.sel").forEach(function(n){ n.classList.remove("sel"); });
+        c.classList.add("sel");   // display selection only — no engine call
+      };})(cell));
+      unitGrid.appendChild(cell);
+    });
+  }
   function openDrill(i){
     lastFocus = document.activeElement;
     drillTag.textContent = "role "+i;
-    drillTitle.textContent = "role "+i+" · drill-in";
-    // HONEST DISARM: do NOT synthesize unit cells. The real per-role unit makeup
-    // (units colored by real source track) is not wired to this view yet, so we
-    // render nothing fabricated — the caption states plainly that it is not wired.
+    drillTitle.textContent = "role "+i+" · loading…";
     unitGrid.innerHTML = "";
     drillBack.classList.add("open"); drillBack.setAttribute("aria-hidden","false");
     $("drillClose").focus();
+    // READ-ONLY fetch of the last bar's real provenance; re-fetched each open so the
+    // makeup reflects the most recently produced bar.
+    fetch("/api/units", { cache:"no-store" })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(snap){ if(drillBack.classList.contains("open")) renderDrill(i, snap); })
+      .catch(function(){ if(drillBack.classList.contains("open")) renderDrill(i, null); });
   }
   function closeDrill(){
     drillBack.classList.remove("open"); drillBack.setAttribute("aria-hidden","true");
@@ -1398,7 +1485,8 @@
         ch0[f] = dv.getInt16(b, true) / 32768;
         if(audio.channels>1) ch1[f] = dv.getInt16(b+2, true) / 32768;
       }
-      pushChunk(ch0, ch1, nFrames);
+      wavePush(ch0, nFrames);   // tap the REAL decoded PCM BEFORE pushChunk transfers
+      pushChunk(ch0, ch1, nFrames);   // (worklet path neuters ch0.buffer via transfer)
     }
     audio.tail = (usable < data.length) ? data.slice(usable) : null;
   }
@@ -1487,6 +1575,7 @@
       try{ audio.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e2){ showStreamError(e2); return; }
     }
     audio.stopped = false; audio.tail = null; audio.buffered = 0; audio.queue = [];
+    waveConfig(); waveReset();   // size the waveform columns to this world's sr, clear stale peaks
     try{ await audio.ctx.resume(); }catch(e){}
     // load the AudioWorklet (fall back to ScriptProcessor if unavailable)
     audio.worklet = false;
@@ -1534,6 +1623,7 @@
     teardownAudio();
     state = "idle"; setPlayUI();
     updateTape(0);
+    waveReset();   // clear the waveform back to a flat baseline on stop
   }
 
   // stream failure while playing: stop audio + telemetry, return to idle (no crash)
