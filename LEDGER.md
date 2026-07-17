@@ -593,3 +593,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` ui-v6/tests/field/test_field_inv.py (2026-07-17T15:54:53+00:00)
 - `Edit` ui-v6/tests/field/test_field_inv.py (2026-07-17T15:55:03+00:00)
 - `Edit` ui-v6/ets/instrument/field.py (2026-07-17T15:55:11+00:00)
+
+### at `e5e2243`
+- `Edit` OPEN_ENDS.md (2026-07-17T16:00:54+00:00)
