@@ -129,6 +129,33 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
   disclosed rather than patched; ui-v6 deletes the widget and carries the
   invariant on the field (`tests/v5/test_v5b_hover_inert.py`, field edition).
 
+## 11. EXPLORE page + shared sets (+ tab-planning design)  🟡  (recovered from crashed session, 2026-07-17)
+- **Recovered by operator recall — the crashed session's artifacts were never
+  committed; nothing of this survived in the repo (verified by search).**
+- **The feature:** a sharing layer for the web companion:
+  (a) OPT-IN publishing — open one of your sets (trained worlds) so others can
+  play and STEER it; (b) an EXPLORE page listing others' shared sets to browse
+  and play. This is very likely the roadmap's unnamed slot in #8's sequence
+  (single-user MVP-2 → **one more upgrade** → multi-user) — operator to confirm
+  the naming.
+- **Invariant homework BEFORE any prereg** (R1–R6 / CS-1..CS-5 pressure):
+  playing someone else's set requires render somewhere — a shared set's world
+  references the OWNER's local audio (CS-1: raw audio never uploaded), so
+  listing a set either (i) embeds/uploads the owner's audio bank WITH EXPLICIT
+  CONSENT at publish time (a deliberate, disclosed privacy-boundary crossing —
+  needs operator sign-off + prereg), (ii) renders on the owner's device/
+  companion (owner-online-only sharing), or (iii) shares only self-contained
+  demo-style worlds. Steering-by-others also needs per-set rate/authority
+  limits (still only the region-tilt lane). None of this is decided.
+- **Tab planning / FE information architecture:** a DESIGN AGENT was spun up in
+  the crashed session to lay out the companion's tab structure (Play /
+  Explore / Train, etc.); its output is LOST. Needs re-spinning against the
+  current state — which now includes the FIELD (ui-v6) as the play surface,
+  per the sequencing rule (field first, then re-point crate/library UX at it).
+- **Next action:** operator green-light → re-spin the design agent for the tab
+  IA + write PREREG for the explore/sharing layer (privacy decision (i)/(ii)/
+  (iii) is the first fork in that prereg).
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
