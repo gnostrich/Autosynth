@@ -106,6 +106,13 @@ class Companion:
         self.play_world = play_world
         self._is_trained = False       # True once the seam repoints to the user's world
         self._player = None            # lazy StreamPlayer (the LOCAL decoder)
+        # Monotonic count of COMPLETED train runs for THIS session. `is_trained` is a
+        # persistent LEVEL (only reset clears it), so it cannot tell a fresh run's
+        # completion from a prior one — the UI poller would false-succeed on a retrain
+        # off the stale level. `train_seq` is the EDGE: the poller snapshots it at
+        # click and accepts completion only once it advances. Bumped once per run that
+        # returns a built world (see do_POST /api/train).
+        self.train_seq = 0
 
     def player(self):
         """Lazily construct the LOCAL render bridge. Import is deferred so the
@@ -568,6 +575,10 @@ class _Handler(BaseHTTPRequestHandler):
             info = p.world_info() if p is not None else {
                 "ready": False, "reason": "no playable world loaded"}
             info["public"] = getattr(self._comp, "public", False)
+            # train_seq is the completion EDGE the UI poller keys on (see Companion):
+            # it only advances when a NEW train run finishes, so a retrain can't
+            # false-succeed off the persistent is_trained level.
+            info["train_seq"] = int(getattr(self._comp, "train_seq", 0))
             self._json(200, info)
             return
         if path == "/api/units":
@@ -744,6 +755,12 @@ class _Handler(BaseHTTPRequestHandler):
             finally:
                 if pub:
                     self.registry.release_train(self._sid)
+            # A train run COMPLETED and returned a built world — advance the edge the
+            # UI poller keys on. This runs even if the client's HTTP request was
+            # dropped by the platform edge mid-train (the handler thread finishes
+            # run_train regardless), so a poller that lost its request still sees the
+            # advance. Errors above returned early, so the seq only moves on success.
+            comp.train_seq += 1
             self._json(200, out)
             return
 

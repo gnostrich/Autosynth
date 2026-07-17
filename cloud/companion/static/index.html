@@ -974,35 +974,49 @@
   trainBtn.addEventListener("click", function(){
     trainBtn.disabled = true; trainBtn.textContent = "training…";
     resultWrap.style.display = "none";
-    var done = false, startT = Date.now();
+    var done = false, startT = Date.now(), poll = null;
     function finish(j){ if(done) return; done = true; if(poll) clearInterval(poll); renderTrainResult(j); }
 
-    // ROBUST COMPLETION (do NOT depend on the /api/train request surviving):
-    // a cold container can train for MINUTES, and the platform edge cuts an idle
-    // HTTP request at ~60s — so the request may drop while the server keeps going.
-    // We therefore POLL /api/world for the trained world going live (and pull the
-    // receipt from /api/status), which is the source of truth. The request below is
-    // a fast-path bonus, not the completion signal.
-    var poll = setInterval(function(){
-      if(done) return;
-      fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); }).then(function(w){
-        if(done) return;
-        if(w && w.is_trained){
-          fetch("/api/status", { credentials:"same-origin" }).then(function(r){ return r.json(); })
-            .then(function(s){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"),
-                                        receipt:(s && s.last_receipt) || {}, sigma_phi_disarmed:(w.disarmed||[]) }); })
-            .catch(function(){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"), receipt:{} }); });
-        } else if(Date.now() - startT > 12*60*1000){
-          finish({ ok:false, error:"Training is taking longer than expected — it may still be running on the server. Reload the page in a minute to check." });
-        }
-      }).catch(function(){ /* transient; keep polling */ });
-    }, 8000);
-
+    // fast-path bonus: the actual request. On a long (cold) train the platform edge
+    // cuts it at ~60s — that drop is a NO-OP (the poller below is the real signal).
+    // A genuine JSON {ok:false} (cap / no-protos) still renders a real failure.
     fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" },
                           credentials:"same-origin", body:JSON.stringify({}) })
       .then(function(r){ return r.json(); })
-      .then(function(j){ if(j && (j.ok === true || j.ok === false)) finish(j); })   // fast path
-      .catch(function(){ /* dropped by the edge on a long train — the poller wins, NOT an error */ });
+      .then(function(j){ if(j && (j.ok === true || j.ok === false)) finish(j); })
+      .catch(function(){ /* edge-dropped on a long train — rely on the poller */ });
+
+    // ROBUST COMPLETION via the train_seq EDGE. `is_trained` is a persistent LEVEL
+    // (only reset clears it), so polling it would FALSE-SUCCEED on a retrain off the
+    // prior run's stale value. Instead we snapshot the pre-train `train_seq` and
+    // accept completion only once a NEW run has ADVANCED it — THIS run finishing,
+    // even if its own HTTP request was dropped.
+    function startPolling(seq0){
+      poll = setInterval(function(){
+        if(done) return;
+        fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); }).then(function(w){
+          if(done) return;
+          if(w && (w.train_seq||0) > seq0){
+            if(w.is_trained){
+              fetch("/api/status", { credentials:"same-origin" }).then(function(r){ return r.json(); })
+                .then(function(s){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"),
+                                            receipt:(s && s.last_receipt) || {}, sigma_phi_disarmed:(w.disarmed||[]) }); })
+                .catch(function(){ finish({ ok:true, playback:"live", world:(w.world||"trained.etsworld"), receipt:{} }); });
+            } else {
+              // run finished but the world did not go live (rare) — honest, not faked.
+              finish({ ok:true, playback:"error", world:(w.world||"your corpus"), receipt:{},
+                       playback_error:"built, but bringing it live failed; the demo world stays live" });
+            }
+          } else if(Date.now() - startT > 12*60*1000){
+            finish({ ok:false, error:"Training is taking longer than expected — it may still be running on the server. Reload the page in a minute to check." });
+          }
+        }).catch(function(){ /* transient; keep polling */ });
+      }, 8000);
+    }
+    // snapshot the baseline edge (fresh read; fall back to the loaded world / 0).
+    fetch("/api/world", { credentials:"same-origin" }).then(function(r){ return r.json(); })
+      .then(function(w0){ startPolling((w0 && w0.train_seq) || 0); })
+      .catch(function(){ startPolling((typeof world === "object" && world && world.train_seq) || 0); });
   });
 
   /* ================= INSTRUMENT ENABLE / LOCK ================= */
