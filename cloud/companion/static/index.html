@@ -821,6 +821,12 @@
           <div class="sec-h" style="margin-bottom:2px">
             <span class="lbl">The Field</span><span class="rule"></span>
             <span class="hint">scroll or drag &#8597; = bias · Ctrl+scroll / pinch = zoom · fill = settled telemetry</span>
+            <!-- HONEST DISARM READOUTS (Theorem A arming corollary; measured off the
+                 world's anchor band-profile B, /api/world profile_armed). Hidden until
+                 the FE shows them on a refused gesture; each is a real-state caption
+                 (registered with the WEB-FAB guard), never decorative. -->
+            <span class="hint" id="fieldTrackLeanMsg" hidden>track lean disarmed &mdash; anchor profiles carry no direction on this world</span>
+            <span class="hint" id="fieldUnitGrainMsg" hidden>unit grain disarmed &mdash; the anchor-band matrix carries no information on this world</span>
             <button class="iconbtn" id="fieldExpand" title="Expand the field to fill the screen"
               aria-label="Expand the field to fill the screen">&#x26F6;</button>
           </div>
@@ -1724,6 +1730,12 @@
   var fieldProfiles   = {};  // track_id -> anchor profile (static) — WRITTEN ONLY by fieldApplyStatic
   var fieldUnitPools  = {};  // role -> unit pool (static)          — WRITTEN ONLY by fieldApplyStatic
   var fieldTrackNames = {};  // track_id -> honest name (static)    — WRITTEN ONLY by fieldApplyStatic
+  // ANCHOR-PROFILE ARMING (Theorem A corollary; /api/world profile_armed, measured
+  // off B). False on the band-blind fixed point (uniform B): the ROLE->UNIT drill and
+  // the TRACK-square LEAN disarm (they route through B's columns); the TRACK->ROLE
+  // drill and ROLE bias stay live. Default true so an informative-B world (and the
+  // synthetic test states, which omit the flag) keep current behaviour.
+  var fieldProfileArmed = true;   // — WRITTEN ONLY by fieldApplyStatic
   // ---- OPERATOR INPUT + view state (never a fill) ----
   var fieldBias    = {};     // keyStr -> bias (the ring) — written by the wheel handler
   var fieldStack   = [];     // zoom path (array of square keys)
@@ -1892,8 +1904,30 @@
     fieldProfiles   = (w && w.profiles)    || {};
     fieldUnitPools  = (w && w.unit_pools)  || {};
     fieldTrackNames = (w && w.track_names) || {};
+    // MEASURED arming (default armed if absent). On a disarmed world the server
+    // already serves EMPTY unit_pools (so role squares floor-gate to non-expandable
+    // = no unit drill); this flag additionally disarms the TRACK-square lean below.
+    fieldProfileArmed = !(w && w.profile_armed === false);
     fieldStack = [];                                    // a new world resets the drill
     fieldDraw();
+  }
+  // HONEST DISARM REFUSALS (Theorem A arming corollary). Each reads its caption from
+  // the registered hidden span (single source of truth) and shows it on the field
+  // status line — a real-state readout of profile_armed, never decorative.
+  //  * track lean — a track-bias direction collapses onto the global density marginal
+  //    under uniform B (a degenerate T1); scroll/drag on a track square emits NOTHING.
+  //  * unit grain — the per-role unit pools are false attribution under uniform B; a
+  //    drill into a role square refuses (no unit grain to open).
+  function fieldTrackLeanDisarmed(keyArr){
+    return !fieldProfileArmed && keyArr && keyArr[0] === "track";
+  }
+  function fieldRefuseTrackLean(){
+    var el = $("fieldTrackLeanMsg");
+    fieldSetStatus(el ? el.textContent : "track lean disarmed", false);
+  }
+  function fieldRefuseUnitGrain(){
+    var el = $("fieldUnitGrainMsg");
+    fieldSetStatus(el ? el.textContent : "unit grain disarmed", false);
   }
 
   /* -------- THE ONE ENGINE-CONTROL PATH: POST /api/steer -------- */
@@ -1938,6 +1972,10 @@
       return;
     }
     if(!sq || !px) return;
+    // TRACK-LEAN DISARM (Theorem A corollary): a track-square lean is a degenerate T1
+    // under uniform B (collapses onto the global density marginal) — emit NOTHING and
+    // name the wall. Role/unit bias is unaffected (it does not route through B).
+    if(fieldTrackLeanDisarmed(sq.key)){ fieldRefuseTrackLean(); return; }
     // BIAS: one FIELD_BIAS_STEP per FIELD_WHEEL_BIAS_PX of accumulated travel
     // (wheel up = favour), remainder kept like fieldDragSteps — through the SAME
     // fieldAddBias lane (same clamp/soft saturation). Retargeting to another
@@ -1970,6 +2008,10 @@
     // floor (round(PR) >= 2). Atomic squares (units, or a single-mode parent) refuse.
     if(!sq) return false;
     if(!sq.expandable){
+      // UNIT-DRILL DISARM (Theorem A corollary): a role square is non-expandable
+      // because the server withheld the (false-attribution) unit pools under uniform
+      // B. Name that wall specifically rather than the generic atomic refusal.
+      if(sq.kind === "role" && !fieldProfileArmed){ fieldRefuseUnitGrain(); return false; }
       fieldSetStatus("atomic — nothing distinct inside above the noise floor", false);
       return false;
     }
@@ -2046,6 +2088,9 @@
     var dist = Math.sqrt(dx*dx + dy*dy);
     if(dist > fieldTouch.moved) fieldTouch.moved = dist;
     if(!world.ready || fieldTouch.key === null){ fieldTouch.lastY = t.clientY; return; }
+    // TRACK-LEAN DISARM (Theorem A corollary; same measured gate as the wheel path):
+    // a drag on a track square emits NOTHING under uniform B and names the wall.
+    if(fieldTrackLeanDisarmed(fieldTouch.key)){ fieldTouch.lastY = t.clientY; fieldRefuseTrackLean(); return; }
     fieldTouch.acc += (fieldTouch.lastY - t.clientY);   // +up = favour (wheel-up analog)
     fieldTouch.lastY = t.clientY;
     var s = fieldDragSteps(fieldTouch.acc);
