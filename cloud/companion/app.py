@@ -563,6 +563,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        # no-store: without it, browsers heuristically cache the HTML/JS and
+        # keep showing a STALE app after a deploy (observed live 2026-07-18:
+        # a phone kept rendering the retired founding-demo page). The app is
+        # one small page; always-fresh beats cache here.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -571,6 +576,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")   # API state is live, never cacheable
         if cookie is not None:
             self.send_header("Set-Cookie",
                              f"ets_session={cookie}; Path=/; SameSite=Strict")
