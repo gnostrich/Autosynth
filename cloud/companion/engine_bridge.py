@@ -136,18 +136,35 @@ def anchor_profile_armed(B) -> bool:
 # discarding it, without the orthogonality cost). No information is lost;
 # the matrix stays exactly the space the force actually pushes.
 #
-# ENSEMBLE (disclosed precision tradeoff): the authoritative E1/E2 run used
-# N_SEED=24, N_BAR=32, a separate N_POOL=48 null pool, B_null=4000 Monte-Carlo
-# draws (wall ~85s/world). A companion boot cannot pay that per world load.
-# Production defaults here (_EIGEN_N_SEED / _EIGEN_N_BAR below) are chosen to
-# keep load-time cost to a few seconds; the null floor is derived from the
-# SAME finite-difference ensemble via a label-shuffle (destroy the +/-h
-# assignment, keep the per-column noise) rather than a separate u=0 pool, to
-# avoid a second ensemble's worth of bars. Same estimator, same 2-part
-# decision rule (|gain|>floor AND |gain|-2*SE>floor via seed bootstrap),
-# smaller N -> wider CIs, not a different method.
-_EIGEN_N_SEED = 4        # FD ensemble seeds per lane column (production default)
-_EIGEN_N_BAR = 6         # bars per seed run
+# ENSEMBLE (OPEN_ENDS #23 boot-ensemble fix, 2026-07-18): the authoritative
+# E1/E2 run (papers/findings/EIGEN-modes-2026-07-18.md) used N_SEED=24,
+# N_BAR=32 (wall ~85-173s/world on that measurement's hardware; measured
+# ~40s/world in THIS sandbox via write_bar-only probes, no audio render).
+# A previous production default (N_SEED=4, N_BAR=6, chosen to keep this
+# synchronous at boot) was found to UNDER-RESOLVE: the null floor is derived
+# from THIS SAME finite-difference ensemble by a label-shuffle, so a small
+# N_SEED makes the floor estimate itself noisy and it inflates ~22x, collapsing
+# a real k=2 world (this demo, informative B) to a false k=1 (one strip, no XY
+# pad) — an honest-but-under-powered floor, not a fabrication, but a real
+# listener-facing wall (BINDING NOTE, item 5). FIX: the eigenmode computation
+# now runs the FULL AUTHORITATIVE ensemble (N_SEED=24, N_BAR=32 below — the
+# SAME numbers as the pre-registered findings run, not arbitrarily chosen) in
+# a BACKGROUND THREAD started at StreamPlayer construction (see
+# StreamPlayer._eigen_worker), off the listener's critical path: first bar /
+# first audio is never blocked. world_info() reports "eigen_pending": true
+# until the thread lands (compute_eigenmodes itself is UNCHANGED — same
+# estimator, same deterministic rng_seed, same JSON encoding; only the
+# SCHEDULING moved off the boot path). No fabricated modes are ever emitted —
+# a still-pending world reports k=0/modes=[] HONESTLY (distinct from a world
+# that measured k=0 for real: the "pending" flag disambiguates the two so the
+# FE can show "measuring the object's modes…" rather than a false "k=1
+# strip"). The null floor is derived from the SAME finite-difference ensemble
+# via a label-shuffle (destroy the +/-h assignment, keep the per-column
+# noise) rather than a separate u=0 pool, to avoid a second ensemble's worth
+# of bars. Same estimator, same 2-part decision rule (|gain|>floor AND
+# |gain|-2*SE>floor via seed bootstrap) throughout.
+_EIGEN_N_SEED = 24       # FD ensemble seeds per lane column (authoritative; async)
+_EIGEN_N_BAR = 32        # bars per seed run (authoritative; async)
 _EIGEN_H = 0.75          # FD step, knob units (the deployed interface step)
 _EIGEN_N_BOOT = 60       # bootstrap resamples for the eigenvalue SE
 _EIGEN_N_NULL = 200      # label-shuffle null draws for the floor
@@ -426,8 +443,29 @@ class StreamPlayer:
         # authors nothing, mutates no settlement, touches no live engine state
         # (fresh StreamWriter probes only). A world with no σ_φ calibration yields
         # an honest empty result (k=0), never a fabricated axis.
-        self._eigen = compute_eigenmodes(self.world, sigma, self.M,
-                                         n_seed=eigen_n_seed, n_bar=eigen_n_bar)
+        #
+        # BOOT-ENSEMBLE (OPEN_ENDS #23 item 5; see the ENSEMBLE comment at the top
+        # of this module): the FULL authoritative ensemble is real compute (~40s
+        # measured in this sandbox on the demo world) and must never block the
+        # listener's first bar. It runs in a daemon BACKGROUND THREAD started here;
+        # `self._eigen` starts as an HONEST "pending" placeholder (k=0, modes=[],
+        # names computed immediately since they need no computation) and is
+        # replaced by ONE atomic attribute assignment when the real result lands
+        # (`_eigen_worker`) — readers (`world_info`) always see either the honest
+        # pending state or the complete real one, never a half-written dict. The
+        # world/sigma this thread reads are frozen (read-only) data structures never
+        # mutated by any steer setter, so this is safe to run concurrently with the
+        # produce loop and any /api/steer call.
+        self._eigen = {"modes": [], "eigen_floor": None, "k": 0,
+                       "basis": "response_kernel_sym",
+                       "observable_names": _eigen_obs_names(self.M) if (sigma is not None and self.M > 0) else [],
+                       "pending": (sigma is not None and self.M > 0)}
+        self._eigen_thread: Optional[threading.Thread] = None
+        if sigma is not None and self.M > 0:
+            self._eigen_thread = threading.Thread(
+                target=self._eigen_worker, args=(sigma, eigen_n_seed, eigen_n_bar),
+                daemon=True)
+            self._eigen_thread.start()
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -439,6 +477,35 @@ class StreamPlayer:
         # listener (the memory bound is real; the world file reloads on demand).
         self._subscribers: set = set()
         self._sub_lock = threading.Lock()
+
+    # --- EIGENPANEL background computation (OPEN_ENDS #23 item 5) ----------
+    def _eigen_worker(self, sigma, eigen_n_seed: int, eigen_n_bar: int) -> None:
+        """Runs the FULL authoritative eigenmode ensemble off-thread, then lands
+        the real result in ONE atomic assignment (`self._eigen = ...`). Never
+        touches `self.engine`/settlement — reads only the frozen `self.world` and
+        `sigma` via fresh `StreamWriter` probes (the same read-only contract
+        `compute_eigenmodes` documents). A computation failure is recorded
+        honestly (pending clears, k stays 0) rather than left silently stuck."""
+        try:
+            result = compute_eigenmodes(self.world, sigma, self.M,
+                                        n_seed=eigen_n_seed, n_bar=eigen_n_bar)
+            result["pending"] = False
+            self._eigen = result
+        except Exception as exc:                       # pragma: no cover (defensive)
+            logger.exception("eigenmode background computation failed")
+            self._eigen = {"modes": [], "eigen_floor": None, "k": 0,
+                           "basis": "response_kernel_sym",
+                           "observable_names": _eigen_obs_names(self.M),
+                           "pending": False, "error": "%s: %s" % (type(exc).__name__, exc)}
+
+    def wait_eigen(self, timeout: Optional[float] = None) -> bool:
+        """Block until the background eigenmode computation lands (or `timeout`
+        elapses). Returns True once `self._eigen["pending"]` is False. Not on any
+        request path — a convenience for callers (tests, CLI tools) that need the
+        real modes deterministically rather than racing the background thread."""
+        if self._eigen_thread is not None:
+            self._eigen_thread.join(timeout=timeout)
+        return not self._eigen.get("pending", False)
 
     # --- world info ---------------------------------------------------------
     def world_info(self) -> dict:
@@ -490,13 +557,28 @@ class StreamPlayer:
                 "last_error": self.last_error,
                 "bar_seconds": float(self.engine.writer.bar_seconds),
                 # EIGENPANEL (OPEN_ENDS #23; E1/E2): the object's native control
-                # basis, computed once at load (compute_eigenmodes). "modes" is the
-                # radial surface's ENTIRE axis set — self-sizing: k=0 on a flat/
-                # uncalibrated world (honest, no disarm theater), k grows with the
-                # object's real spectrum. Never hand-set, never recomputed per-steer.
+                # basis, computed in a background thread at load (compute_eigenmodes,
+                # the FULL authoritative ensemble — item 5). "modes" is the radial
+                # surface's ENTIRE axis set — self-sizing: k=0 on a flat/uncalibrated
+                # world (honest, no disarm theater), k grows with the object's real
+                # spectrum. Never hand-set, never recomputed per-steer.
+                # "eigen_pending" disambiguates "still measuring" (k=0, pending=true —
+                # the FE shows "measuring the object's modes…") from a REAL k=0
+                # (measured, pending=false — the honest single-strip-or-empty case).
                 "modes": self._eigen["modes"], "eigen_floor": self._eigen["eigen_floor"],
                 "k": self._eigen["k"], "basis": self._eigen["basis"],
-                "observable_names": self._eigen["observable_names"]}
+                "observable_names": self._eigen["observable_names"],
+                "eigen_pending": bool(self._eigen.get("pending", False)),
+                # SIGMA_PHI (OPEN_ENDS #22/23 tether amendment): the world's own
+                # MEASURED calibration scale per direction lane — the "lane's own
+                # calibration gain" the living-mark/tether law (T-2) reads for the
+                # scalar sliders' yield-rate (radial modes use their own eigenvalue
+                # `gain`, already reported above). Read-only telemetry, never a second
+                # control channel: nothing downstream consumes this but the FE's
+                # display-side tether-yield computation.
+                "sigma": ({"region": [float(x) for x in np.asarray(sig.region, float).reshape(-1)[:self.M]],
+                          "density": float(sig.density), "cont": float(sig.cont),
+                          "novelty": float(sig.novelty)} if sig is not None else None)}
 
     # --- STATIC per-world field telemetry (read-only, once-per-world) -------
     def static_field(self) -> dict:
