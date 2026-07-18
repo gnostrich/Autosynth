@@ -12,10 +12,11 @@ the ui-v5 engine tree (``architecture-v6/ets``); we put it first on sys.path so
 ``import ets`` resolves to it. (Root engine-v1 is byte-identical minus the
 live-only cap; the native instrument runs on this same tree.)
 
-Realtime note: bar production runs at the host's speed. On real hardware this is
-~realtime (the native instrument streams live); on a slow box it under-runs — the
-browser simply buffers. Nothing here changes the arrangement (H-8): u=0 bars are
-byte-identical to ``render_offline``.
+Realtime note: bar EMISSION is paced to realtime (``_loop``; small fixed lead),
+because an unpaced fast host renders far ahead and makes steering audible
+minutes late for a realtime listener. Render itself still runs at the host's
+speed; a slow box still under-runs and the browser simply buffers. Nothing here
+changes the arrangement (H-8): u=0 bars are byte-identical to ``render_offline``.
 """
 from __future__ import annotations
 
@@ -246,12 +247,38 @@ class StreamPlayer:
         with self._sub_lock:
             self._subscribers.discard(q)
 
+    # Steady-state lead the producer keeps over realtime, so a network hiccup
+    # never starves the client. With the emission re-anchor below, steering
+    # latency is bounded by roughly this lead + the re-anchor threshold +
+    # client-side buffering — a producer stall shifts the stream's timeline
+    # instead of silently inflating the client's buffer forever.
+    PACE_LEAD_SECONDS = 1.0
+    # If the schedule falls this far behind wall clock (first-bar warmup such
+    # as _ensure_bank, or a mid-stream render stall), re-anchor to NOW rather
+    # than bursting at host speed to catch up — a catch-up burst would land in
+    # the client's buffer and become permanent extra steering latency
+    # (auditor note 1, 2026-07-18).
+    PACE_REANCHOR_SECONDS = 2.0
+
     def _loop(self):
+        # REALTIME PACING. Unpaced, a fast host renders far ahead of realtime
+        # (measured 10.8x on the hosted deploy, 2026-07-18), so a realtime
+        # listener buffers ever further behind "live" and steering becomes
+        # audible minutes late. Pacing changes WHEN a bar is emitted, never
+        # WHAT is rendered (H-8 untouched: u=0 bars stay byte-identical to
+        # render_offline). A slow host is never slept — under-run behavior is
+        # unchanged (the browser buffers).
+        import time as _time
+        t0 = None                                  # anchored on FIRST EMISSION
+        sent = 0                                   # samples emitted so far
         while self._playing.is_set():
             try:
                 pcm, _ = self.produce_one_bar()
             except Exception:
                 break
+            now = _time.monotonic()
+            if t0 is None or now - (t0 + sent / self.sr) > self.PACE_REANCHOR_SECONDS:
+                t0 = now - sent / self.sr          # anchor/re-anchor at emission
             with self._sub_lock:
                 subs = list(self._subscribers)
             for q in subs:
@@ -264,6 +291,15 @@ class StreamPlayer:
                         q.put_nowait(pcm)
                     except Exception:
                         pass
+            sent += len(pcm) // 2                  # mono int16 -> samples
+            # Interruptible pacing wait: stop() must not have to out-wait a
+            # bar-slot sleep (auditor note 2) — poll the playing flag.
+            end = t0 + sent / self.sr - self.PACE_LEAD_SECONDS
+            while self._playing.is_set():
+                remaining = end - _time.monotonic()
+                if remaining <= 0:
+                    break
+                _time.sleep(min(remaining, 0.05))
 
     def start(self):
         if self._thread and self._thread.is_alive():
