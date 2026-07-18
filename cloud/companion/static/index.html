@@ -2256,6 +2256,8 @@
   // installed"; >=0 indexes the sweep row currently installed.
   var radialModesByT = null, radialLastTempIdx = -1, radialAuthoritative = null;
   var RADIAL_DEFAULT_TS = 1.0;   // engine's neutral sampler temperature (CHAOS default)
+  var RADIAL_TEMP_TOL = 0.05;    // dead-band around default: inside it the pad keeps the
+                                 // authoritative ensemble regardless of what rows the grid has
   // TETHER T-2 (radial): pad/strip state now tracks lastX/lastY/lastV — the raw
   // POINTER position at the previous tick — so drag is a DELTA (never an
   // absolute jump), letting the mark-ward pull (yieldRate) genuinely compose
@@ -2535,21 +2537,27 @@
   //       unchanged operating point does no work. No-ops entirely when no sweep is loaded.
   function applyRadialModesForTemp(Ts){
     if(!radialModesByT || !radialModesByT.length) return;
-    var bestI = 0, bestD = Infinity;
-    for(var i = 0; i < radialModesByT.length; i++){
-      var d = Math.abs((+radialModesByT[i].T_s) - Ts);
-      if(d < bestD){ bestD = d; bestI = i; }
-    }
-    // (1) default operating point → authoritative ensemble, never a sweep row.
-    if(Math.abs((+radialModesByT[bestI].T_s) - RADIAL_DEFAULT_TS) < 1e-6){
+    function restoreAuthoritative(){
       if(radialLastTempIdx === -1) return;          // authoritative already installed
       radialLastTempIdx = -1;
       if(radialAuthoritative) applyRadialModes({
         modes: radialAuthoritative.modes, k: radialAuthoritative.k,
         eigen_floor: radialAuthoritative.eigen_floor, eigen_pending: false });
-      return;
     }
-    // (2) off-default → the measured sweep row for this T_s.
+    // (1) DEFAULT operating point → full authoritative ensemble, never a sweep row. Keyed on
+    //     Ts ITSELF (a property of the operating point), so the guarantee "at default ⇒
+    //     authoritative basis" holds even if the sweep grid carries no exact T_s=1.0 row —
+    //     it does NOT depend on which rows happen to be tabulated.
+    if(Math.abs(Ts - RADIAL_DEFAULT_TS) < RADIAL_TEMP_TOL){ restoreAuthoritative(); return; }
+    // (2) off-default → the measured sweep row for the nearest T_s. If that nearest measured
+    //     point IS the default one, prefer the full-fidelity authoritative ensemble (same
+    //     operating point) rather than a downgraded sweep row.
+    var bestI = 0, bestD = Infinity;
+    for(var i = 0; i < radialModesByT.length; i++){
+      var d = Math.abs((+radialModesByT[i].T_s) - Ts);
+      if(d < bestD){ bestD = d; bestI = i; }
+    }
+    if(Math.abs((+radialModesByT[bestI].T_s) - RADIAL_DEFAULT_TS) < 1e-6){ restoreAuthoritative(); return; }
     if(bestI === radialLastTempIdx) return;         // same measured row → nothing to rebuild
     radialLastTempIdx = bestI;
     var row = radialModesByT[bestI];
