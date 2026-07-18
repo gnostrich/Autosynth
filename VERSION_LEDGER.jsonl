@@ -861,3 +861,6 @@
 {"head": "f6da403", "path": ".claude/worktrees/agent-af2e76bb781c1f76e/cloud/tests/test_tether.py", "tool": "Edit", "ts": "2026-07-18T11:57:28+00:00"}
 {"head": "f6da403", "path": ".claude/worktrees/agent-af2e76bb781c1f76e/cloud/tests/test_tether.py", "tool": "Edit", "ts": "2026-07-18T11:57:53+00:00"}
 {"head": "25cc70c", "path": ".claude/worktrees/agent-af2e76bb781c1f76e/cloud/tests/test_eigenpanel.py", "tool": "Edit", "ts": "2026-07-18T11:59:33+00:00"}
+{"head": "acbfcdf", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T12:27:12+00:00"}
+{"head": "7f125e2", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T12:31:27+00:00"}
+{"head": "7f125e2", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T12:31:32+00:00"}
