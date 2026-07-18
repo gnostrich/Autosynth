@@ -92,15 +92,19 @@ _SCAR_PHRASES = ("settled render", "tolerances & weights",
 # symbol that supplies its value. A caption matched by a key here is REAL iff that
 # backing symbol is a live function in the main app script (checked below). A
 # data-claim caption matched by NO key is unregistered -> FAIL.
+#
+# FIELD REMOVED (OPEN_ENDS item 2, 2026-07-18): the field's "settled telemetry"
+# fill caption and its two Theorem-A disarm refusal captions ("track lean
+# disarmed" / "unit grain disarmed") were removed WITH the field surface itself
+# (fieldApplySettled/fieldRefuseTrackLean/fieldRefuseUnitGrain no longer exist) —
+# retired together, not orphaned. The Train receipt's "disarmed" readout (item 3)
+# uses a plain `.kv .k`/`.kv .v` row (the SAME unscanned informational-copy
+# pattern the pre-existing `.seal` privacy notice already uses elsewhere in this
+# file) rather than one of the four reactive-readout classes this guard scans —
+# it is a real, world_info-backed value (renderTrainReceipt), just not a
+# telemetry-frame-reactive one, so it is not a NEW instance of the guarded class.
 _CAPTION_SOURCE_MAP = {
-    "settled telemetry": "fieldApplySettled",   # THE FIELD fill (roles telemetry)
     "from telemetry": "updateTape",              # tape playhead (committed-bar time)
-    # Theorem A arming corollary (OPEN_ENDS #22): the two field controls that route
-    # through the anchor band-profile B disarm on a degenerate (uniform) B. Each
-    # refusal caption is a real-state readout backed by the fn that renders it from
-    # the measured `profile_armed` flag (/api/world, engine_bridge.anchor_profile_armed).
-    "track lean disarmed": "fieldRefuseTrackLean",   # T1 track-lean disarm (uniform B)
-    "unit grain disarmed": "fieldRefuseUnitGrain",   # role->unit drill disarm (uniform B)
 }
 
 

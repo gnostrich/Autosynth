@@ -116,7 +116,13 @@ from cloud.companion.engine_bridge import (StreamPlayer, compute_eigenmodes,
                                            _eigen_lane_vector, _eigen_node_means,
                                            _eigen_obs_names)
 p = StreamPlayer("demo.etsworld", seed=0, eigen_n_seed=3, eigen_n_bar=3)
+# BOOT-ENSEMBLE (OPEN_ENDS #23 item 5): the real ensemble now computes in a
+# background thread so it never blocks first audio; wait for it to land before
+# reading modes deterministically (the async SCHEDULING is what changed, not
+# the math/determinism under test here).
+assert p.wait_eigen(timeout=120), "eigenmode background thread did not land in time"
 info = p.world_info()
+assert info["eigen_pending"] is False
 
 # EP-1: determinism — recompute with the SAME parameters/rng on the SAME world;
 # gains must match bit-for-bit (derived reproducibly, never hand-set).
@@ -472,3 +478,69 @@ def test_scalar_lanes_still_route_through_the_same_one_datum(dump):
     for setter in ("set_continuity", "set_novelty", "set_density", "set_gauge",
                    "set_temperature"):
         assert ("def %s(" % setter) in src
+
+
+# ---- BOOT-ENSEMBLE (OPEN_ENDS #23 item 5): async, real defaults, k>=2 -------
+# Slow (real ~40s ensemble in this sandbox, in a background thread) — pinned
+# here, deliberately separate from the fast n_seed=3 dump above, because this
+# is the ONLY test that exercises the ACTUAL production defaults (the ones a
+# real listener's boot uses) end-to-end.
+
+_BOOT_DUMP = r"""
+import sys, json
+sys.path.insert(0, r"%s")
+from cloud.companion.engine_bridge import StreamPlayer
+
+# construction 1: default eigen_n_seed/eigen_n_bar (the REAL production ensemble).
+p = StreamPlayer("demo.etsworld", seed=0)
+info_before_wait = p.world_info()          # must be honest-pending, not fabricated.
+assert p.wait_eigen(timeout=300), "boot ensemble did not land within 300s"
+info1 = p.world_info()
+
+# construction 2 ("reload"): a FRESH StreamPlayer, same world, same defaults.
+p2 = StreamPlayer("demo.etsworld", seed=0)
+assert p2.wait_eigen(timeout=300)
+info2 = p2.world_info()
+
+print(json.dumps({
+    "pending_before_wait": info_before_wait["eigen_pending"],
+    "k_before_wait": info_before_wait["k"],
+    "k1": info1["k"], "k2": info2["k"],
+    "gains1": [m["gain"] for m in info1["modes"]],
+    "gains2": [m["gain"] for m in info2["modes"]],
+    "pending_after": info1["eigen_pending"],
+}))
+""" % str(_ROOT)
+
+
+@pytest.fixture(scope="module")
+def boot_dump():
+    r = subprocess.run([sys.executable, "-c", _BOOT_DUMP], cwd=str(_ROOT),
+                       capture_output=True, text=True, timeout=400)
+    assert r.returncode == 0, f"subprocess failed:\n{r.stdout}\n{r.stderr}"
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+def test_boot_ensemble_reports_honest_pending_before_the_thread_lands(boot_dump):
+    # immediately after construction (before wait_eigen), the world MUST report
+    # an honest "still measuring" state — never a fabricated k to force a pad.
+    assert boot_dump["pending_before_wait"] is True
+    assert boot_dump["k_before_wait"] == 0
+
+
+def test_boot_ensemble_resolves_k_ge_2_with_the_real_defaults(boot_dump):
+    # THE WALL THIS FIXES: at the old small ensemble (n_seed=4, n_bar=6) the
+    # demo collapsed to k=1 (floor inflated ~22x). With the real production
+    # defaults (now 24/32, run async) it must resolve k>=2 — an XY pad, not a
+    # single strip — on this informative-B demo world.
+    assert boot_dump["k1"] >= 2, boot_dump
+    assert boot_dump["pending_after"] is False
+
+
+def test_boot_ensemble_is_deterministic_across_reloads(boot_dump):
+    # "no flicker across reloads" (item 5 disclosure requirement): two
+    # independent StreamPlayer constructions against the SAME world produce
+    # BIT-IDENTICAL gains (same fixed rng_seed, same estimator — never a
+    # per-boot-random ensemble).
+    assert boot_dump["k1"] == boot_dump["k2"]
+    assert boot_dump["gains1"] == boot_dump["gains2"]
