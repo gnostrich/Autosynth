@@ -1,11 +1,13 @@
 {
   "_comment": "The active ETS release — a pinned tuple across the version axes (see VERSION_SCHEME.md). This file is the single source of truth for 'what am I running'.",
-  "release": "engine-v1 · ui-v6 · psytech (local) | cloud: anchor-fit offload (cloud-mvp1)",
+  "release": "engine-v1.1-freeze · ui-v6 · psytech (local) | cloud: anchor-fit offload (cloud-mvp1)",
   "engine": {
-    "id": "engine-v1",
+    "id": "engine-v1.1-freeze",
     "location": "repo root (ets/, corpus.etsworld, ets/calibration/)",
     "status": "active",
-    "verified_by": "scripts/verify_version.py against verification/canonical_manifest.json"
+    "change": "engine-v1 -> v1.1-freeze (PREREG-informative-B.md, operator-signed 2026-07-18): at WORLD FREEZE, anchors.build_world sets the anchor band-profile B to the coupling-weighted band profile of the settled/pruned couplings (data-coupled readout; the in-tree training/world.py form) instead of the uniform band-blind fixed point; receipt strengthened with F_init/seed + verify_receipt requires F_final<=F_init and F_monotone. FREEZE-PATH ONLY: settled D/a/theta/pi are BIT-IDENTICAL through the solve (update_B was a no-op on uniform B); existing committed .etsworld files are NOT re-frozen and render byte-identical (pinned: cloud/tests/test_freeze_only_byte_identity.py). Applied byte-identically across all three engine trees (ets/, architecture-v6/ets/, ui-v6/ets/ functional/anchors.py; diff -q gated).",
+    "verified_by": "scripts/verify_version.py against verification/canonical_manifest.json",
+    "canonical_manifest_rebless": "PENDING operator action on the psytech corpus machine: run `python scripts/verify_version.py --update` (needs corpus.etsworld + genre samples, which are local-only / not committed). The only expected manifest delta is the ets/functional/anchors.py file hash; the reference world_hash + reference_audio_sha256 must be UNCHANGED (corpus.etsworld is an existing frozen world, not re-frozen). If the reference audio sha changes, STOP — the freeze leaked out of the freeze path."
   },
   "ui": {
     "id": "ui-v6",
