@@ -98,3 +98,20 @@ def test_missing_sidecar_is_none(tmp_path):
     w = _write_world(tmp_path)
     p = _skeleton(w)
     assert p._load_sweep_cache() is None          # nothing written yet
+
+
+def test_partial_autocache_reloads_and_write_is_incremental(tmp_path):
+    # A PARTIAL stamped auto-cache (fewer than the full grid) round-trips and is recognised
+    # as partial — the basis for resume-after-eviction. Also confirms each write persists.
+    w = _write_world(tmp_path)
+    p = _skeleton(w)
+    partial = {"M": 2, "n_seed": 24, "n_bar": 32, "observable_names": ["a"],
+               "sweep": [{"T_s": 0.25, "k": 1, "modes": [], "eigen_floor": 0.0},
+                         {"T_s": 0.5, "k": 1, "modes": [], "eigen_floor": 0.0}]}
+    p._write_sweep_cache(partial, 24, 32)
+    reloaded = p._load_sweep_cache()
+    assert reloaded is not None and reloaded.get("stamp") is not None   # stamped auto-cache
+    have = {round(float(r["T_s"]), 4) for r in reloaded["sweep"]}
+    from engine_bridge import _SWEEP_T_GRID
+    missing = [T for T in _SWEEP_T_GRID if round(float(T), 4) not in have]
+    assert missing == [1.0, 1.5, 2.0, 3.0, 4.0]        # resume would compute exactly these

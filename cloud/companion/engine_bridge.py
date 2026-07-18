@@ -513,8 +513,22 @@ class StreamPlayer:
         self._sweep = self._load_sweep_cache()
         self._sweep_thread: Optional[threading.Thread] = None
         self._sweep_lock = threading.Lock()
+        # RESUMABLE: arm the worker whenever the cached table is absent OR a PARTIAL
+        # auto-cache (fewer than the full grid of temperatures). The worker persists each
+        # temperature as it lands and skips ones already done, so an LRU eviction mid-sweep
+        # never loses progress — the next load resumes the remaining temperatures instead of
+        # restarting from scratch (the bug that left a slow trained-world sweep stuck at 1/7).
+        # An externally-supplied table (committed demo / admin upload, unstamped) is taken
+        # as-is and never auto-extended.
+        _loaded = self._sweep
+        if isinstance(_loaded, dict) and _loaded.get("sweep") and _loaded.get("stamp") is None:
+            _missing = []                                # external table: authoritative as given
+        else:
+            _have = ({round(float(r["T_s"]), 4) for r in _loaded["sweep"]}
+                     if isinstance(_loaded, dict) and _loaded.get("sweep") else set())
+            _missing = [T for T in _SWEEP_T_GRID if round(float(T), 4) not in _have]
         self._sweep_args = ((sigma, list(_SWEEP_T_GRID), eigen_n_seed, eigen_n_bar)
-                            if (self._sweep is None and sigma is not None and self.M > 0) else None)
+                            if (_missing and sigma is not None and self.M > 0) else None)
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -673,9 +687,15 @@ class StreamPlayer:
         import time as _t
         try:
             from cloud.companion.eigen_experimental import temperature_sweep
-            rows = []
-            meta = None
+            # RESUME: seed from any partial table already measured (survives eviction/redeploy).
+            prior = self._sweep if isinstance(self._sweep, dict) else None
+            rows = list(prior["sweep"]) if (prior and prior.get("sweep")) else []
+            done_T = {round(float(r["T_s"]), 4) for r in rows}
+            meta = ({k: prior[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
+                    if (prior and "observable_names" in prior) else None)
             for T in grid:
+                if round(float(T), 4) in done_T:
+                    continue                             # already measured — resume past it
                 # Park (don't compute) while audio is live — heavy work only in idle windows.
                 while getattr(self, "_playing", None) is not None and self._playing.is_set():
                     _t.sleep(_SWEEP_DEFER_POLL)
@@ -685,11 +705,13 @@ class StreamPlayer:
                     return                               # honest: measurement produced nothing usable
                 if meta is None:
                     meta = {k: part[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
-                rows.extend(part["sweep"])
+                rows.append(part["sweep"][0])
+                rows.sort(key=lambda r: float(r["T_s"]))
                 landed = dict(meta); landed["sweep"] = list(rows)
                 self._sweep = landed                     # land incrementally (atomic reassign)
-            if self._sweep is not None:
-                self._write_sweep_cache(self._sweep, n_seed, n_bar)
+                # PERSIST each temperature as it lands — an eviction here loses nothing; the
+                # next load resumes the remaining temperatures from this sidecar.
+                self._write_sweep_cache(landed, n_seed, n_bar)
         except Exception:                                # pragma: no cover (defensive)
             logger.exception("modes-by-temperature background sweep failed")
         finally:
