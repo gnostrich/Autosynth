@@ -289,6 +289,30 @@ the field (wall: iPhone Safari allows neither element-fullscreen nor
 orientation lock — honest max is fill-the-viewport + use rotation);
 (b) a very simple ONE-TIME tutorial overlay on first Play.
 
+## 22. CONJUGACY RECONCILIATION PROGRAM (operator-launched 2026-07-18 midday)
+North star: papers/paper1-typed-control-calculus.md + papers/paper2-ets-
+instrument.md; operational directive papers/DIRECTIVE-conjugacy-
+reconciliation.md. OPERATOR DECISIONS ON THE RECORD:
+- FLAT-B is the Phase-1 HEADLINE disagreement (paper 2 §2 "squares grouped by
+  the trained coupling's OWN equivalence" vs implementation: F is band-blind,
+  B uniform on every world ever trained — investigator report 2026-07-18).
+- Remediation 1-NOW / 2-NEXT, derived from Theorem A's arming corollary (NOT
+  policy): (1) role-grain drill DISARMS on the degenerate grouping observable
+  now; (2) pre-registered engine change to make B informative (candidate: the
+  in-tree coupling-weighted band profile, training/world.py) next, with
+  operator sign-off. (3) receipt strengthening (F_init / verified monotone)
+  rides with 2.
+- Q3 "what datum does TRACK-BIAS actually perturb with B flat" = first-class
+  typing-table row (possible degenerate-T1 finding).
+- P4 (tempo) = honest NOT-YET on web (no tempo control exists).
+- P1/P2/P5 run at FIXTURE scale with measured-and-disclosed noise floors;
+  psytech-scale flagged for real hardware if floors are high.
+- SEQUENCING: Phase 1's typing table IS the scalar-slider prereg; the slider
+  family (VARY/SPREAD/DENSITY/KEY LOCK/CHAOS/TEMPO per paper 2 §2, two-marks-
+  on-one-track rendering per Theorem D(iii)) builds only after the table lands.
+Phase 1 is READ-ONLY (repo byte-identical; scratch cleaned); Opus auditor
+verifies each phase; both phases logged to LEDGER.
+
 ## 21. NEXT BUILD BATCH (operator feedback, 2026-07-18 late morning) — queued
 behind the WEBFAB remediation (same files; no concurrent edits):
 (a) DESKTOP WHEEL STORM: zoom fires per wheel event -> a trackpad flick skips
