@@ -190,6 +190,41 @@ def test_caption_source_map_covers_every_data_claim_caption():
         assert key in present, f"stale caption->source key (never rendered): {key!r}"
 
 
+# --- lane console: read-only must LOOK read-only (no slider affordance) ------
+
+def _stylesheet(html: str) -> str:
+    m = re.search(r"<style>(.*?)</style>", html, re.S)
+    assert m, "no stylesheet in index.html"
+    return m.group(1)
+
+
+def test_lane_console_has_no_slider_affordance():
+    """OPEN_ENDS #21 addendum (operator): the remediation removed the inert
+    range inputs, but the lane bars KEPT slider styling (thumb/groove chrome)
+    and users still tried to drag them — a residual affordance lie. The lanes
+    must be plain meter bars: no range input anywhere, no slider-thumb or
+    grab-cursor chrome in the stylesheet, and the bar itself non-interactive."""
+    html = _INDEX.read_text()
+    js = _inline_main_js(html)
+    css = _strip_comments(_stylesheet(html))   # comments aren't chrome
+    # no range input ELEMENT in the served markup or the lane builder.
+    assert not re.search(r"<input[^>]*type\s*=\s*.?range", html), \
+        "a range input is back in the page"
+    assert "range" not in _js_functions(js).get("buildLanesOnce", ""), \
+        "buildLanesOnce must not create any range input"
+    # no slider chrome in the stylesheet (the dead .slider block stays deleted).
+    for chrome in ("-webkit-slider-thumb", "-moz-range-thumb", "cursor:grab",
+                   "cursor: grab"):
+        assert chrome not in css, f"slider chrome is back in the stylesheet: {chrome}"
+    assert not re.search(r"\.slider\b", css), ".slider rules must stay deleted"
+    # the read-only bar is explicitly non-interactive.
+    rbar = re.search(r"\.lane \.rbar\{([^}]*)\}", css.replace("\n", " "))
+    assert rbar, ".lane .rbar rule missing"
+    body = rbar.group(1).replace(" ", "")
+    assert "pointer-events:none" in body and "cursor:default" in body, \
+        "the lane meter bar must be visibly/functionally non-interactive"
+
+
 # ============================ the guards BITE ================================
 
 def test_webfab1_bites_on_scar_phrase():

@@ -220,6 +220,8 @@ def test_run_train_routes_audio_to_seam_runtime(tmp_path, monkeypatch):
     class FakePlayer:
         def __init__(self, path, seed=0, is_trained=False):
             calls["player_path"] = path; calls["is_trained"] = is_trained
+        def start(self):                       # pre-warm target (OPEN_ENDS #21d)
+            calls["prewarmed"] = True
     monkeypatch.setattr(tl, "build_trained_world", fake_build)
     monkeypatch.setattr(eb, "StreamPlayer", FakePlayer)
 

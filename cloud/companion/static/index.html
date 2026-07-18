@@ -305,6 +305,15 @@
   .inst-lock h3{ margin:0; font-size:16px; font-weight:650; color: var(--ink); }
   .inst-lock p{ margin:0; font-size: var(--fs-tiny); color: var(--muted); max-width: 46ch; }
 
+  /* engine-state note (OPEN_ENDS #21d): warming / failed — an honest readout */
+  .warm-note{
+    margin: 0 2px var(--sp-4); padding: 10px 14px; border-radius: var(--r-md);
+    border:1px solid var(--line); background: rgba(242,208,107,.07);
+    color: var(--ink-2); font-size: var(--fs-tiny); font-family: var(--font-mono);
+  }
+  .warm-note[hidden]{ display:none; }
+  .warm-note.err{ border-color: var(--danger); background: rgba(232,106,106,.08); }
+
   /* stream error banner */
   .stream-err{
     display:none; margin: 0 2px var(--sp-4); padding: 11px 14px; border-radius: var(--r-md);
@@ -320,36 +329,20 @@
   .lane .name{ font-size: var(--fs-micro); letter-spacing:.15em; text-transform:uppercase; color: var(--ink-2); font-weight:650; }
   .lane .desc{ font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--faint); font-weight:600; margin-top:2px; }
   .lane .rd{ text-align:right; font-size: 15px; font-weight:600; color: var(--ink); }
-  .slider{ position:relative; height: 30px; display:flex; align-items:center; }
-  .slider input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:100%; margin:0; background:transparent; cursor:pointer; }
-  .slider .track{
-    position:absolute; left:0; right:0; height:6px; border-radius:5px;
-    background: var(--panel-inset); border:1px solid var(--line-soft); pointer-events:none;
-  }
-  .slider .fill{
-    position:absolute; left:0; height:6px; border-radius:5px; pointer-events:none;
-    background: linear-gradient(90deg, var(--accent-deep), var(--accent));
-    box-shadow: 0 0 10px -1px var(--accent-glow);
-  }
-  .slider input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%;
-    background: var(--ink); border:2px solid var(--accent);
-    box-shadow: 0 0 0 3px var(--panel), 0 0 14px -1px var(--accent-glow); cursor:grab; margin-top:0;
-  }
-  .slider input[type=range]::-moz-range-thumb{
-    width:16px; height:16px; border-radius:50%; background: var(--ink); border:2px solid var(--accent);
-    box-shadow: 0 0 0 3px var(--panel), 0 0 14px -1px var(--accent-glow); cursor:grab;
-  }
-  .slider input[type=range]:focus-visible{ outline:none; }
-  .slider input[type=range]:focus-visible ~ .fill{ box-shadow: 0 0 0 2px var(--accent); }
-
-  /* READ-ONLY lane bar (no control affordance — display of a live φ statistic). */
-  .lane .rbar{ position:relative; height:8px; display:flex; align-items:center; }
-  .lane .rbar .track{ position:absolute; left:0; right:0; height:6px; border-radius:5px;
+  /* READ-ONLY lane METER (no control affordance — display of a live φ statistic).
+     OPEN_ENDS #21 addendum: the remediation removed the inert range inputs, but
+     the bar KEPT the slider look (rounded glowing groove) and users still tried
+     to drag it — a residual affordance lie. It is now a plain flat meter bar:
+     no thumb, no groove pill, no glow, and none of the old slider-chrome rules
+     remain anywhere in this stylesheet; cursor default + pointer-events none =
+     clearly non-interactive. The live fill/value wiring is unchanged. */
+  .lane .rbar{ position:relative; height:12px; cursor:default; pointer-events:none; }
+  .lane .rbar .track{ position:absolute; inset:0; border-radius:2px;
     background: var(--panel-inset); border:1px solid var(--line-soft); }
-  .lane .rbar .fill{ position:absolute; left:0; width:0%; height:6px; border-radius:5px;
+  .lane .rbar .fill{ position:absolute; left:1px; top:1px; bottom:1px; width:0%;
+    max-width: calc(100% - 2px); border-radius:1px;
     background: linear-gradient(90deg, var(--accent-deep), var(--accent));
-    box-shadow: 0 0 10px -1px var(--accent-glow); transition: width .12s linear; }
+    transition: width .12s linear; }
   .lane .rd.num{ font-variant-numeric: tabular-nums; }
 
   .meters{ display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); padding-top: var(--sp-3); border-top:1px solid var(--line-soft); }
@@ -533,7 +526,8 @@
      'ambient chrome · reacts to input · not a data value'. Fixed behind all content;
      bleeds subtly past the opaque glass panels in the margins (never over a data area);
      drift AND reactivity freeze when the viewer prefers reduced motion. If webgl2 is
-     unavailable the canvas simply stays inert (no fallback, no errors). -->
+     unavailable the canvas simply stays inert (no fallback, no errors); a software
+     rasterizer gets ONE static frame (no loop) — see the PERF note in the script. -->
 <canvas id="ambient" aria-hidden="true"></canvas>
 <script>
 "use strict";
@@ -541,24 +535,45 @@
    Self-contained obsidian backdrop: a tiny WebGL2 prism shader driven ONLY by
    uTime / uRes / uMouse (pointer) / uReact / uPulse (UI-action glints). It consumes
    only time/pointer/action pulses — never any engine or telemetry value, carries no
-   id, and sits behind all content. Ported from the design prototype (§1b); the only
-   change is that it runs its own render loop (the app's main loop is world-gated). */
+   id, and sits behind all content. Ported from the design prototype (§1b); it runs
+   its own render loop (the app's main loop is world-gated), perf-bounded per
+   OPEN_ENDS #21a2 (half-res backing store, ~30fps cap, hidden-tab pause,
+   software-GL static freeze — see the PERF note below). */
 (function(){
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   /* eased INTERACTION state — all cosmetic. Reacting to input is allowed precisely
      because this layer is ledgered as decor (never engine telemetry). Under
      prefers-reduced-motion the drift freezes AND reactivity is disabled. */
   var amb = document.getElementById("ambient");
-  var DPR = Math.min(2, window.devicePixelRatio||1);
+  /* PERF (OPEN_ENDS #21a2 — measured 2026-07-18: prism ON = 18fps + 3.7s of long
+     tasks per 5.5s window; prism OFF = 59fps; everything else <1%). Four bounds,
+     all on this decor layer only (the shader/uniforms are untouched):
+       - HALF-RESOLUTION backing store (AMB_SCALE), CSS-stretched to the viewport —
+         it is a blurry background, full DPR pixels bought nothing;
+       - the RAF loop is capped to ~30fps by timestamp (AMB_FRAME_MS);
+       - the loop PAUSES entirely while document.hidden (visibilitychange);
+       - a SOFTWARE rasterizer (swiftshader/llvmpipe), detected ONCE at init via
+         WEBGL_DEBUG_RENDERER_INFO, renders ONE static frame and never loops —
+         same spirit as the reduced-motion freeze, which is kept as-is. */
+  var AMB_SCALE = 0.5;          // backing store at half the CSS resolution
+  var AMB_FRAME_MS = 1000/30;   // ~30fps cap for the drift loop
   var ambMouse={x:0,y:0}, ambMouseT={x:0,y:0}, ambReact=0, ambPulse=0, ambLastMove=-99;
   var AMB = initAmbient();
   /* brief eased GLINT fired by a real UI action (field scroll-bias, drill, tab switch,
      transport). Exposed to the app; a decor cue, never engine telemetry. */
-  window.ambFirePulse = function(){ if(AMB && !reduce) ambPulse=1; };
+  window.ambFirePulse = function(){ if(AMB && !AMB.software && !reduce) ambPulse=1; };
   function initAmbient(){
     if(!amb) return null;
     var gl; try{ gl=amb.getContext("webgl2",{antialias:false, alpha:false}); }catch(e){ gl=null; }
     if(!gl) return null;
+    /* software-GL probe (once): on a CPU rasterizer the prism burns main-thread
+       time for a background blur — freeze to a single frame instead. */
+    var software = false;
+    try{
+      var dbg = gl.getExtension("WEBGL_DEBUG_RENDERER_INFO");
+      var renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "";
+      software = /swiftshader|llvmpipe|software/i.test(renderer);
+    }catch(e){ software = false; }
     var V="#version 300 es\nvoid main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position=vec4(p*2.0-1.0,0.0,1.0); }";
     var F=
       "#version 300 es\n"+
@@ -599,15 +614,17 @@
     var pr=gl.createProgram(); gl.attachShader(pr,vs); gl.attachShader(pr,fs); gl.linkProgram(pr);
     if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){ console.warn("amb-link",gl.getProgramInfoLog(pr)); return null; }
     gl.useProgram(pr); gl.bindVertexArray(gl.createVertexArray());
-    return { gl:gl, pr:pr,
+    return { gl:gl, pr:pr, software:software,
       uRes:gl.getUniformLocation(pr,"uRes"), uTime:gl.getUniformLocation(pr,"uTime"),
       uMouse:gl.getUniformLocation(pr,"uMouse"), uReact:gl.getUniformLocation(pr,"uReact"),
       uPulse:gl.getUniformLocation(pr,"uPulse") };
   }
   function resizeAmbient(){
     if(!AMB) return;
-    var w=Math.round(window.innerWidth*DPR), h=Math.round(window.innerHeight*DPR);
+    var w=Math.max(1, Math.round(window.innerWidth*AMB_SCALE));
+    var h=Math.max(1, Math.round(window.innerHeight*AMB_SCALE));
     amb.width=w; amb.height=h; AMB.gl.viewport(0,0,w,h);
+    if(AMB.software) drawAmbient(0, 0);   // static mode: repaint the one frame
   }
   function drawAmbient(tsec, dt){
     if(!AMB) return;
@@ -638,12 +655,28 @@
   });
   window.addEventListener("resize", resizeAmbient);
   resizeAmbient();
-  var ambLast = performance.now();
-  (function loop(now){
-    var dt=Math.min(0.05,(now-ambLast)/1000); ambLast=now;
-    drawAmbient(now/1000, dt);
-    requestAnimationFrame(loop);
-  })(performance.now());
+  if(AMB.software){
+    /* SOFTWARE GL: one static frame was painted by resizeAmbient; no loop ever
+       runs (and no pulse/pointer state accumulates — see ambFirePulse guard). */
+  } else {
+    var ambLast = performance.now(), ambDrawn = -1e9, ambRaf = 0;
+    function ambFrame(now){
+      ambRaf = requestAnimationFrame(ambFrame);
+      if(now - ambDrawn < AMB_FRAME_MS - 1) return;   // ~30fps cap: skip frames
+      var dt=Math.min(0.05,(now-ambLast)/1000); ambLast=now; ambDrawn=now;
+      drawAmbient(now/1000, dt);
+    }
+    /* pause entirely while the tab is hidden; resume (re-anchored) when shown. */
+    document.addEventListener("visibilitychange", function(){
+      if(document.hidden){
+        if(ambRaf){ cancelAnimationFrame(ambRaf); ambRaf = 0; }
+      } else if(!ambRaf){
+        ambLast = performance.now();
+        ambRaf = requestAnimationFrame(ambFrame);
+      }
+    });
+    if(!document.hidden) ambRaf = requestAnimationFrame(ambFrame);
+  }
 })();
 </script>
 
@@ -769,6 +802,15 @@
       </div>
 
       <div class="inst-inner">
+        <!-- ENGINE-STATE NOTE (OPEN_ENDS #21d): an HONEST state readout, not decor.
+             Shown ONLY while /api/world reports warmed:false (the bridge's real
+             first-bar-produced flag) — the bank build + first render after a
+             deploy/train can take minutes, and dead silence looked like a hang.
+             Cleared by the first telemetry bar>0 or the warmed flag; if the
+             produce loop RECORDS a failure (last_error), this line reports it
+             instead of promising sound that will never come. Text set by
+             updateWarming() from those real flags only. -->
+        <div class="warm-note" id="warmNote" hidden role="status" aria-live="polite"></div>
         <!-- THE FIELD (replaces role pads + XY vector pad; mounted in #steerSurface).
              Squares glow by LIVE SETTLED telemetry (the engine's answer). Hover+scroll
              or a one-finger vertical DRAG = bias a square (soft; saturates, never
@@ -915,7 +957,8 @@
   // canTrain defaults FALSE (auditor note 2): the Train tab must never
   // flash for a visitor before the first /api/world poll answers; the
   // server's owner gate is authoritative either way.
-  var world = { ready:false, M:0, sr:48000, keyed:false, canTrain:false };
+  var world = { ready:false, M:0, sr:48000, keyed:false, canTrain:false,
+                warmed:false, lastError:null };   // engine-state flags (#21c/d)
   var state = "idle";        // idle | playing | paused
   var region = [];           // last computed region vector (length M)
   var es = null;             // telemetry EventSource
@@ -1098,6 +1141,12 @@
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
+        // WARMING (OPEN_ENDS #21d): the bridge's REAL first-bar-produced flag and
+        // the produce loop's recorded failure. warmed is claimed cold ONLY when
+        // the backend explicitly says warmed:false — never inferred client-side.
+        world.warmed = (w.warmed !== false);
+        world.lastError = w.last_error || null;
+        updateWarming();
         enableInstrument();
         // STATIC per-world field telemetry (profiles + unit pools + honest names):
         // the TRACK and UNIT grains of the ladder. Absent -> flat role fallback.
@@ -1111,6 +1160,7 @@
         refreshPublishBox();
       } else {
         world.ready = false;
+        updateWarming();               // no world -> no warming/failure note
         // Two honest ready:false cases, never conflated:
         //   loaded===false -> NO world is loaded (OPEN_ENDS #16(c): the founding demo
         //     is not surfaced on the site). Show the EMPTY STATE (honest text + a
@@ -1125,6 +1175,39 @@
       world.ready = false;
       if(!backendAlive) setOverlayDead(); else setOverlayLoading();
     });
+  }
+
+  /* ============ ENGINE WARMING / FAILURE NOTE (OPEN_ENDS #21c+d) ============
+     An honest state readout on the Play surface, backed by two REAL bridge flags
+     carried on /api/world (StreamPlayer.world_info): `warmed` (has the produce
+     loop rendered its first bar) and `last_error` (the loop's recorded failure).
+     While a world is open but not warmed the note replaces dead silence; it
+     clears on the first telemetry frame with bar>0 or on the warmed flag. A
+     recorded engine failure is reported instead — never an eternal "warming". */
+  function updateWarming(){
+    var el = $("warmNote");
+    if(!el) return;
+    if(world.ready && world.lastError){
+      el.textContent = "engine failed: " + world.lastError;
+      el.classList.add("err");
+      el.hidden = false;
+      return;
+    }
+    el.classList.remove("err");
+    el.textContent = "engine warming up — first sound can take a few minutes";
+    el.hidden = !(world.ready && !world.warmed);
+  }
+  // Slim /api/world re-read for the warmed/last_error flags ONLY. It must never
+  // re-run enableInstrument (loadWorld's ready branch) on a live instrument —
+  // that would re-register the field's input listeners every poll.
+  function refreshEngineState(){
+    return fetch("/api/world").then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(w){
+        if(!w || !w.ready) return;
+        world.warmed = (w.warmed !== false);
+        world.lastError = w.last_error || null;
+        updateWarming();
+      }).catch(noop);
   }
 
   /* ================= SOURCE INGEST (phase-1, local-only) ================= */
@@ -1304,18 +1387,67 @@
   var FIELD_SAFE_MAG   = 1.0;    // = architecture-v6/ets/panel/envelope.SAFE_REGION_MAGNITUDE
                                  //   (the cap clamp_region enforces on the wire); pinned by test.
   var FIELD_BIAS_LIMIT = 1.0;    // soft-saturation stop for the operator bias (± envelope)
-  var FIELD_BIAS_STEP  = 0.125;  // bias accumulated per wheel notch
+  var FIELD_BIAS_STEP  = 0.125;  // bias accumulated per wheel/drag step
   var FIELD_TOUCH_BIAS_PX = 30;  // one-finger vertical drag: px per one bias step
   var FIELD_TAP_SLOP_PX   = 10;  // movement under this = a TAP (tooltip only, no zoom)
+  /* WHEEL-STORM constants (OPEN_ENDS #21a): fieldOnWheel used to act once PER
+     EVENT, so a trackpad flick fired dozens of zoom/bias actions — skipping the
+     role layer straight to units, and slamming bias in one flick. Both wheel
+     gestures now ACCUMULATE normalized delta instead. */
+  var FIELD_WHEEL_BIAS_PX   = 40;   // plain-wheel px per ONE bias step (a discrete
+                                    // mouse notch ~100-120px -> 2-3 steps)
+  var FIELD_ZOOM_STEP_DELTA = 120;  // Ctrl+wheel / pinch px per ONE zoom layer
+                                    // (~one deliberate notch / pinch spread)
+  var FIELD_ZOOM_COOLDOWN_MS = 350; // absorb storm events this long after a zoom step
+  var FIELD_WHEEL_LINE_PX = 40;     // WheelEvent DOM_DELTA_LINE -> px equivalent
+  var FIELD_WHEEL_PAGE_PX = 800;    // WheelEvent DOM_DELTA_PAGE -> px equivalent
 
+  // Normalize a wheel delta across deltaModes into one px-equivalent lane
+  // (0 = pixels, 1 = lines, 2 = pages), so a line-mode mouse (Firefox) and a
+  // pixel-mode trackpad land on the SAME step arithmetic.
+  function fieldWheelPx(deltaY, deltaMode){
+    deltaY = +deltaY || 0;
+    if(deltaMode === 1) return deltaY * FIELD_WHEEL_LINE_PX;
+    if(deltaMode === 2) return deltaY * FIELD_WHEEL_PAGE_PX;
+    return deltaY;
+  }
+
+  // Quantize accumulated travel (px) into whole bias steps + the kept sub-step
+  // remainder — the ONE step arithmetic both the touch drag and the wheel use.
+  function fieldStepQuant(accPx, stepPx){
+    accPx = +accPx || 0;
+    var steps = accPx >= 0 ? Math.floor(accPx / stepPx)
+                           : -Math.floor(-accPx / stepPx);
+    return { steps: steps, rem: accPx - steps * stepPx };
+  }
   // Consume accumulated vertical drag (px, +up = favour, the wheel-up analog) into
   // whole bias steps, keeping the sub-step remainder. The touch counterpart of wheel
-  // notches: each step feeds the SAME fieldAddBias entry the wheel uses.
-  function fieldDragSteps(accPx){
-    accPx = +accPx || 0;
-    var steps = accPx >= 0 ? Math.floor(accPx / FIELD_TOUCH_BIAS_PX)
-                           : -Math.floor(-accPx / FIELD_TOUCH_BIAS_PX);
-    return { steps: steps, rem: accPx - steps * FIELD_TOUCH_BIAS_PX };
+  // steps: each step feeds the SAME fieldAddBias entry the wheel uses.
+  function fieldDragSteps(accPx){ return fieldStepQuant(accPx, FIELD_TOUCH_BIAS_PX); }
+  // The wheel-lane twin (OPEN_ENDS #21a): one bias step per FIELD_WHEEL_BIAS_PX
+  // of normalized plain-wheel travel, remainder kept, same fieldAddBias lane.
+  function fieldWheelSteps(accPx){ return fieldStepQuant(accPx, FIELD_WHEEL_BIAS_PX); }
+
+  // ZOOM GESTURE GATE (OPEN_ENDS #21a — the wheel/pinch storm): one DELIBERATE
+  // gesture = exactly ONE layer. A stateless step function over
+  // {acc, lastStepMs}: it consumes one normalized delta (px; sign = zoom intent,
+  // + = in) and emits step -1/0/+1. A step requires FIELD_ZOOM_STEP_DELTA of
+  // accumulated SAME-DIRECTION travel AND FIELD_ZOOM_COOLDOWN_MS elapsed since
+  // the last step; every event inside the cooldown is ABSORBED with the
+  // accumulator held at 0 — so when the cooldown expires, accumulation restarts
+  // from zero (absorbed storm travel never counts toward the next layer). A
+  // direction change also resets the accumulator.
+  function fieldZoomGate(st, deltaPx, nowMs){
+    var acc = (st && +st.acc) || 0;
+    var last = (st && typeof st.lastStepMs === "number") ? st.lastStepMs : -1e9;
+    if(nowMs - last < FIELD_ZOOM_COOLDOWN_MS)
+      return { step: 0, acc: 0, lastStepMs: last };      // storm event absorbed
+    deltaPx = +deltaPx || 0;
+    if(acc !== 0 && deltaPx !== 0 && (deltaPx > 0) !== (acc > 0)) acc = 0;
+    acc += deltaPx;
+    if(acc >= FIELD_ZOOM_STEP_DELTA)  return { step:  1, acc: 0, lastStepMs: nowMs };
+    if(acc <= -FIELD_ZOOM_STEP_DELTA) return { step: -1, acc: 0, lastStepMs: nowMs };
+    return { step: 0, acc: acc, lastStepMs: last };
   }
 
   function fieldClamp01(v){ v = +v || 0; return v < 0 ? 0 : (v > 1 ? 1 : v); }
@@ -1441,6 +1573,27 @@
     return fieldTrackIds(st).map(function(t){
       return { track: t, name: fieldTrackName(st, t) };
     });
+  }
+  // LEGEND AT DEPTH (OPEN_ENDS #21b): what the legend shows for a drill stack.
+  //   root  — at the track root: the per-track chips (as before);
+  //   track — drilled into a track: a compact PARENT-TRACK chip + the role-shade
+  //           key for exactly the roles that view shows (fieldRolesOfTrack);
+  //   unit  — drilled into a role of a track: the parent chip + that role's label;
+  //   none  — no track parent (the degraded role-grain-only field, or an empty
+  //           payload): nothing to attribute, the legend stays hidden.
+  // Role ids here are the SAME key[1] the squares carry, so the renderer can shade
+  // them with the SAME fieldFamilyShade the squares use — never a second palette.
+  function fieldLegendSpec(st, stack){
+    if(!stack || !stack.length)
+      return fieldTrackSquares(st).length ? { mode: "root" } : { mode: "none" };
+    var pt = fieldParentTrack(stack);
+    if(pt === null) return { mode: "none" };
+    var top = stack[stack.length - 1];
+    if(top[0] === "track")
+      return { mode: "track", track: pt,
+               roles: fieldRolesOfTrack(st, pt).map(function(sq){ return sq.key[1]; }) };
+    if(top[0] === "role") return { mode: "unit", track: pt, role: top[1] };
+    return { mode: "none" };
   }
 
   // ---- grid + hit-testing (pure) ----
@@ -1576,6 +1729,10 @@
   var fieldStack   = [];     // zoom path (array of square keys)
   var fieldHover   = null;   // hovered square key (wheel targeting only; inert)
   var fieldPending = false;  // a bias gesture awaiting the engine's re-settlement
+  // WHEEL-STORM gesture state (OPEN_ENDS #21a) — accumulators only, never a fill:
+  var fieldZoomWheelState = { acc: 0, lastStepMs: -1e9 };  // Ctrl+wheel zoom gate
+  var fieldPinchState     = { acc: 0, lastStepMs: -1e9 };  // two-finger pinch gate
+  var fieldWheelBiasState = { key: null, acc: 0 };         // plain-wheel bias remainder
 
   // the telemetry-state object the pure ladder functions consume (reads stores only).
   function fieldState(){
@@ -1620,23 +1777,46 @@
   }
   function fieldKeyEq(a, b){ return a && b && fieldKeyStr(a) === fieldKeyStr(b); }
 
-  // The TRACK LEGEND (swatch + real name): shown at the track-root view only, 1:1 with
-  // the payload's track ids/names (FIELD-E — no entry without a payload track).
+  // The TRACK LEGEND (swatch + honest name), at EVERY depth (OPEN_ENDS #21b):
+  //   root  -> the per-track chips (1:1 with the payload; FIELD-E);
+  //   track -> a compact parent-track chip + the role-shade key for THAT track's
+  //            roles, shaded by the SAME fieldFamilyShade the squares use;
+  //   unit  -> the parent-track chip + the drilled role's label;
+  //   none  -> hidden (degraded role-grain-only field: no attribution to claim).
+  function fieldLegendChip(bg, text, title){
+    var chip = document.createElement("span"); chip.className = "leg";
+    chip.title = title || text;
+    var sw = document.createElement("span"); sw.className = "leg-sw";
+    sw.style.background = bg;
+    var nm = document.createElement("span"); nm.className = "leg-nm";
+    nm.textContent = text;
+    chip.appendChild(sw); chip.appendChild(nm);
+    if(fieldLegend) fieldLegend.appendChild(chip);
+  }
   function fieldRenderLegend(){
     if(!fieldLegend) return;
     var st = fieldState();
-    var atTrackRoot = (!fieldStack.length && fieldTrackSquares(st).length > 0);
-    if(!atTrackRoot){ fieldLegend.innerHTML = ""; fieldLegend.style.display = "none"; return; }
-    fieldLegend.style.display = "";
+    var spec = fieldLegendSpec(st, fieldStack);
     fieldLegend.innerHTML = "";
-    fieldLegendEntries(st).forEach(function(e){
-      var chip = document.createElement("span"); chip.className = "leg"; chip.title = e.name;
-      var sw = document.createElement("span"); sw.className = "leg-sw";
-      sw.style.background = fieldTrackColor(e.track);
-      var nm = document.createElement("span"); nm.className = "leg-nm";
-      nm.textContent = fieldTruncMiddle(e.name, 22);
-      chip.appendChild(sw); chip.appendChild(nm); fieldLegend.appendChild(chip);
-    });
+    if(spec.mode === "none"){ fieldLegend.style.display = "none"; return; }
+    fieldLegend.style.display = "";
+    if(spec.mode === "root"){
+      fieldLegendEntries(st).forEach(function(e){
+        fieldLegendChip(fieldTrackColor(e.track), fieldTruncMiddle(e.name, 22), e.name);
+      });
+      return;
+    }
+    // drilled: parent chip first, then the role-shade key — the shade of role r is
+    // fieldFamilyShade(parentColour, r), EXACTLY what fieldSquareColor paints, so
+    // key and squares can never disagree (one palette, one derivation).
+    var base = fieldTrackColor(spec.track);
+    var name = fieldTrackName(st, spec.track);
+    fieldLegendChip(base, fieldTruncMiddle(name, 18), name);
+    if(spec.mode === "track"){
+      spec.roles.forEach(function(r){ fieldLegendChip(fieldFamilyShade(base, r), "R" + r); });
+    } else {
+      fieldLegendChip(fieldFamilyShade(base, spec.role), "R" + spec.role);
+    }
   }
 
   function fieldDraw(){
@@ -1740,18 +1920,34 @@
 
   // gesture -> INPUT only; never brightness. Ctrl/pinch = zoom (drill only where real
   // sub-structure clears the floor); plain wheel = bias the hovered square.
+  // WHEEL STORM (OPEN_ENDS #21a): both gestures ACCUMULATE normalized delta —
+  // never one action per event — so a trackpad flick is one deliberate gesture,
+  // not a burst of layers / a bias slam.
   function fieldOnWheel(ev){
     ev.preventDefault();
     if(!world.ready) return;
     var rect = fieldCanvas.getBoundingClientRect();
     var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
-    var notches = -ev.deltaY / 100;              // wheel up = favour (positive bias)
+    var px = fieldWheelPx(ev.deltaY, ev.deltaMode);  // one px lane for every deltaMode
     if(ev.ctrlKey){                              // Ctrl+scroll / trackpad pinch = zoom
-      fieldZoom(sq, notches);
+      // one gesture = exactly one layer: FIELD_ZOOM_STEP_DELTA of travel + the
+      // FIELD_ZOOM_COOLDOWN_MS gate; storm events inside the cooldown are absorbed.
+      var g = fieldZoomGate(fieldZoomWheelState, -px, performance.now());
+      fieldZoomWheelState = { acc: g.acc, lastStepMs: g.lastStepMs };
+      if(g.step) fieldZoom(sq, g.step);
       return;
     }
-    if(!sq || !notches) return;
-    fieldAddBias(fieldBias, fieldKeyStr(sq.key), notches * FIELD_BIAS_STEP);
+    if(!sq || !px) return;
+    // BIAS: one FIELD_BIAS_STEP per FIELD_WHEEL_BIAS_PX of accumulated travel
+    // (wheel up = favour), remainder kept like fieldDragSteps — through the SAME
+    // fieldAddBias lane (same clamp/soft saturation). Retargeting to another
+    // square drops the old square's sub-step remainder.
+    var ks = fieldKeyStr(sq.key);
+    if(fieldWheelBiasState.key !== ks){ fieldWheelBiasState.key = ks; fieldWheelBiasState.acc = 0; }
+    var s = fieldWheelSteps(fieldWheelBiasState.acc - px);
+    fieldWheelBiasState.acc = s.rem;
+    if(!s.steps) return;
+    fieldAddBias(fieldBias, ks, s.steps * FIELD_BIAS_STEP);
     if(window.ambFirePulse) window.ambFirePulse();   // ambient action glint (scroll-bias)
     sendSteerNow();
     fieldDraw();
@@ -1813,7 +2009,11 @@
   }
   function fieldTouchStart(ev){
     if(ev.touches && ev.touches.length === 2){     // two fingers = pinch zoom (kept)
-      fieldPinch = fieldTouchDist(ev); fieldTouch = null; return;
+      fieldPinch = fieldTouchDist(ev); fieldTouch = null;
+      // a NEW pinch gesture starts with a clean accumulator (one gesture = one
+      // layer); the cooldown since the last zoom step is kept (storm absorption).
+      fieldPinchState = { acc: 0, lastStepMs: fieldPinchState.lastStepMs };
+      return;
     }
     if(!(ev.touches && ev.touches.length === 1)) return;
     var t = ev.touches[0], rect = fieldCanvas.getBoundingClientRect();
@@ -1830,7 +2030,12 @@
       var rect = fieldCanvas.getBoundingClientRect();
       var mx = (ev.touches[0].clientX + ev.touches[1].clientX)/2 - rect.left;
       var my = (ev.touches[0].clientY + ev.touches[1].clientY)/2 - rect.top;
-      fieldZoom(fieldSquareAt(mx, my), delta);
+      // SAME one-layer-per-gesture discipline as the wheel (OPEN_ENDS #21a): the
+      // pinch runs through the SAME fieldZoomGate — spread accumulates toward one
+      // layer, and the cooldown absorbs the storm of move events.
+      var g = fieldZoomGate(fieldPinchState, delta, performance.now());
+      fieldPinchState = { acc: g.acc, lastStepMs: g.lastStepMs };
+      if(g.step) fieldZoom(fieldSquareAt(mx, my), g.step);
       return;
     }
     if(!(ev.touches && ev.touches.length === 1) || !fieldTouch) return;
@@ -2131,6 +2336,12 @@
     updateLanes(d);               // read-only live φ statistics (real, per bar)
     updateGauge(d);               // read-only slide[g]/loop[g] gauge-drift pair
     if(typeof d.t === "number") updateTape(d.t);
+    // WARMING (OPEN_ENDS #21d): the first frame with a produced bar clears the
+    // warming note (bar > 0 = the engine has rendered; the /api/world warmed
+    // flag is the slower poll path for the same fact).
+    if(typeof d.bar === "number" && d.bar > 0 && !world.warmed){
+      world.warmed = true; updateWarming();
+    }
     // the engine's answer has arrived — clear the pending "settling" cue.
     if(fieldPending){ fieldPending = false; fieldSetStatus("", false); }
   }
@@ -2471,7 +2682,11 @@
   var HEALTH_MS = 3000;
   function pollTick(){
     loadHealth().then(function(){
-      if(!world.ready) loadWorld();      // keep trying to bring the world up
+      if(!world.ready){ loadWorld(); }   // keep trying to bring the world up
+      // world is up but the engine hasn't produced its first bar yet (or has
+      // recorded a failure): keep the slim warmed/last_error poll going so the
+      // note clears (or turns into the honest failure report) without a reload.
+      else if(!world.warmed && !world.lastError){ refreshEngineState(); }
     });
   }
 

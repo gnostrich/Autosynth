@@ -45,6 +45,8 @@ class _FakeReadyPlayer:
     StreamPlayer returns once a world is loaded)."""
     def __init__(self, path, seed, is_trained):
         self.path = path; self.regions = []
+        self.started = False
+    def start(self): self.started = True   # pre-warm target (OPEN_ENDS #21d)
     def stop(self): pass
     def set_region(self, r): self.regions.append(r)
     def world_info(self):
