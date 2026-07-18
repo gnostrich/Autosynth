@@ -1270,6 +1270,47 @@ class _Handler(BaseHTTPRequestHandler):
                     cur = self.hub._eigen_diag[sid]
             self._json(200, cur); return
 
+        # /api/admin/eigen_sweep — EXPERIMENTAL temperature sweep (PREREG-temperature-sweep).
+        # Key-gated; background thread; runs temperature_sweep over a T_s grid on a set's
+        # world (floors re-derived per T_s). Baseline estimator / engine untouched.
+        if path == "/api/admin/eigen_sweep":
+            key = ""; sid = None; grid = None; nseed = 24; nbar = 32
+            if body:
+                try:
+                    j = json.loads(body.decode()); key = str(j.get("key", "")); sid = j.get("set_id")
+                    grid = j.get("grid"); nseed = int(j.get("n_seed", 24)); nbar = int(j.get("n_bar", 32))
+                except Exception:
+                    pass
+            if not self.hub.access_keys or key not in self.hub.access_keys:
+                self._json(401, {"ok": False, "error": "invalid access key"}); return
+            entry = self.hub.catalog.get(sid) if sid else None
+            if entry is None:
+                self._json(404, {"ok": False, "error": "unknown set_id"}); return
+            if not grid:
+                grid = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
+            if getattr(self.hub, "_eigen_sweep", None) is None:
+                self.hub._eigen_sweep = {}; self.hub._eigen_sweep_lock = threading.Lock()
+            jobkey = "%s|%s|%dx%d" % (sid, ",".join(str(g) for g in grid), nseed, nbar)
+            def _run_sweep(job, world_path, g, ns, nb):
+                try:
+                    player = self.hub.registry.trained_player(world_path, getattr(self.hub, "seed", 0))
+                    from ets.engine.engine import resolve_sigma
+                    from cloud.companion.eigen_experimental import temperature_sweep
+                    r = temperature_sweep(player.world, resolve_sigma(player.wf, None),
+                                          int(player.M), g, n_seed=ns, n_bar=nb)
+                    with self.hub._eigen_sweep_lock:
+                        self.hub._eigen_sweep[job] = {"status": "done", "result": r}
+                except Exception as exc:
+                    with self.hub._eigen_sweep_lock:
+                        self.hub._eigen_sweep[job] = {"status": "error", "error": "%s: %s" % (type(exc).__name__, exc)}
+            with self.hub._eigen_sweep_lock:
+                cur = self.hub._eigen_sweep.get(jobkey)
+                if cur is None:
+                    self.hub._eigen_sweep[jobkey] = {"status": "computing", "grid": grid}
+                    threading.Thread(target=_run_sweep, args=(jobkey, entry.world_path, grid, nseed, nbar), daemon=True).start()
+                    cur = self.hub._eigen_sweep[jobkey]
+            self._json(200, cur); return
+
         # Resolve the session (never None on the serving path: keyless-local ->
         # default; keyed -> owner-by-token; otherwise the visitor's own anon session).
         session = self._session()
