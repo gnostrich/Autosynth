@@ -27,10 +27,8 @@
     --font-mono: ui-monospace, Menlo, Consolas, "SF Mono", monospace;
     --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
 
-    /* DARK — primary/hero look */
+    /* DARK — the one and only look (light mode removed by operator direction) */
     --bg: #0E1214;
-    --bg-grad-a: #10171a;
-    --bg-grad-b: #0b0f11;
     --panel: #151C1F;
     --panel-2: #1A2225;
     --panel-inset: #0F1517;
@@ -51,63 +49,13 @@
     --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   }
 
-  @media (prefers-color-scheme: light){
-    :root{
-      --bg: #E7ECEA;
-      --bg-grad-a: #EEF2F0;
-      --bg-grad-b: #DFE6E3;
-      --panel: #F6F8F7;
-      --panel-2: #EDF1EF;
-      --panel-inset: #E4EAE8;
-      --line: #CBD5D1;
-      --line-soft: #D9E1DE;
-      --ink: #16201D;
-      --ink-2: #35423E;
-      --muted: #5C6A66;
-      --faint: #869590;
-      --accent: #0E9E76;
-      --accent-deep: #0A7A5A;
-      --accent-glow: rgba(14,158,118,.32);
-      --tape: #B26A1C;
-      --tape-glow: rgba(178,106,28,.32);
-      --danger: #C0483F;
-      --shadow: 0 14px 30px -18px rgba(30,50,44,.35), 0 1px 0 rgba(255,255,255,.6) inset;
-      --pad-shadow: 0 16px 34px -18px rgba(30,50,44,.4);
-      --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-    }
-  }
-  /* explicit toggle wins in BOTH directions */
-  :root[data-theme="dark"]{
-    --bg: #0E1214; --bg-grad-a: #10171a; --bg-grad-b: #0b0f11;
-    --panel: #151C1F; --panel-2: #1A2225; --panel-inset: #0F1517;
-    --line: #253230; --line-soft: #1D2725;
-    --ink: #EAF1EF; --ink-2: #C4D0CD; --muted: #8A9794; --faint: #5E6B68;
-    --accent: #4FE0AE; --accent-deep: #1EB98A; --accent-glow: rgba(79,224,174,.55);
-    --tape: #E8A24C; --tape-glow: rgba(232,162,76,.5); --danger:#E86A6A;
-    --shadow: 0 18px 40px -18px rgba(0,0,0,.7), 0 2px 0 rgba(255,255,255,.015) inset;
-    --pad-shadow: 0 22px 50px -22px rgba(0,0,0,.8);
-  }
-  :root[data-theme="light"]{
-    --bg: #E7ECEA; --bg-grad-a: #EEF2F0; --bg-grad-b: #DFE6E3;
-    --panel: #F6F8F7; --panel-2: #EDF1EF; --panel-inset: #E4EAE8;
-    --line: #CBD5D1; --line-soft: #D9E1DE;
-    --ink: #16201D; --ink-2: #35423E; --muted: #5C6A66; --faint: #869590;
-    --accent: #0E9E76; --accent-deep: #0A7A5A; --accent-glow: rgba(14,158,118,.32);
-    --tape: #B26A1C; --tape-glow: rgba(178,106,28,.32); --danger:#C0483F;
-    --shadow: 0 14px 30px -18px rgba(30,50,44,.35), 0 1px 0 rgba(255,255,255,.6) inset;
-    --pad-shadow: 0 16px 34px -18px rgba(30,50,44,.4);
-  }
-
   *{ box-sizing: border-box; }
-  html,body{ margin:0; }
+  html,body{ margin:0; background:#05060B; }
   #ets{
     font-family: var(--font-ui);
     font-size: var(--fs-body);
     color: var(--ink);
-    background:
-      radial-gradient(1200px 640px at 78% -8%, var(--bg-grad-a), transparent 60%),
-      radial-gradient(900px 520px at 8% 108%, var(--bg-grad-a), transparent 55%),
-      linear-gradient(180deg, var(--bg-grad-b), var(--bg));
+    background: transparent;      /* the ambient prism (or flat obsidian) shows through */
     min-height: 100vh;
     padding: var(--sp-5) var(--sp-5) 108px;
     -webkit-font-smoothing: antialiased;
@@ -120,20 +68,13 @@
 
   /* ---------- AMBIENT PRISM CHROME (fixed obsidian backdrop) ----------
      ambient chrome · reacts to input · not a data value.
-     A full-viewport WebGL2 prism canvas behind ALL content. Revealed only in the
-     dark (obsidian) theme; the light theme keeps its current clean, opaque look.
-     Panels/field keep their opaque backgrounds, so the ambient shows only in the
-     margins and never overlaps a data area with readable intensity. */
+     A full-viewport WebGL2 prism canvas behind ALL content. The page is
+     permanently dark (light mode removed), so the ambient always runs (its
+     reduced-motion freeze stays). Panels/field keep their opaque backgrounds,
+     so the ambient shows only in the margins and never overlaps a data area
+     with readable intensity. */
   #ambient{ position:fixed; inset:0; width:100vw; height:100vh; z-index:0;
-            pointer-events:none; display:none; }
-  :root[data-theme="dark"] #ambient{ display:block; }
-  :root[data-theme="dark"] body{ background:#05060B; }
-  :root[data-theme="dark"] #ets{ background:transparent; }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme]) #ambient{ display:block; }
-    :root:not([data-theme]) body{ background:#05060B; }
-    :root:not([data-theme]) #ets{ background:transparent; }
-  }
+            pointer-events:none; display:block; }
 
   .micro{
     font-size: var(--fs-micro);
@@ -305,8 +246,6 @@
     background: radial-gradient(600px 300px at 50% 30%, rgba(79,224,174,.06), transparent 70%), rgba(9,13,14,.66);
     backdrop-filter: blur(2px);
   }
-  :root[data-theme="light"] .inst-lock{ background: radial-gradient(600px 300px at 50% 30%, rgba(14,158,118,.08), transparent 70%), rgba(231,236,234,.7); }
-  @media (prefers-color-scheme: light){ :root:not([data-theme]) .inst-lock{ background: radial-gradient(600px 300px at 50% 30%, rgba(14,158,118,.08), transparent 70%), rgba(231,236,234,.7); } }
   .instrument.ready .inst-lock{ display:none; }
   /* ---------- UNLOCK-TRAINING affordance (in-app, replaces the access wall) ---------- */
   .keymodal{
@@ -691,10 +630,6 @@
       <span class="pill" id="cloudPill"><span class="tick"></span><span id="cloudTag">cloud —</span></span>
       <span class="conn"><span class="dot" id="connDot"></span><span id="connText">connecting…</span></span>
       <button class="act ghost" id="unlockBtn" hidden style="padding:6px 12px;font-size:11px;" title="Enter your access key to unlock training and publishing">Unlock training</button>
-      <button class="iconbtn" id="themeBtn" aria-label="Toggle color theme">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
-        <span id="themeLbl">theme</span>
-      </button>
     </header>
 
     <!-- UNLOCK-TRAINING modal: the access-key entry moved INSIDE the app (OPEN_ENDS
@@ -791,14 +726,15 @@
 
       <div class="inst-inner">
         <!-- THE FIELD (replaces role pads + XY vector pad; mounted in #steerSurface).
-             Squares glow by LIVE SETTLED telemetry (the engine's answer). Hover +
-             scroll = bias a square (soft; saturates, never mutes). Ctrl+scroll /
-             pinch = zoom, only where real sub-structure clears the noise floor
-             (atomic at role grain over the web API — depth honestly ends here). -->
+             Squares glow by LIVE SETTLED telemetry (the engine's answer). Hover+scroll
+             or a one-finger vertical DRAG = bias a square (soft; saturates, never
+             mutes; a drag biases the square it STARTED on). Ctrl+scroll / two-finger
+             pinch = zoom, only where real sub-structure clears the noise floor; a TAP
+             shows a square's tooltip only (never a zoom). -->
         <section class="panel" id="steerSurface">
           <div class="sec-h" style="margin-bottom:2px">
             <span class="lbl">The Field</span><span class="rule"></span>
-            <span class="hint">hover + scroll = bias · Ctrl+scroll / pinch = zoom · fill = settled telemetry</span>
+            <span class="hint">scroll or drag &#8597; = bias · Ctrl+scroll / pinch = zoom · fill = settled telemetry</span>
           </div>
           <div class="field-wrap">
             <div class="field-legend" id="fieldLegend" aria-label="Track legend — colour and name of each source track"></div>
@@ -912,23 +848,6 @@
 
   var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
   var TAPE_WINDOW = 16;   // seconds shown across the tape before the playhead wraps
-
-  /* ================= THEME (display-only) ================= */
-  var root = document.documentElement;
-  var themeBtn = $("themeBtn"), themeLbl = $("themeLbl");
-  function sysDark(){ return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches; }
-  function applyThemeLabel(){
-    var t = root.getAttribute("data-theme");
-    var eff = t || (sysDark() ? "dark" : "light");
-    themeLbl.textContent = eff;
-  }
-  themeBtn.addEventListener("click", function(){
-    var t = root.getAttribute("data-theme");
-    var eff = t || (sysDark() ? "dark" : "light");
-    root.setAttribute("data-theme", eff === "dark" ? "light" : "dark");
-    applyThemeLabel();
-  });
-  applyThemeLabel();
 
   /* ================= APP STATE ================= */
   // canTrain defaults FALSE (auditor note 2): the Train tab must never
@@ -1323,6 +1242,18 @@
                                  //   (the cap clamp_region enforces on the wire); pinned by test.
   var FIELD_BIAS_LIMIT = 1.0;    // soft-saturation stop for the operator bias (± envelope)
   var FIELD_BIAS_STEP  = 0.125;  // bias accumulated per wheel notch
+  var FIELD_TOUCH_BIAS_PX = 30;  // one-finger vertical drag: px per one bias step
+  var FIELD_TAP_SLOP_PX   = 10;  // movement under this = a TAP (tooltip only, no zoom)
+
+  // Consume accumulated vertical drag (px, +up = favour, the wheel-up analog) into
+  // whole bias steps, keeping the sub-step remainder. The touch counterpart of wheel
+  // notches: each step feeds the SAME fieldAddBias entry the wheel uses.
+  function fieldDragSteps(accPx){
+    accPx = +accPx || 0;
+    var steps = accPx >= 0 ? Math.floor(accPx / FIELD_TOUCH_BIAS_PX)
+                           : -Math.floor(-accPx / FIELD_TOUCH_BIAS_PX);
+    return { steps: steps, rem: accPx - steps * FIELD_TOUCH_BIAS_PX };
+  }
 
   function fieldClamp01(v){ v = +v || 0; return v < 0 ? 0 : (v > 1 ? 1 : v); }
   function fieldKeyStr(key){ return JSON.stringify(key); }
@@ -1526,6 +1457,46 @@
     if(peak > FIELD_SAFE_MAG){ var s = FIELD_SAFE_MAG / peak; for(var i=0;i<K;i++) out[i] *= s; }
     return out;
   }
+
+  // ---- square colour derivation (honest track-family colouring) ----
+  // The legend's colour code is a TRACK code. Inside a drilled track, its role
+  // squares must stay in the PARENT track's colour family — never an invented hue
+  // that collides with ANOTHER track's legend colour (the operator misread exactly
+  // that). Where no track parent exists (the degraded role-grain-only field),
+  // colour carries NO track attribution at all: a neutral grey ramp.
+  function fieldHexToHsl(hex){                     // "#RRGGBB" -> {h,s,l} (deg, %, %)
+    var n = parseInt(String(hex).replace("#", ""), 16);
+    var r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    var l = (mx + mn) / 2;
+    var s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    var h = 0;
+    if(d !== 0){
+      if(mx === r) h = 60 * (((g - b) / d) % 6);
+      else if(mx === g) h = 60 * ((b - r) / d + 2);
+      else h = 60 * ((r - g) / d + 4);
+    }
+    if(h < 0) h += 360;
+    return { h: h, s: s * 100, l: l * 100 };
+  }
+  // the innermost TRACK in the drill stack — the colour-family parent — or null.
+  function fieldParentTrack(stack){
+    for(var i = (stack ? stack.length : 0) - 1; i >= 0; i--){
+      if(stack[i][0] === "track") return stack[i][1];
+    }
+    return null;
+  }
+  // Shade child i of a colour family: SAME hue as the parent track's colour, with
+  // lightness/saturation stepped by child index for legibility. baseHex == null is
+  // the no-track-parent (degraded) case -> neutral grey ramp, no false attribution.
+  function fieldFamilyShade(baseHex, i){
+    i = i | 0;
+    if(baseHex == null) return "hsl(0,0%," + (40 + ((i * 13) % 35)) + "%)";
+    var c = fieldHexToHsl(baseHex);
+    var l = 34 + (((i * 17) % 4) * 11);            // 34/45/56/67% cycle
+    var s = c.s * (0.65 + 0.35 * (((i * 7) % 3) / 2));
+    return "hsl(" + Math.round(c.h) + "," + Math.round(s) + "%," + l + "%)";
+  }
   /* ===== END FIELD PURE LOGIC ===== */
 
   var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus"), fieldLegend = $("fieldLegend");
@@ -1554,19 +1525,21 @@
     try{ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
     catch(e){ return "#888"; }
   }
-  function fieldRoleColor(i){
-    var hue = (i * 47) % 360;                 // legible spread; role family, not a track
-    return "hsl(" + hue + ",55%,58%)";
-  }
   // the SAME deterministic per-track palette the Source Library + legend use, so a
   // track's square and its legend swatch can never disagree.
   function fieldTrackColor(tid){
     var n = TRACK_COLORS.length;
     return TRACK_COLORS[(((tid|0) % n) + n) % n];
   }
+  // Track/unit squares carry their OWN track's legend colour (honest attribution).
+  // Role squares carry no track id of their own: inside a drilled track they take a
+  // shade of the PARENT track's colour family; in the role-grain-only (degraded)
+  // view there is no track parent, so they take the NEUTRAL grey ramp — a colour
+  // may never claim a track the payload didn't.
   function fieldSquareColor(sq){
-    return (sq.track !== null && sq.track !== undefined)
-      ? fieldTrackColor(sq.track) : fieldRoleColor(sq.key[1]);
+    if(sq.track !== null && sq.track !== undefined) return fieldTrackColor(sq.track);
+    var pt = fieldParentTrack(fieldStack);
+    return fieldFamilyShade(pt === null ? null : fieldTrackColor(pt), sq.key[1]);
   }
   function fieldSetStatus(msg, settling){
     if(!fieldStatus) return;
@@ -1752,6 +1725,10 @@
     return true;
   }
   function fieldOnClick(ev){                       // click affordance: header = out; square = in
+    // Touch taps synthesize a click ~300ms later; taps are fully handled by
+    // fieldTouchEnd (tooltip only — NEVER a zoom on mobile), so the synthetic
+    // click is suppressed. Desktop mouse clicks (no recent touchend) are unchanged.
+    if(Date.now() - fieldLastTouchEnd < 700) return;
     if(!world.ready) return;
     var rect = fieldCanvas.getBoundingClientRect();
     var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
@@ -1759,23 +1736,72 @@
     fieldZoomInto(fieldSquareAt(x, y));           // refused (honestly) if atomic
   }
   var fieldPinch = 0;
+  // ONE-FINGER touch gesture state. A vertical drag is the touch analog of wheel
+  // notches: bias lands on the square where the drag STARTED (one FIELD_BIAS_STEP
+  // per FIELD_TOUCH_BIAS_PX of travel, drag up = favour), through the SAME
+  // fieldAddBias -> sendSteerNow lane the wheel uses. A tap (< FIELD_TAP_SLOP_PX of
+  // movement) only shows the square's hover highlight + tooltip — no zoom, no emit.
+  var fieldTouch = null;         // {key, header, x, y, lastY, acc, moved}
+  var fieldLastTouchEnd = 0;     // suppresses the touch-synthesized click above
   function fieldTouchDist(ev){
     var dx = ev.touches[0].clientX - ev.touches[1].clientX;
     var dy = ev.touches[0].clientY - ev.touches[1].clientY;
     return Math.sqrt(dx*dx + dy*dy);
   }
   function fieldTouchStart(ev){
-    if(ev.touches && ev.touches.length === 2){ fieldPinch = fieldTouchDist(ev); }
+    if(ev.touches && ev.touches.length === 2){     // two fingers = pinch zoom (kept)
+      fieldPinch = fieldTouchDist(ev); fieldTouch = null; return;
+    }
+    if(!(ev.touches && ev.touches.length === 1)) return;
+    var t = ev.touches[0], rect = fieldCanvas.getBoundingClientRect();
+    var x = t.clientX - rect.left, y = t.clientY - rect.top;
+    var sq = (world.ready && y >= FIELD_HEADER) ? fieldSquareAt(x, y) : null;
+    fieldTouch = { key: sq ? sq.key : null, header: y < FIELD_HEADER,
+                   x: x, y: y, lastY: t.clientY, acc: 0, moved: 0 };
   }
-  function fieldTouchMove(ev){                     // two-finger pinch = zoom (same self-sizing)
-    if(ev.touches && ev.touches.length === 2){
+  function fieldTouchMove(ev){
+    if(ev.touches && ev.touches.length === 2){     // two-finger pinch = zoom (same self-sizing)
       ev.preventDefault();
+      fieldTouch = null;                           // a pinch is never a bias drag
       var d = fieldTouchDist(ev), delta = d - fieldPinch; fieldPinch = d;
       var rect = fieldCanvas.getBoundingClientRect();
       var mx = (ev.touches[0].clientX + ev.touches[1].clientX)/2 - rect.left;
       var my = (ev.touches[0].clientY + ev.touches[1].clientY)/2 - rect.top;
       fieldZoom(fieldSquareAt(mx, my), delta);
+      return;
     }
+    if(!(ev.touches && ev.touches.length === 1) || !fieldTouch) return;
+    ev.preventDefault();                           // a canvas drag never scrolls the page
+    var t = ev.touches[0], rect = fieldCanvas.getBoundingClientRect();
+    var dx = (t.clientX - rect.left) - fieldTouch.x;
+    var dy = (t.clientY - rect.top)  - fieldTouch.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist > fieldTouch.moved) fieldTouch.moved = dist;
+    if(!world.ready || fieldTouch.key === null){ fieldTouch.lastY = t.clientY; return; }
+    fieldTouch.acc += (fieldTouch.lastY - t.clientY);   // +up = favour (wheel-up analog)
+    fieldTouch.lastY = t.clientY;
+    var s = fieldDragSteps(fieldTouch.acc);
+    fieldTouch.acc = s.rem;
+    if(!s.steps) return;
+    fieldAddBias(fieldBias, fieldKeyStr(fieldTouch.key), s.steps * FIELD_BIAS_STEP);
+    if(window.ambFirePulse) window.ambFirePulse(); // ambient action glint (drag-bias)
+    sendSteerNow();
+    fieldDraw();
+  }
+  function fieldTouchEnd(ev){
+    fieldLastTouchEnd = Date.now();                // arm the synthetic-click suppressor
+    if(ev.cancelable) ev.preventDefault();         // and stop the click at the source
+    var g = fieldTouch; fieldTouch = null;
+    if(!g || (ev.touches && ev.touches.length)) return;   // pinch end / extra finger
+    if(g.moved > FIELD_TAP_SLOP_PX) return;               // it was a bias drag, done
+    if(g.header){ fieldZoomOut(); return; }               // header tap = zoom out (kept)
+    if(!world.ready || g.key === null) return;
+    // TAP on a square: show its hover highlight + tooltip only — no zoom, no emit.
+    var sq = { key: g.key, track: (g.key[0] === "role") ? null : g.key[g.key.length - 1] };
+    fieldHover = g.key;
+    if(fieldCanvas) fieldCanvas.title = (g.key[0] === "role")
+      ? ("R" + g.key[1]) : fieldTrackName(fieldState(), sq.track);
+    fieldDraw();
   }
   function fieldInit(){
     if(!fieldCanvas) return;
@@ -1785,6 +1811,8 @@
     fieldCanvas.addEventListener("click", fieldOnClick);
     fieldCanvas.addEventListener("touchstart", fieldTouchStart, { passive:false });
     fieldCanvas.addEventListener("touchmove", fieldTouchMove, { passive:false });
+    fieldCanvas.addEventListener("touchend", fieldTouchEnd, { passive:false });
+    fieldCanvas.addEventListener("touchcancel", function(){ fieldTouch = null; });
     fieldDraw();
   }
   window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
