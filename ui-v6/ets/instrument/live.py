@@ -25,9 +25,16 @@ telemetry (FIELD-INV: brightness = settled weight, never the input echoed).
 
 Threading discipline (unchanged): the telemetry server runs on a daemon thread
 and writes ONLY into plain Python inboxes; a single GUI QTimer drains those
-inboxes into the FieldModel via its capability-guarded telemetry writer, decays
-the lights, and completes the panel's outbound region slew. No widget is
-touched off the GUI thread.
+inboxes into the FieldModel via its capability-guarded telemetry writer and
+completes the panel's outbound region slew. No widget is touched off the GUI
+thread.
+
+P6 (display honesty): brightness holds the LAST REAL telemetry read between
+frames — a sample-and-hold of real data, never a UI-side decay/fade toward
+some other value (papers/paper1 §3 C': any UI easing/damping is a
+falsification of the display). If telemetry arrives slower than the GUI tick,
+the square/pad simply keeps showing the last frame the engine actually sent
+until the next one lands.
 
 Native Qt + OSC only. No web tech (I-13).
 """
@@ -217,31 +224,27 @@ class LiveInstrument:
             self.panel.set_anchor_count(self._want_K)
 
         # drain telemetry inboxes into the field via its CAPABILITY-GUARDED
-        # writer (the one legitimate brightness path — FIELD-INV), then breathe.
-        applied = False
+        # writer (the one legitimate brightness path — FIELD-INV). No decay: a
+        # square/pad not refreshed this tick simply KEEPS its last real engine
+        # read (sample-and-hold of real data) until the next telemetry frame —
+        # never a fade toward some other value (P6: no UI-side easing/damping
+        # of a settlement-backed display value).
         act = self._inbox_roleactivity
         if act is not None:
             self._field_writer.apply_roleactivity(act)
             self._inbox_roleactivity = None
-            applied = True
         npa = self._inbox_nowplaying
         if npa is not None:
             self._field_writer.apply_nowplaying(npa)
             self.pad_model.set_activity(npa)        # library browser dots
             self._inbox_nowplaying = None
-            applied = True
         profs = self._inbox_profiles
         if profs is not None:
             self._field_writer.apply_profiles(profs)
             self._inbox_profiles = None
-            applied = True
         while self._inbox_unitpools:
             role, units = self._inbox_unitpools.pop(0)
             self._field_writer.apply_unitpool(role, units)
-            applied = True
-        if not applied:
-            self.field_model.decay(0.90)            # breathe between frames
-        self.pad_model.decay(0.90)
         self.track_library.sync()
         self.field.update()
 

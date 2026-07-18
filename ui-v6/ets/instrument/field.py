@@ -192,13 +192,6 @@ class FieldModel:
         else:
             raise ValueError(f"unknown telemetry kind {kind!r}")
 
-    def decay(self, factor: float = 0.90) -> None:
-        """Breathe: fade settled lights toward 0 between telemetry frames.
-        (A uniform fade of already-settled values; introduces no new weight.)"""
-        self._roleactivity = [v * float(factor) for v in self._roleactivity]
-        for t in list(self._nowplaying):
-            self._nowplaying[t] *= float(factor)
-
     # -- the square tree (built only from ingested telemetry; FIELD-E) -------
     @property
     def n_roles(self) -> int:
