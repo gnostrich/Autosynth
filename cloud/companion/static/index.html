@@ -237,6 +237,34 @@
   .field-legend .leg{ display:inline-flex; align-items:center; gap:6px; color: var(--muted); max-width:220px; }
   .field-legend .leg-sw{ width:11px; height:11px; border-radius:3px; flex:0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); }
   .field-legend .leg-nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family: var(--font-mono); }
+  /* the ⛶ fullscreen-snap affordance (touch-friendly hit target, sits in the
+     field header row so it stays visible inside the expanded state too) */
+  #fieldExpand{ width:44px; height:38px; padding:0; font-size:17px; flex:0 0 auto; }
+  /* FIELD FULLSCREEN SNAP: .field-full pins the whole field pane over the viewport
+     (fixed, inset 0, above the tabs/transport chrome, dark backdrop). The legend,
+     breadcrumb header and field status all live INSIDE #steerSurface, so they stay
+     visible; the canvas grows to fill the remaining height. This is a pure
+     viewport-fill overlay, so it works even where the Fullscreen API doesn't
+     (iPhone Safari — see the WALL note at the snap handlers). */
+  #steerSurface.field-full{
+    position:fixed; inset:0; z-index:150; margin:0; border-radius:0; border:none;
+    width:100vw; height:100vh; width:100dvw; height:100dvh;
+    display:flex; flex-direction:column; background:#05060B;
+  }
+  #steerSurface.field-full .field-wrap{ flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
+  #steerSurface.field-full .field-canvas{ flex:1 1 auto; height:auto; min-height:0; }
+  /* ONE-TIME TUTORIAL overlay (display-only chrome). Statically positioned, no
+     animation at all — reduced-motion-safe by construction. Confined to the field
+     area (.field-wrap), so it can never cover the Play button / transport. */
+  .field-tut{
+    position:absolute; inset:0; z-index:30;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; text-align:center; padding:20px;
+    background:rgba(5,6,11,.9); border-radius: var(--r-md);
+  }
+  .field-tut[hidden]{ display:none; }
+  .field-tut p{ margin:0; font-size:13px; color:var(--ink-2); font-family: var(--font-mono); }
+  .field-tut p + p{ margin-top:9px; }
   .instrument .inst-inner{ transition: filter .2s ease, opacity .2s ease; }
   .instrument:not(.ready) .inst-inner{ filter: blur(1.6px); opacity:.42; pointer-events:none; user-select:none; }
   .inst-lock{
@@ -735,12 +763,27 @@
           <div class="sec-h" style="margin-bottom:2px">
             <span class="lbl">The Field</span><span class="rule"></span>
             <span class="hint">scroll or drag &#8597; = bias · Ctrl+scroll / pinch = zoom · fill = settled telemetry</span>
+            <button class="iconbtn" id="fieldExpand" title="Expand the field to fill the screen"
+              aria-label="Expand the field to fill the screen">&#x26F6;</button>
           </div>
           <div class="field-wrap">
             <div class="field-legend" id="fieldLegend" aria-label="Track legend — colour and name of each source track"></div>
             <canvas id="fieldCanvas" class="field-canvas" role="application"
               aria-label="The field — every square is a role, glowing by its live settled weight (the engine's answer, never your input echoed back). Scroll to bias it; the engine re-settles."></canvas>
             <div class="field-status" id="fieldStatus" aria-live="polite"></div>
+            <!-- ONE-TIME TUTORIAL: shown the first time this session's world becomes
+                 ready (never before a world exists) and only while the ets_tut_v1
+                 localStorage flag is unset; "got it" sets it forever. Exactly three
+                 short lines, worded per input class; display-only chrome — no engine
+                 calls, no telemetry writes, no animation. -->
+            <div class="field-tut" id="fieldTut" hidden role="dialog" aria-label="How to play the field">
+              <div>
+                <p id="tutL1"></p>
+                <p id="tutL2"></p>
+                <p id="tutL3"></p>
+              </div>
+              <button class="act" id="tutOk">got it</button>
+            </div>
           </div>
         </section>
 
@@ -1212,6 +1255,7 @@
     buildLanesOnce();
     buildMetersOnce();
     fieldInit();
+    tutShowIfFirst();             // one-time tutorial: only NOW does a world exist
     sendSteerNow();               // publish an initial (neutral) region tilt
     btnPlay.disabled = false; btnPause.disabled = true; btnStop.disabled = true;
   }
@@ -1816,6 +1860,93 @@
     fieldDraw();
   }
   window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
+
+  /* ============ FIELD FULLSCREEN SNAP (mobile: deep drills = tiny squares) ========
+     The ⛶ affordance snaps #steerSurface over the ENTIRE viewport (.field-full:
+     position:fixed inset 0, above tabs/chrome, dark backdrop; legend + breadcrumb +
+     status stay inside; the same button becomes ✕ to collapse). Where the platform
+     allows, it ALSO requests true element fullscreen and a landscape orientation
+     lock (Android Chrome supports both), each guarded in try/catch.
+     WALL (disclosed, not patched): iPhone Safari supports NEITHER element
+     requestFullscreen (video-only) NOR screen.orientation.lock — there the snap is
+     the viewport-fill overlay only, and physically rotating the phone gives
+     landscape (fieldDraw re-fits DPR-aware on every resize, inside .field-full too;
+     hit-testing follows getBoundingClientRect/clientWidth, so it tracks for free).
+     Display-only chrome: expand/collapse never touches a telemetry store, never
+     emits a steer, never calls any /api endpoint. */
+  var fieldExpandBtn = $("fieldExpand"), steerSurface = $("steerSurface");
+  var fieldFull = false;
+  function fieldExpandApply(on){
+    fieldFull = !!on;
+    if(steerSurface) steerSurface.classList.toggle("field-full", fieldFull);
+    if(fieldExpandBtn){
+      fieldExpandBtn.textContent = fieldFull ? "✕" : "⛶";
+      var lbl = fieldFull ? "Collapse the field back into the page"
+                          : "Expand the field to fill the screen";
+      fieldExpandBtn.setAttribute("aria-label", lbl);
+      fieldExpandBtn.setAttribute("title", lbl);
+    }
+    fieldDraw();     // re-fit the canvas backing store to the new geometry now
+  }
+  function fieldExpandOpen(){
+    fieldExpandApply(true);
+    try{
+      var p = (steerSurface && steerSurface.requestFullscreen)
+        ? steerSurface.requestFullscreen() : null;
+      if(p && p.then) p.then(function(){
+        try{
+          if(screen.orientation && screen.orientation.lock)
+            screen.orientation.lock("landscape").catch(noop);
+        }catch(e){}
+      }).catch(noop);
+    }catch(e){}
+  }
+  function fieldExpandClose(){
+    fieldExpandApply(false);
+    try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
+    try{
+      if(document.fullscreenElement && document.exitFullscreen)
+        document.exitFullscreen().catch(noop);
+    }catch(e){}
+  }
+  function fieldExpandToggle(){ if(fieldFull) fieldExpandClose(); else fieldExpandOpen(); }
+  // Esc / the system's own back-out gesture leaves true fullscreen WITHOUT our
+  // button: this listener collapses the viewport-fill state too — no stuck overlay.
+  function fieldOnFullscreenChange(){
+    if(!document.fullscreenElement && fieldFull) fieldExpandApply(false);
+  }
+  if(fieldExpandBtn) fieldExpandBtn.addEventListener("click", fieldExpandToggle);
+  document.addEventListener("fullscreenchange", fieldOnFullscreenChange);
+
+  /* ============ ONE-TIME TUTORIAL (operator: "very simple one") ==================
+     Shown ONCE per browser: the first time a session's world becomes ready on the
+     Play tab (enableInstrument = the world.ready transition — never before a world
+     exists) AND the ets_tut_v1 localStorage flag is unset. Exactly three short
+     lines, worded for the coarse input class ('ontouchstart' in window). One
+     dismiss button sets the flag forever; it never auto-reappears. No animation
+     (reduced-motion-safe by construction). Display-only chrome: no engine calls,
+     no telemetry writes; confined to the field area, so Play is never blocked. */
+  function tutDismissed(){
+    try{ return window.localStorage.getItem("ets_tut_v1") === "done"; }
+    catch(e){ return true; }   // storage unavailable -> never nag (quiet, not loud)
+  }
+  function tutShowIfFirst(){
+    var el = $("fieldTut");
+    if(!el || tutDismissed()) return;
+    var touch = ("ontouchstart" in window);   // coarse input check (operator-specified)
+    $("tutL1").textContent = touch ? "drag up/down on a square — more / less of it"
+                                   : "scroll on a square — more / less of it";
+    $("tutL2").textContent = touch ? "pinch — zoom in/out (tap header to back out)"
+                                   : "Ctrl+scroll or click — zoom (header backs out)";
+    $("tutL3").textContent = "fill = the engine's answer · ring = your push";
+    el.hidden = false;
+  }
+  function tutDismiss(){
+    try{ window.localStorage.setItem("ets_tut_v1", "done"); }catch(e){}
+    var el = $("fieldTut"); if(el) el.hidden = true;
+  }
+  var tutOkBtn = $("tutOk");
+  if(tutOkBtn) tutOkBtn.addEventListener("click", tutDismiss);
 
   /* ================= LANES (display-only) ================= */
   var lanesWrap = $("lanes"), lanesBuilt = false;

@@ -839,3 +839,16 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/app.py (2026-07-18T06:14:16+00:00)
 - `Edit` cloud/COMPANION_INVARIANTS.md (2026-07-18T06:15:18+00:00)
 - `Edit` OPEN_ENDS.md (2026-07-18T06:15:29+00:00)
+
+### at `eb7c654`
+- `Edit` cloud/companion/static/index.html (2026-07-18T06:35:38+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T06:35:50+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T06:35:58+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T06:36:19+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T06:36:24+00:00)
+- `Edit` cloud/tests/test_web_field.py (2026-07-18T06:36:33+00:00)
+- `Write` cloud/tests/test_web_mobile_ux.py (2026-07-18T06:37:15+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-18T06:37:47+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-18T06:37:55+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T06:38:22+00:00)
+- `Write` cloud/REPORT-fullscreen-tutorial.md (2026-07-18T06:43:37+00:00)

@@ -142,6 +142,9 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
             assert page.query_selector("#steerSurface") is not None, "field slot missing"
             assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
             assert page.query_selector("#fieldLegend") is not None, "track legend missing"
+            # (5b) MOBILE-UX: the fullscreen-snap affordance renders on the field pane.
+            assert page.query_selector("#fieldExpand") is not None, \
+                "field fullscreen affordance (#fieldExpand) missing"
             assert page.query_selector("#padRow") is None, "role pads still present"
             assert page.query_selector("#xyPad") is None, "XY vector pad still present"
             assert page.query_selector("#puck") is None, "XY puck still present"
@@ -223,6 +226,16 @@ def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
             # the field canvas element still EXISTS and is laid out (honest empty
             # surface, not a removed one).
             assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
+
+            # MOBILE-UX: the expand affordance exists even on the empty landing, and
+            # the ONE-TIME tutorial overlay is NOT visible before a world exists
+            # (it shows only on the world.ready transition + unset ets_tut_v1 flag).
+            assert page.query_selector("#fieldExpand") is not None, \
+                "field fullscreen affordance (#fieldExpand) missing"
+            tut_hidden = page.eval_on_selector(
+                "#fieldTut",
+                "el => el.hidden === true && getComputedStyle(el).display === 'none'")
+            assert tut_hidden, "tutorial overlay must stay hidden with no world loaded"
 
             shot = tmp_path / "fe_public_empty_state.png"
             page.screenshot(path=str(shot), full_page=True)
