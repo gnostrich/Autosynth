@@ -20,7 +20,9 @@ changes the arrangement (H-8): u=0 bars are byte-identical to ``render_offline``
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import struct
 import sys
 import threading
@@ -163,18 +165,17 @@ def anchor_profile_armed(B) -> bool:
 # noise) rather than a separate u=0 pool, to avoid a second ensemble's worth
 # of bars. Same estimator, same 2-part decision rule (|gain|>floor AND
 # |gain|-2*SE>floor via seed bootstrap) throughout.
-_EIGEN_N_SEED = 24       # FD ensemble seeds per lane column (authoritative; async)
-_EIGEN_N_BAR = 32        # bars per seed run (authoritative; async)
+_EIGEN_N_SEED = 24       # FD ensemble seeds per lane column (authoritative)
+_EIGEN_N_BAR = 32        # bars per seed run (authoritative)
 _EIGEN_H = 0.75          # FD step, knob units (the deployed interface step)
 _EIGEN_N_BOOT = 60       # bootstrap resamples for the eigenvalue SE
-# BOOT ensemble (live serving): DELIBERATELY CHEAP. The authoritative 24x32 ensemble
-# is ~32x the compute and, run at boot in the daemon eigen thread on a single-core
-# container, STARVES the realtime audio produce loop (measured: warmed=True but the
-# stream goes silent). Audio is non-negotiable; the live pad uses this cheap boot
-# ensemble, while offline tools/CLI pass the authoritative _EIGEN_N_SEED/_EIGEN_N_BAR
-# explicitly. Scales down further for wide corpora (many observable columns M).
-_EIGEN_BOOT_N_SEED = 4   # cheap boot seeds (was the pre-redesign production default)
-_EIGEN_BOOT_N_BAR = 6    # cheap boot bars
+# The live pad uses the FULL authoritative 24x32 ensemble (it resolves the real
+# multi-mode structure; a smaller ensemble raises the noise floor and collapses k).
+# On a single-core container this measurement cannot run concurrently with realtime
+# audio without one starving the other, so it is NEVER computed on the playback path:
+# the result is measured once off-playback (idle load, or wait_eigen for tools) and
+# persisted to a sidecar cache (see StreamPlayer._load_eigen_cache), then read
+# instantly on every subsequent load. Audio-first + cached modes, no fight.
 _EIGEN_N_NULL = 200      # label-shuffle null draws for the floor
 _EIGEN_FLOOR_PCT = 97.5  # null floor percentile of max|eigenvalue|
 _EIGEN_WORD_FLOOR = 0.6  # |loading| a scalar observable needs to earn a word
@@ -481,6 +482,17 @@ class StreamPlayer:
         self._eigen_args = ((sigma, eigen_n_seed, eigen_n_bar)
                             if (sigma is not None and self.M > 0) else None)
         self._eigen_lock = threading.Lock()
+        # SIDECAR CACHE: the modes are a property of the frozen world. On a single
+        # core they cannot be measured while audio plays without one starving the
+        # other, so compute ONCE and persist the REAL result next to the world file
+        # (world_path + ".eigen.json"). A cache hit loads the honest measured modes
+        # instantly and skips all serve-time compute. Invalidated if the world file
+        # or the ensemble params change (never a fabricated/ stale mode set).
+        if self._eigen_args is not None:
+            cached = self._load_eigen_cache(eigen_n_seed, eigen_n_bar)
+            if cached is not None:
+                self._eigen = cached                 # honest measured result, pending=False
+                self._eigen_args = None              # nothing to compute
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -512,9 +524,54 @@ class StreamPlayer:
             self._eigen_thread = t
             t.start()
 
+    # --- sidecar cache for the measured modes (survives eviction + redeploy) ----
+    def _eigen_cache_path(self) -> str:
+        return str(self.world_path) + ".eigen.json"
+
+    def _eigen_cache_stamp(self, n_seed: int, n_bar: int) -> dict:
+        """Identity of the world+params this cache is valid for. If the world file
+        or the ensemble params change, the stamp mismatches and we recompute — so a
+        stale/foreign mode set can never be served."""
+        try:
+            st = os.stat(self.world_path)
+            wsig = [int(st.st_size), int(st.st_mtime)]
+        except OSError:
+            wsig = None
+        return {"n_seed": int(n_seed), "n_bar": int(n_bar), "M": int(self.M), "world": wsig}
+
+    def _load_eigen_cache(self, n_seed: int, n_bar: int):
+        """Return the cached REAL result dict (pending=False) iff a valid sidecar
+        exists for this exact world+params, else None. Never fabricates."""
+        path = self._eigen_cache_path()
+        try:
+            with open(path, "r") as f:
+                blob = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(blob, dict) or blob.get("stamp") != self._eigen_cache_stamp(n_seed, n_bar):
+            return None
+        res = blob.get("result")
+        if not isinstance(res, dict) or "modes" not in res or "k" not in res:
+            return None
+        res = dict(res)
+        res["pending"] = False
+        return res
+
+    def _write_eigen_cache(self, result: dict, n_seed: int, n_bar: int) -> None:
+        path = self._eigen_cache_path()
+        blob = {"stamp": self._eigen_cache_stamp(n_seed, n_bar), "result": result}
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(blob, f)
+            os.replace(tmp, path)                        # atomic
+        except OSError:
+            logger.warning("could not persist eigen cache at %s", path)
+
     def _eigen_worker(self, sigma, eigen_n_seed: int, eigen_n_bar: int) -> None:
         """Runs the FULL authoritative eigenmode ensemble off-thread, then lands
-        the real result in ONE atomic assignment (`self._eigen = ...`). Never
+        the real result in ONE atomic assignment (`self._eigen = ...`) and persists
+        it to the sidecar cache so future loads/redeploys read it instantly. Never
         touches `self.engine`/settlement — reads only the frozen `self.world` and
         `sigma` via fresh `StreamWriter` probes (the same read-only contract
         `compute_eigenmodes` documents). A computation failure is recorded
@@ -524,6 +581,7 @@ class StreamPlayer:
                                         n_seed=eigen_n_seed, n_bar=eigen_n_bar)
             result["pending"] = False
             self._eigen = result
+            self._write_eigen_cache(result, eigen_n_seed, eigen_n_bar)
         except Exception as exc:                       # pragma: no cover (defensive)
             logger.exception("eigenmode background computation failed")
             self._eigen = {"modes": [], "eigen_floor": None, "k": 0,

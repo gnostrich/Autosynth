@@ -533,13 +533,17 @@ def test_ul4_a_fixture_attaching_tether_to_an_exempt_lane_is_structurally_inert(
 
 
 def test_ul4_no_tempo_or_crate_scalar_lane_ever_gets_a_mark_element():
-    """The TEMPO/CRATE rows never build a `.smark` visibility path in
-    scalarDraw's mark-branch (only the else-if(typeof L.mark === 'number')
-    branch touches `.smark`, and TEMPO/CHAOS take the earlier branches)."""
+    """A throttle-type lane (CHAOS) never builds a `.smark` visibility path in
+    scalarDraw's mark-branch (only the else-if(typeof L.mark === 'number') branch
+    touches `.smark`, and CHAOS takes an earlier branch). TEMPO was removed from
+    the outboard entirely (dead 'not wired' knob), so there is no tempo lane left to
+    check — the invariant is that whatever mark-less throttle lane exists is handled
+    before the mark-visibility branch."""
     js = _inline_js()
     body = _js_functions(js).get("scalarDraw", "")
-    assert "L.chaos" in body and "L.tempo" in body
+    assert "L.tempo" not in body, "TEMPO lane was removed; no tempo branch should remain"
+    assert "L.chaos" in body
     idx_chaos = body.index("L.chaos")
     idx_mark_branch = body.index("typeof L.mark")
     assert idx_chaos < idx_mark_branch, \
-        "CHAOS/TEMPO must be handled in EARLIER branches than the mark-visibility branch"
+        "CHAOS must be handled in an EARLIER branch than the mark-visibility branch"

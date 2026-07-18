@@ -192,7 +192,13 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
                 "the cosmetic tape waveform (#wav sine-art) must be removed"
             assert page.query_selector("#wavEmpty") is not None, \
                 "the honest-empty 'waveform not wired' note must be present"
-            assert "waveform not wired" in body_text, "honest-empty tape label missing"
+            # The tape panel is intentionally HIDDEN on the decluttered Play page
+            # (two-component pad+knobs layout), so its honest label lives in the DOM
+            # rather than the visible body text — assert on the element, not body_text.
+            # (The remediation invariant is that the note is honest-empty, NOT that
+            # the retired tape panel is displayed.)
+            wav_empty_text = page.eval_on_selector("#wavEmpty", "el => el.textContent") or ""
+            assert "waveform not wired" in wav_empty_text, "honest-empty tape label missing"
             assert "settled render" not in body_text, \
                 "the 'settled render' caption clause must be stripped from the tape"
 
