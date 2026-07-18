@@ -103,7 +103,12 @@ def _assigns_settled(body: str) -> bool:
 # world section), plus any direct assignment to a store (caught by _assigns_settled).
 BRIGHTNESS_WRITERS = {"fieldApplySettled", "fieldApplyStatic"}
 INPUT_HANDLERS = {"fieldOnWheel", "fieldOnMove", "fieldZoom", "fieldOnClick",
-                  "fieldTouchStart", "fieldTouchMove", "fieldTouchEnd"}
+                  "fieldTouchStart", "fieldTouchMove", "fieldTouchEnd",
+                  # mobile-UX chrome entry points (fullscreen snap ⛶/✕, the
+                  # fullscreenchange collapse, the tutorial dismiss): user input
+                  # too — none may reach a telemetry writer, transitively.
+                  "fieldExpandToggle", "fieldExpandOpen", "fieldExpandClose",
+                  "fieldOnFullscreenChange", "tutDismiss"}
 
 
 def _input_handler_violations(src: str):
