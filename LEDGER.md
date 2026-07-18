@@ -1216,3 +1216,8 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/static/index.html (2026-07-18T13:38:02+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-18T13:38:30+00:00)
 - `Edit` cloud/companion/static/index.html (2026-07-18T13:38:47+00:00)
+
+### at `607fc0f`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-18T13:56:53+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-18T13:57:00+00:00)
+- `Edit` cloud/REGRESSION-GUARDRAILS.md (2026-07-18T14:00:03+00:00)

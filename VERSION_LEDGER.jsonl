@@ -912,3 +912,6 @@
 {"head": "7a7b02f", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T13:38:02+00:00"}
 {"head": "7a7b02f", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T13:38:30+00:00"}
 {"head": "7a7b02f", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T13:38:47+00:00"}
+{"head": "607fc0f", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T13:56:53+00:00"}
+{"head": "607fc0f", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T13:57:00+00:00"}
+{"head": "607fc0f", "path": "cloud/REGRESSION-GUARDRAILS.md", "tool": "Edit", "ts": "2026-07-18T14:00:03+00:00"}
