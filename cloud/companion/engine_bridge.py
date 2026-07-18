@@ -352,8 +352,8 @@ class StreamPlayer:
     Everything else reads produced state."""
 
     def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None,
-                 is_trained: bool = False, eigen_n_seed: int = _EIGEN_BOOT_N_SEED,
-                 eigen_n_bar: int = _EIGEN_BOOT_N_BAR):
+                 is_trained: bool = False, eigen_n_seed: int = _EIGEN_N_SEED,
+                 eigen_n_bar: int = _EIGEN_N_BAR):
         # Force the ui-v5 engine tree to the FRONT of sys.path (membership isn't
         # enough — root engine-v1 must not shadow it), THEN assert we actually
         # resolved the capped engine. If root ets was imported first, fail LOUD
@@ -468,12 +468,19 @@ class StreamPlayer:
                        "basis": "response_kernel_sym",
                        "observable_names": _eigen_obs_names(self.M) if (sigma is not None and self.M > 0) else [],
                        "pending": (sigma is not None and self.M > 0)}
+        # AUDIO-FIRST (2026-07-18): the FULL authoritative ensemble is what resolves
+        # the real multi-mode pad, but it is heavy (~40s) and, started at boot on a
+        # single-core container, it starves the realtime produce loop so the first
+        # bar never warms (silent playback). So DO NOT start it here. Stash the params
+        # and let the produce loop (_loop) kick it off AFTER the first bar is produced
+        # (self._warmed), so audio always warms first and modes resolve a few seconds
+        # later. Offline tools call _eigen_worker / wait_eigen directly and are
+        # unaffected. A pure reader (no playback) still gets the modes: world_info()
+        # lazily triggers the deferred start too (see _ensure_eigen_started).
         self._eigen_thread: Optional[threading.Thread] = None
-        if sigma is not None and self.M > 0:
-            self._eigen_thread = threading.Thread(
-                target=self._eigen_worker, args=(sigma, eigen_n_seed, eigen_n_bar),
-                daemon=True)
-            self._eigen_thread.start()
+        self._eigen_args = ((sigma, eigen_n_seed, eigen_n_bar)
+                            if (sigma is not None and self.M > 0) else None)
+        self._eigen_lock = threading.Lock()
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -487,6 +494,24 @@ class StreamPlayer:
         self._sub_lock = threading.Lock()
 
     # --- EIGENPANEL background computation (OPEN_ENDS #23 item 5) ----------
+    def _ensure_eigen_started(self) -> None:
+        """Start the deferred eigenmode measurement exactly once. Called by the
+        produce loop right after the first audio bar warms (audio-first, so the
+        heavy ensemble never starves the cold-start), and by world_info() so a
+        pure reader that never presses play still gets the modes. Idempotent."""
+        # Defensive: a bare/partially-built player (e.g. test harness via
+        # object.__new__) may lack these — nothing to start then.
+        args = getattr(self, "_eigen_args", None)
+        lock = getattr(self, "_eigen_lock", None)
+        if args is None or lock is None:
+            return
+        with lock:
+            if self._eigen_thread is not None:
+                return
+            t = threading.Thread(target=self._eigen_worker, args=args, daemon=True)
+            self._eigen_thread = t
+            t.start()
+
     def _eigen_worker(self, sigma, eigen_n_seed: int, eigen_n_bar: int) -> None:
         """Runs the FULL authoritative eigenmode ensemble off-thread, then lands
         the real result in ONE atomic assignment (`self._eigen = ...`). Never
@@ -511,12 +536,19 @@ class StreamPlayer:
         elapses). Returns True once `self._eigen["pending"]` is False. Not on any
         request path — a convenience for callers (tests, CLI tools) that need the
         real modes deterministically rather than racing the background thread."""
+        self._ensure_eigen_started()      # deferred start: trigger it, then wait
         if self._eigen_thread is not None:
             self._eigen_thread.join(timeout=timeout)
         return not self._eigen.get("pending", False)
 
     # --- world info ---------------------------------------------------------
     def world_info(self) -> dict:
+        # A reader that opens a set but never presses play still deserves its
+        # modes: trigger the deferred eigenmode measurement here too (idempotent;
+        # the produce loop triggers it on first warm otherwise). It runs off-thread
+        # so this call returns immediately with the honest pending state until it
+        # lands.
+        self._ensure_eigen_started()
         # `is_trained` reports truthfully which world is loaded: True for the
         # user's freshly cloud-trained corpus (built by the train->play seam,
         # cloud.companion.train_local: local ingest -> cloud anchor-fit -> local
@@ -887,7 +919,11 @@ class StreamPlayer:
                 break
             # WARMED (OPEN_ENDS #21d): the first successfully produced bar ends
             # the cold window — the honest flag /api/world reports.
-            self._warmed = True
+            if not self._warmed:
+                self._warmed = True
+                # AUDIO-FIRST: now that a bar has warmed, kick off the deferred
+                # heavy eigenmode ensemble (it never blocked the first sound).
+                self._ensure_eigen_started()
             now = _time.monotonic()
             if t0 is None or now - (t0 + sent / self.sr) > self.PACE_REANCHOR_SECONDS:
                 t0 = now - sent / self.sr          # anchor/re-anchor at emission
