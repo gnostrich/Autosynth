@@ -343,6 +343,15 @@
   .slider input[type=range]:focus-visible{ outline:none; }
   .slider input[type=range]:focus-visible ~ .fill{ box-shadow: 0 0 0 2px var(--accent); }
 
+  /* READ-ONLY lane bar (no control affordance — display of a live φ statistic). */
+  .lane .rbar{ position:relative; height:8px; display:flex; align-items:center; }
+  .lane .rbar .track{ position:absolute; left:0; right:0; height:6px; border-radius:5px;
+    background: var(--panel-inset); border:1px solid var(--line-soft); }
+  .lane .rbar .fill{ position:absolute; left:0; width:0%; height:6px; border-radius:5px;
+    background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+    box-shadow: 0 0 10px -1px var(--accent-glow); transition: width .12s linear; }
+  .lane .rd.num{ font-variant-numeric: tabular-nums; }
+
   .meters{ display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); padding-top: var(--sp-3); border-top:1px solid var(--line-soft); }
   .meter .mh{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }
   .meter .mv{ font-size:13px; font-weight:600; color: var(--ink); }
@@ -350,6 +359,11 @@
   .meter .bars i{ flex:1; background: var(--panel-inset); border:1px solid var(--line-soft); border-radius:2px; height:20%; transition: height .09s linear, background .09s linear; }
   .meter .bars i.on{ background: linear-gradient(180deg, var(--accent), var(--accent-deep)); border-color: transparent; box-shadow:0 0 8px -2px var(--accent-glow); }
   .meter .bars i.hot{ background: linear-gradient(180deg, var(--tape), #c07a1e); box-shadow:0 0 9px -1px var(--tape-glow); }
+  /* gauge[g] slide/loop pair: two signed read-only readouts (not LED bars). */
+  .meter.gauge-pair .gv{ display:flex; flex-direction:column; justify-content:center; gap:6px; height:46px; }
+  .meter.gauge-pair .grow{ display:flex; justify-content:space-between; align-items:baseline; }
+  .meter.gauge-pair .glbl{ font-size:10px; letter-spacing:.12em; text-transform:uppercase; color: var(--faint); font-weight:650; }
+  .meter.gauge-pair .gval{ font-size:13px; font-weight:600; color: var(--ink); font-variant-numeric: tabular-nums; }
 
   /* ---------- BOTTOM: LIBRARY + TAPE ---------- */
   .bottom{ display:grid; grid-template-columns: minmax(0,0.92fr) minmax(0,1.08fr); gap: var(--sp-5); margin-bottom: var(--sp-5); align-items:stretch; }
@@ -385,7 +399,9 @@
     background:
       repeating-linear-gradient(90deg, transparent 0 63px, var(--line-soft) 63px 64px);
   }
-  .tape .wav{ position:absolute; inset:0; display:block; width:100%; height:100%; }
+  .tape .wav-empty{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:10px; letter-spacing:.14em; text-transform:uppercase; color: var(--faint); font-weight:600;
+    pointer-events:none; user-select:none; }
   .tape .ph{
     position:absolute; top:0; bottom:0; width:2px; left: 0%;
     background: var(--tape); box-shadow: 0 0 14px 2px var(--tape-glow);
@@ -791,7 +807,7 @@
         <section class="console panel" style="margin-bottom:var(--sp-5)">
           <div class="sec-h" style="margin-bottom:2px">
             <span class="lbl">Lane Console</span><span class="rule"></span>
-            <span class="hint">display · tolerances &amp; weights</span>
+            <span class="hint">display · live arrangement statistics (read-only)</span>
           </div>
           <div class="lanes" id="lanes"><!-- lanes injected --></div>
 
@@ -800,9 +816,12 @@
               <div class="mh"><span class="micro">settle</span><span class="mv num" data-v>0.0</span></div>
               <div class="bars" data-bars></div>
             </div>
-            <div class="meter" data-m="drift">
-              <div class="mh"><span class="micro">drift</span><span class="mv num" data-v>0.0</span></div>
-              <div class="bars" data-bars></div>
+            <div class="meter gauge-pair" data-m="gauge">
+              <div class="mh"><span class="micro">gauge[g]</span></div>
+              <div class="gv">
+                <div class="grow"><span class="glbl">slide</span><span class="gval num" id="mSlide">—</span></div>
+                <div class="grow"><span class="glbl">loop</span><span class="gval num" id="mLoop">—</span></div>
+              </div>
             </div>
             <div class="meter" data-m="output">
               <div class="mh"><span class="micro">output</span><span class="mv num" data-v>0.0</span></div>
@@ -826,12 +845,12 @@
           <section class="tape-panel panel">
             <div class="sec-h" style="margin-bottom:2px">
               <span class="lbl">Output Tape</span><span class="rule"></span>
-              <span class="hint">settled render · playhead from telemetry</span>
+              <span class="hint">playhead from telemetry · waveform not wired</span>
             </div>
             <div class="tape-scroll">
               <div class="tape" id="tape">
                 <div class="played" id="tapePlayed"></div>
-                <svg class="wav" id="wav" viewBox="0 0 720 150" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="wav-empty" id="wavEmpty" aria-hidden="true">waveform not wired</div>
                 <div class="ph" id="playhead"></div>
               </div>
             </div>
@@ -1948,29 +1967,48 @@
   var tutOkBtn = $("tutOk");
   if(tutOkBtn) tutOkBtn.addEventListener("click", tutDismiss);
 
-  /* ================= LANES (display-only) ================= */
-  var lanesWrap = $("lanes"), lanesBuilt = false;
+  /* ================= LANES (READ-ONLY live arrangement statistics) =========
+     Each lane is a real, intrinsically-bounded [0,1] reduction of the engine's
+     per-bar Layer-0 φ statistics, delivered on the telemetry frame as
+     d.lanes[key] (bridge: StreamPlayer._lane_readouts). NO interactive control:
+     the web's ONLY engine input is the field (region-tilt); a per-lane "weight"
+     slider never existed, so it is GONE. A lane with no telemetry value yet reads
+     "—" (honest-absent), never a hardcoded number. */
+  var lanesWrap = $("lanes"), lanesBuilt = false, laneEls = {};
   var LANES = [
-    { key:"region",     desc:"tilt spread", val:62 },
-    { key:"continuity", desc:"lane bind",   val:74 },
-    { key:"novelty",    desc:"escape prob", val:33 },
-    { key:"density",    desc:"units / bar", val:55 }
+    { key:"region",     desc:"occupancy focus" },
+    { key:"continuity", desc:"run continuation" },
+    { key:"novelty",    desc:"recency reuse" },
+    { key:"density",    desc:"filled slots" }
   ];
   function buildLanesOnce(){
     if(lanesBuilt) return; lanesBuilt = true;
     LANES.forEach(function(l){
       var rowEl = document.createElement("div");
-      rowEl.className = "lane";
+      rowEl.className = "lane readonly";
       rowEl.innerHTML =
         '<div><div class="name">'+l.key+'</div><div class="desc">'+l.desc+'</div></div>'+
-        '<div class="slider"><div class="track"></div><div class="fill"></div>'+
-          '<input type="range" min="0" max="100" value="'+l.val+'" aria-label="'+l.key+' lane (display only)"></div>'+
-        '<div class="rd num">'+l.val+'</div>';
+        '<div class="rbar" role="img" aria-label="'+l.key+' (read-only)">'+
+          '<div class="track"></div><div class="fill"></div></div>'+
+        '<div class="rd num">&mdash;</div>';
       lanesWrap.appendChild(rowEl);
-      var input = rowEl.querySelector("input"), fill = rowEl.querySelector(".fill"), rd = rowEl.querySelector(".rd");
-      function upd(){ fill.style.width = input.value+"%"; rd.textContent = input.value; }
-      input.addEventListener("input", upd);   // display only — no engine call
-      upd();
+      laneEls[l.key] = { fill: rowEl.querySelector(".fill"), rd: rowEl.querySelector(".rd") };
+    });
+  }
+  function updateLanes(d){
+    if(!lanesBuilt) return;
+    var lanes = (d && d.lanes) || {};
+    LANES.forEach(function(l){
+      var el = laneEls[l.key], v = lanes[l.key];
+      if(!el) return;
+      if(typeof v === "number"){
+        var pct = Math.max(0, Math.min(1, v)) * 100;
+        el.fill.style.width = pct+"%";
+        el.rd.textContent = v.toFixed(2);
+      }else{
+        el.fill.style.width = "0%";
+        el.rd.innerHTML = "&mdash;";   // honest-absent (no reading this frame)
+      }
     });
   }
 
@@ -1979,7 +2017,9 @@
   function buildMetersOnce(){
     if(metersBuilt) return; metersBuilt = true;
     document.querySelectorAll(".meter").forEach(function(m){
-      var bars = m.querySelector("[data-bars]"), N = 14;
+      var bars = m.querySelector("[data-bars]");
+      if(!bars) return;              // the gauge[g] slide/loop pair has no LED bars
+      var N = 14;
       for(var i=0;i<N;i++){ bars.appendChild(document.createElement("i")); }
       meterDefs.push({ el:m, bars: bars.querySelectorAll("i"), v: m.querySelector("[data-v]"),
         hot: m.getAttribute("data-m")==="output", key: m.getAttribute("data-m") });
@@ -1997,14 +2037,25 @@
   }
   function updateMeters(roles){
     if(!roles || !roles.length) return;
-    var sum=0, mx=0, mn=1;
-    for(var i=0;i<roles.length;i++){ var v=roles[i]; sum+=v; if(v>mx)mx=v; if(v<mn)mn=v; }
+    var sum=0, mx=0;
+    for(var i=0;i<roles.length;i++){ var v=roles[i]; sum+=v; if(v>mx)mx=v; }
     var mean = sum/roles.length;
     meterDefs.forEach(function(m){
       if(m.key==="settle") setMeter(m, mean);
-      else if(m.key==="drift") setMeter(m, Math.min(1, (mx-mn)*1.4));
-      else setMeter(m, mx);
+      else setMeter(m, mx);            // output = peak role activity
     });
+  }
+
+  /* gauge[g] slide/loop pair — READ-ONLY, from the engine's own meter modules
+     (telemetry d.slide / d.loop; bridge: StreamPlayer._gauge_meters). Shown as the
+     engine's signed reading; "—" when absent (slide DISARMS on a v0 world whose
+     gauge frame never slides; loop is "—" until a 3-bar cycle exists). Never
+     collapsed into one "drift" number, never a role-spread proxy. */
+  var mSlide = $("mSlide"), mLoop = $("mLoop");
+  function fmtGauge(v){ return (typeof v === "number") ? (v>=0?"+":"")+v.toFixed(3) : "—"; }
+  function updateGauge(d){
+    if(mSlide) mSlide.textContent = fmtGauge(d && d.slide);
+    if(mLoop)  mLoop.textContent  = fmtGauge(d && d.loop);
   }
 
   /* ================= SOURCE LIBRARY (from ingested files) ================= */
@@ -2036,25 +2087,13 @@
     $("libCount").textContent = files.length + " loaded";
   }
 
-  /* ================= TAPE WAVEFORM (cosmetic) ================= */
-  (function buildWave(){
-    var wav = $("wav"), W=720, H=150, mid=H/2, pts=[];
-    for(var x=0;x<=W;x+=3){
-      var env = 0.35+0.5*Math.abs(Math.sin(x*0.011))*Math.abs(Math.sin(x*0.003+1));
-      var a = env*(0.55+0.45*Math.sin(x*0.09))*mid*0.86;
-      pts.push([x, mid-a]);
-    }
-    var top="M0 "+mid, bot="";
-    pts.forEach(function(p){ top+=" L"+p[0]+" "+p[1].toFixed(1); });
-    for(var i=pts.length-1;i>=0;i--){ var p=pts[i]; bot+=" L"+p[0]+" "+(mid+(mid-p[1])).toFixed(1); }
-    var grad = '<defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">'+
-      '<stop offset="0" stop-color="var(--tape)" stop-opacity="0.9"/>'+
-      '<stop offset="0.5" stop-color="var(--accent)" stop-opacity="0.55"/>'+
-      '<stop offset="1" stop-color="var(--tape)" stop-opacity="0.9"/></linearGradient></defs>';
-    wav.innerHTML = grad+'<path d="'+top+bot+' Z" fill="url(#wg)" opacity="0.85"/>'+
-      '<line x1="0" y1="'+mid+'" x2="720" y2="'+mid+'" stroke="var(--line)" stroke-width="0.6"/>';
-  })();
-
+  /* ================= TAPE ================= */
+  /* The settled-envelope-to-web waveform is NOT wired: the tape lane shows an
+     HONEST-EMPTY state (#wavEmpty "waveform not wired"), never decorative art.
+     Only the playhead + played region + clock are real (updateTape reads the
+     telemetry frame's committed-bar time d.t). REMOVED: the sine-wave buildWave
+     cosmetic fill (a data-captioned synthetic surface — the prior sine-art scar;
+     WEB-FAB-2 now guards against its return). */
   var playhead = $("playhead"), tapePlayed = $("tapePlayed"), timeRead = $("timeRead");
   function fmtClock(sec){
     sec = Math.max(0, sec||0);
@@ -2089,6 +2128,8 @@
       fieldApplySettled(d);       // FILL = settled telemetry (roles + per-track nowplaying)
       updateMeters(roles);
     }
+    updateLanes(d);               // read-only live φ statistics (real, per bar)
+    updateGauge(d);               // read-only slide[g]/loop[g] gauge-drift pair
     if(typeof d.t === "number") updateTape(d.t);
     // the engine's answer has arrived — clear the pending "settling" cue.
     if(fieldPending){ fieldPending = false; fieldSetStatus("", false); }

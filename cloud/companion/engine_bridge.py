@@ -78,8 +78,21 @@ class StreamPlayer:
         self._bar_index = 0
         # latest read-only telemetry (roles 0..1, per-track nowplaying, elapsed
         # seconds) — for /api/telemetry. `nowplaying` starts empty (no bar yet).
+        # `lanes` are per-bar Layer-0 φ statistics reduced to intrinsic [0,1]
+        # readouts; `loop`/`slide` are the gauge-drift jack pair (read-only meters,
+        # spec §9). All start absent (None → "—" on the web) until the first bar.
         self.telemetry = {"roles": [0.0] * self.M, "t": 0.0, "bar": 0,
-                          "nowplaying": {}}
+                          "nowplaying": {},
+                          "lanes": {"region": None, "continuity": None,
+                                    "novelty": None, "density": None},
+                          "loop": None, "slide": None}
+        # I-8 bounded windows (deque, maxlen) for the two whole-trajectory gauge
+        # meters: committed occupancy O per bar (loop[g]) and the gauge-frame
+        # trajectory (slide[g]). Bounded by material window, never by elapsed time.
+        from collections import deque
+        self._METER_WINDOW = 16
+        self._O_window: "deque" = deque(maxlen=self._METER_WINDOW)
+        self._frame_hist: "deque" = deque(maxlen=self._METER_WINDOW)
         # STATIC per-world field telemetry (computed ONCE, here at load): the SAME
         # read-only reductions the desktop engine emits over /ets/profiles +
         # /ets/unitpool (ets.engine.engine.track_anchor_profiles / role_unit_pool).
@@ -225,11 +238,73 @@ class StreamPlayer:
         nowplaying = {int(tid): float(act)
                       for tid, act in nowplaying_activity(r.rows)}
         self._bar_index = int(r.bar)
+        lanes = self._lane_readouts(r)
+        loop_val, slide_val = self._gauge_meters(r)
         self.telemetry = {"roles": roles, "bar": int(r.bar),
                           "t": float(r.bar * self.engine.writer.bar_seconds),
-                          "nowplaying": nowplaying}
+                          "nowplaying": nowplaying,
+                          "lanes": lanes, "loop": loop_val, "slide": slide_val}
         pcm = _to_int16(audio)
         return pcm, roles
+
+    # --- read-only display reductions of the produced bar (spec §9) ---------
+    def _lane_readouts(self, r) -> dict:
+        """The four Lane-Console lanes as INTRINSIC [0,1] reductions of this bar's
+        Layer-0 φ statistics (ets.writer.phi; carried on r.phi) — the SAME read-only
+        pattern as roles/nowplaying. No invented constant: every bound comes from the
+        bar itself (anchor count M, placement count, slot count s_phase). Feeds the
+        web display only; touches no settlement/writer/F (I-5/I-14)."""
+        phi = r.phi
+        # region: occupancy concentration of φ_region, 0=uniform .. 1=one anchor.
+        region_vec = np.asarray(phi["region"], float).reshape(-1)
+        tot = float(region_vec.sum())
+        if tot > 0.0 and self.M > 1:
+            peak = float(region_vec.max()) / tot
+            region = (peak - 1.0 / self.M) / (1.0 - 1.0 / self.M)
+        else:
+            region = 0.0
+        # continuity: share of this bar's placements that continue a real source run.
+        n_place = len(r.rows)
+        continuity = (float(phi["cont"]) / n_place) if n_place else 0.0
+        # density: fraction of the bar's metrical slots carrying any placement.
+        filled = len({int(row[0]) % self.s_phase for row in r.rows})
+        density = filled / float(self.s_phase) if self.s_phase else 0.0
+        # novelty: recency-weighted unit reuse vs the committed tape (already [0,1]).
+        novelty = float(phi["novelty"])
+        clamp = lambda v: float(max(0.0, min(1.0, v)))
+        return {"region": clamp(region), "continuity": clamp(continuity),
+                "novelty": clamp(novelty), "density": clamp(density)}
+
+    def _gauge_meters(self, r):
+        """The gauge-drift jack pair (spec §9), read-only, over BOUNDED windows:
+          loop[g] — ets.meters.gauge_loop.loop_g over the committed occupancy O of
+                    the last W bars (the incorruptible holonomy quantity). Real and
+                    live; None until a 3-bar cycle exists.
+          slide[g] — ets.meters.gauge_slide over the gauge-frame trajectory. On a v0
+                    world the writer holds the frame at the identity every bar, so
+                    slide is structurally zero and DISARMS (None); it auto-arms only
+                    if the frame ever actually moves. Never fabricated.
+        Imports the existing meter modules (no engine edit); consumes produced state
+        only; feeds nothing back into any objective/gradient/settlement (I-5/I-14)."""
+        from ets.meters.gauge_loop import loop_g
+        from ets.meters.gauge_slide import gauge_slide
+        self._O_window.append(np.asarray(r.O, float))
+        fr = self.engine.writer.frame
+        self._frame_hist.append((float(fr.transpose), float(fr.phase)))
+        # loop[g]: committed-region holonomy over the window (needs >= 3 bar nodes).
+        loop_val = None
+        if len(self._O_window) >= 3:
+            Ocat = np.concatenate(list(self._O_window), axis=1)
+            loop_val = float(loop_g(Ocat, self.s_phase)[-1])
+        # slide[g]: armed only if the gauge frame actually moved across the window.
+        ts = {t for (t, _p) in self._frame_hist}
+        ps = {p for (_t, p) in self._frame_hist}
+        slide_val = None
+        if len(ts) > 1 or len(ps) > 1:
+            ft = [t for (t, _p) in self._frame_hist]
+            fp = [p for (_t, p) in self._frame_hist]
+            slide_val = float(gauge_slide(ft, fp, float(self.s_phase)).phase.per_bar[-1])
+        return loop_val, slide_val
 
     # --- transport / streaming ---------------------------------------------
     def subscribe(self):

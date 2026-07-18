@@ -1,5 +1,12 @@
 {
   "_comment": "Curated both-axes facts for LEDGER.md. Documents only. Append/edit the narrative facts here; the per-edit trail is auto-appended from VERSION_LEDGER.jsonl by scripts/build_ledger.py (invoked by the every-edit hook).",
+  "incidents": [
+    {
+      "date": "2026-07-18",
+      "id": "fabrication-repeat-webfab",
+      "note": "web UX shipped 3 data-captioned decorative surfaces — (1) Output Tape waveform = Math.sin buildWave() under 'settled render'; (2) Lane Console hardcoded 62/74/33/55 with inert sliders under 'tolerances & weights'; (3) 'drift' meter = role-spread proxy (max-min)*1.4 captioned as the holonomy/drift quantity. Tape is a REPEAT of the previously-remediated sine-art scar. Remediation (REAL-OR-ABSENT, per surface): (1) buildWave removed, tape shows honest-empty 'waveform not wired', 'settled render' clause stripped (playhead/clock stay real); (2) lanes wired to real per-bar Layer-0 phi statistics (region/continuity/novelty/density) via read-only telemetry reductions, inert sliders removed, 'tolerances & weights' caption dropped; (3) the proxy replaced by the engine's real gauge-drift split — loop[g] wired live from committed occupancy (ets.meters.gauge_loop, incorruptible holonomy), slide[g] honestly DISARMED because the v0 world's gauge frame is frozen-identity (documented engine construction wall, surfaced not patched). Standing caption guard added: cloud/tests/test_web_fab_guard.py (WEB-FAB-1 caption->data-source map + WEB-FAB-2 no-procedural-art-under-data-caption; both proven to bite). Core ets/ + architecture-v6/ets/ ZERO-DIFF (every engine quantity READ via the bridge). Prereg: cloud/PREREG-webfab-remediation.md. Rollback tag: pre-webfab-remediation-2026-07-18 @ b054411."
+    }
+  ],
   "architectures": [
     {
       "version": "v0-validated",

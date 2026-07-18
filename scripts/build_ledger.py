@@ -40,6 +40,16 @@ def build() -> str:
                  "(corpus/genre trained models) under each.")
     lines.append("")
 
+    # --- Incidents (fabrication-class remediations, on the record) ---
+    incidents = data.get("incidents", [])
+    if incidents:
+        lines.append("## Incidents (fabrication-class, on the record)")
+        lines.append("")
+        for inc in incidents:
+            lines.append(f"- **{inc.get('date','')} — {inc.get('id','')}**: "
+                         f"{inc.get('note','')}")
+        lines.append("")
+
     # --- Axis 1: architecture versions ---
     lines.append("## Axis 1 — architecture / implementation versions")
     lines.append("")
