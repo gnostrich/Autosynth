@@ -2055,8 +2055,15 @@
     var out = [];
     if(k <= 0) return out;
     if(k === 1){
-      var s0 = strips && strips[0];
-      out.push(s0 ? gap(s0.v, s0.mark, s0.held) : 0);
+      // HONEST SINGLE MODE (radial magnitude): only the DISTANCE from centre bears
+      // force — the angle is inert (drag any direction, same response). The gap is
+      // (handle magnitude - achieved magnitude), the SAME (handle - mark) tether as
+      // the old 1-D strip, just read radially. Released -> 0 (T-3). Never a 2nd mode.
+      if(!pad || !pad.held){ out.push(0); return out; }
+      var rH = Math.min(1, Math.hypot(pad.x, pad.y));
+      var rM = (typeof pad.markX === "number" && typeof pad.markY === "number")
+        ? Math.min(1, Math.hypot(pad.markX, pad.markY)) : null;
+      out.push(rM === null ? 0 : (rH - rM));
       return out;
     }
     out.push(pad ? gap(pad.x, pad.markX, pad.held) : 0);
@@ -2270,6 +2277,24 @@
     } else {
       radialEls.mark.style.visibility = "hidden";
     }
+    if(radialK === 1){
+      // NAIVELY RADIAL COLOR: a single-mode radial gradient of mode-0's own chroma —
+      // pale (equilibrium) at centre, saturating with DISTANCE outward. No 2nd-axis
+      // hue (there is only one mode); the puck/mark tints track their own radius.
+      var col0 = radialAxisColorFor(0);
+      var sat0 = radialSatForGain(radialModes[0] ? radialModes[0].gain : 0, radialFloor, radialMaxAbs);
+      var rim0 = radialLerpRgb([128,128,128], col0, sat0);
+      radialEls.pad.style.background =
+        "radial-gradient(circle at 50% 50%, rgb(128,128,128) 0%, " + radialRgbToCss(rim0) + " 100%)";
+      var rPuck = Math.min(1, Math.hypot(x, y));
+      radialEls.pad.style.boxShadow = "inset 0 0 40px -6px "
+        + radialRgbToCss(radialLerpRgb([128,128,128], col0, sat0 * rPuck));
+      if(radialPadState.markX !== null){
+        var rMk = Math.min(1, Math.hypot(radialPadState.markX, radialPadState.markY));
+        radialEls.mark.style.borderColor = radialRgbToCss(radialLerpRgb([128,128,128], col0, sat0 * rMk));
+      }
+      return;
+    }
     var colorA = radialAxisColorFor(0), colorB = radialAxisColorFor(1);
     var satA = radialSatForGain(radialModes[0] ? radialModes[0].gain : 0, radialFloor, radialMaxAbs);
     var satB = radialSatForGain(radialModes[1] ? radialModes[1].gain : 0, radialFloor, radialMaxAbs);
@@ -2321,7 +2346,8 @@
   function radialPadDown(ev){
     if(!radialEls.pad) return;
     var p = radialPosFromPadEvent(ev, radialEls.pad);
-    radialPadState.lastX = p.x; radialPadState.lastY = p.y;  // TETHER T-2 baseline
+    if(radialK === 1) radialPadState.lastX = Math.min(1, Math.hypot(p.x, p.y));  // baseline RADIUS
+    else { radialPadState.lastX = p.x; radialPadState.lastY = p.y; }             // TETHER T-2 baseline
     radialPadState.held = true;
     try{ ev.currentTarget.setPointerCapture(ev.pointerId); }catch(_){}
     ev.preventDefault();
@@ -2330,6 +2356,23 @@
   function radialPadMove(ev){
     if(!radialPadState.held || !radialEls.pad) return;
     var p = radialPosFromPadEvent(ev, radialEls.pad);
+    if(radialK === 1){
+      // SINGLE MODE: the handle is a RADIUS; the pointer's angle is purely cosmetic
+      // (puck drawn wherever the drag points). Only the radial distance is tethered
+      // toward the achieved magnitude and only that distance bears force (mode 0).
+      var pr = Math.min(1, Math.hypot(p.x, p.y));
+      var ptheta = (p.x || p.y) ? Math.atan2(p.y, p.x) : 0;
+      var dr = pr - radialPadState.lastX; radialPadState.lastX = pr;
+      var rH = Math.min(1, Math.hypot(radialPadState.x, radialPadState.y));
+      var rM = (typeof radialPadState.markX === "number" && typeof radialPadState.markY === "number")
+        ? Math.min(1, Math.hypot(radialPadState.markX, radialPadState.markY)) : null;
+      rH = Math.max(0, Math.min(1, tetherHandleNext(rH, dr, rM, radialYieldForMode(0))));
+      radialPadState.x = rH * Math.cos(ptheta);
+      radialPadState.y = rH * Math.sin(ptheta);
+      ev.preventDefault();
+      sendSteerNow(); radialDrawPad();
+      return;
+    }
     var dx = p.x - radialPadState.lastX, dy = p.y - radialPadState.lastY;
     radialPadState.lastX = p.x; radialPadState.lastY = p.y;
     radialPadState.x = Math.max(-1, Math.min(1,
@@ -2392,12 +2435,13 @@
       radialEls.wrap.innerHTML = '<div class="empty">no modes above the measured floor on this world</div>';
       return;
     }
-    // HERO mount (#radialWrap, inside the pad-hero panel): the 2D pad when
-    // k>=2, or — when k===1 — the sole strip IS the whole steering surface
-    // (it stays the hero, never demoted to the knobs band).
-    if(radialK >= 2){
+    // HERO mount (#radialWrap, inside the pad-hero panel): the SAME 2-D pad for
+    // both k>=2 (a true multi-axis XY surface) and k===1 (an HONEST single-mode
+    // radial: only the puck's DISTANCE from centre matters — the angle is inert,
+    // no fabricated second axis). The pad is always the hero, never a 1-D strip.
+    if(radialK >= 1){
       var pad = document.createElement("div");
-      pad.className = "radial-pad";
+      pad.className = "radial-pad" + (radialK === 1 ? " single" : "");
       pad.innerHTML = '<div class="rp-cross"></div><div class="rp-mark"></div>'+
         '<div class="rp-badge rp-badge-x"></div><div class="rp-badge rp-badge-y"></div>'+
         '<div class="rp-puck"></div>';
@@ -2405,15 +2449,16 @@
       radialEls.pad = pad;
       radialEls.puck = pad.querySelector(".rp-puck");
       radialEls.mark = pad.querySelector(".rp-mark");
+      // k===1 has no second mode: the Y badge is not shown (never a fake mode).
+      if(radialK === 1){ var by0 = pad.querySelector(".rp-badge-y"); if(by0) by0.style.display = "none"; }
       pad.addEventListener("pointerdown", radialPadDown);
       pad.addEventListener("pointermove", radialPadMove);
       pad.addEventListener("pointerup", radialPadUp);
       pad.addEventListener("pointercancel", radialPadUp);
     }
-    // EXTRA strips (k>=3 only) mount into the KNOBS BAND (component 2, the
-    // right rail) alongside TEMP/GAUGE; the k===1 sole strip mounts in the
-    // HERO instead (built into radialEls.wrap directly, below).
-    var heroStripCount = (radialK === 1) ? 1 : 0;
+    // EXTRA strips (k>=3 only) mount into the KNOBS BAND (component 2, the right
+    // rail) alongside TEMP/GAUGE. k===1 has NO strip — its single mode lives in
+    // the pad as a radial magnitude (below); k===2 is the pad's two axes.
     var bandStripCount = (radialK >= 3) ? (radialK - 2) : 0;
     function mountStrip(target, i){
       radialStripStates.push({ v:0, held:false, mark:null, lastV:0 });
@@ -2430,12 +2475,6 @@
       return row;
     }
     var stripRows = [];
-    if(heroStripCount > 0){
-      var heroStrips = document.createElement("div");
-      heroStrips.className = "radial-strips";
-      stripRows.push(mountStrip(heroStrips, 0));
-      radialEls.wrap.appendChild(heroStrips);
-    }
     if(bandStripCount > 0 && radialEls.stripsBand){
       var bandWrap = document.createElement("div");
       bandWrap.className = "radial-strips";
@@ -2477,16 +2516,22 @@
       var achieved = radialProjectReading(comp, lanes, roles);
       if(achieved === null) continue;
       if(radialK === 1){
-        var s0 = radialStripStates[0];
-        if(s0){
-          s0.mark = achieved;
-          // TETHER T-2: held -> pull-only tick every telemetry frame (no drag
-          // needed — the living mark's own motion is enough, UL-1/TW-1);
-          // released -> unchanged global choice (handle tracks the mark).
-          if(s0.held) s0.v = Math.max(-1, Math.min(1,
-            tetherHandleNext(s0.v, 0, achieved, radialYieldForMode(radialStripModeIndex(0)))));
-          else s0.v = scalarFollow(s0.v, achieved, s0.held);
-        }
+        // SINGLE MODE (radial): the achieved reading's MAGNITUDE is the mark's
+        // radius; its sign/angle is inert (only magnitude bears meaning). The mark
+        // sits on the puck's own radial line so the tether pull is purely radial.
+        var rMark = Math.abs(achieved);
+        var theta = (radialPadState.x || radialPadState.y)
+          ? Math.atan2(radialPadState.y, radialPadState.x) : 0;
+        radialPadState.markX = rMark * Math.cos(theta);
+        radialPadState.markY = rMark * Math.sin(theta);
+        var rH = Math.min(1, Math.hypot(radialPadState.x, radialPadState.y));
+        // TETHER: held -> pull the radius toward the mark each frame (UL-1/TW-1);
+        // released -> the radius follows the living mark (handle tracks mark, T-3).
+        if(radialPadState.held) rH = Math.max(0, Math.min(1,
+          tetherHandleNext(rH, 0, rMark, radialYieldForMode(0))));
+        else rH = scalarFollow(rH, rMark, radialPadState.held);
+        radialPadState.x = rH * Math.cos(theta);
+        radialPadState.y = rH * Math.sin(theta);
       } else if(i === 0){
         radialPadState.markX = achieved;
         if(radialPadState.held) radialPadState.x = Math.max(-1, Math.min(1,
