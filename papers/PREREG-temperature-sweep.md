@@ -108,6 +108,26 @@ honest "measuring temperature modes…" state, distinct from a world that has no
 cache hit (the committed demo, an admin upload, or a prior auto-run) loads instantly. No
 world is ever served a stale or foreign table; nothing runs on the audio path.
 
+### Coarse grid + parallel measurement (amendment)
+The auto-sweep measures a COARSE 4-point grid `T_s ∈ {0.5, 1.0, 2.0, 4.0}` (cold / default /
+warm / hot), not a fine 7-point one, and measures the points in PARALLEL across worker
+processes (the temperatures are independent; the settlement is GIL-bound so threads do not
+help — processes give ~3.7× on 4 cores). Each worker receives the pickled `(world, sigma)` and
+runs the SAME `temperature_sweep` with the same fixed `rng_seed`, so a parallel row is
+byte-identical to the serial row for that temperature — parallelism changes only *wall time*,
+never the measured modes (verified: coarse-parallel reproduces the committed demo's
+`k = 1→2→3` with the transitions localized at the same temperatures the fine grid attributes
+them to). **Justification for subsampling:** the mode count steps monotonically (1→2→3) and the
+mode DIRECTIONS are stable across `T_s` (measured — the overlap of low- vs high-`T_s`
+eigenvectors is ~0.9–1.0), so a few well-placed points capture the whole trajectory; every
+point is a REAL measurement and the FE never claims a `k` it did not measure (nearest-`T_s`
+lookup). **Disclosed resolution tradeoff / generalization caveat:** on an arbitrary future
+trained world a narrow intermediate-`k` temperature window could fall between two coarse points
+and go UNSAMPLED — an honestly *missed* mode-appearance, never a misrepresented one. This
+assumes the "monotone 1→2→3, stable directions" finding generalizes beyond the demo; if a
+world's curve is non-monotone or its directions rotate sharply, the coarse grid under-resolves
+it and the grid should be refined (add points) for that world.
+
 ### Data provenance / walls (unchanged from the body)
 - Every mode shown is a REAL measured eigenvector/eigenvalue that survives the double floor
   (`|λ|>floor AND |λ|−2·SE>floor`) at that `T_s`; nothing is fabricated. A degenerate corpus
