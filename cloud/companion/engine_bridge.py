@@ -179,15 +179,34 @@ _EIGEN_N_BOOT = 60       # bootstrap resamples for the eigenvalue SE
 _EIGEN_N_NULL = 200      # label-shuffle null draws for the floor
 _EIGEN_FLOOR_PCT = 97.5  # null floor percentile of max|eigenvalue|
 # MODES-BY-TEMPERATURE (PREREG-temperature-sweep): the T_s grid the auto-sweep measures a
-# world's mode-set at, so the pad can reselect its basis as the operator heats. The default
-# T_s=1.0 IS in the grid (it must be — the pad restores the authoritative basis there). This
-# is 7x the single-temperature ensemble, so it runs LAST (after the boot eigen lands) in the
-# same off-playback background thread, cached to a sidecar; never on the audio path.
-_SWEEP_T_GRID = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
-_SWEEP_DEFER_POLL = 1.5  # while audio is live, the sweep worker parks between temperatures
-                         # (this poll interval) instead of computing — so a one-time,
-                         # multi-minute measurement can never starve realtime playback on a
-                         # constrained host. It resumes the instant playback pauses.
+# world's mode-set at, so the pad can reselect its basis as the operator heats. A COARSE even
+# spread — the mode count only steps 1->2->3 and the directions are stable across T (measured),
+# so a few well-placed points capture the whole story (cold/default/warm/hot) at a fraction of
+# a fine sweep's cost. The default T_s=1.0 MUST be in the grid (the pad restores the
+# authoritative basis there). The temperatures are INDEPENDENT, so they are measured in
+# PARALLEL across processes (see _sweep_one_temp / _sweep_worker), off the audio path, cached.
+_SWEEP_T_GRID = [0.5, 1.0, 2.0, 4.0]
+_SWEEP_DEFER_POLL = 1.5  # while audio is live, the sweep worker parks before launching heavy
+                         # compute (this poll interval) instead of computing — so a one-time
+                         # measurement can never starve realtime playback on a constrained
+                         # host. It resumes the instant playback pauses.
+
+
+def _sweep_one_temp(args):
+    """Module-level worker for the process pool: measure ONE temperature's mode-set. Runs in a
+    SEPARATE process with the pickled (world, sigma) — identical objects, so the modes it
+    returns are exactly what a serial measurement would produce, just computed in parallel.
+    Pure read-only measurement (temperature_sweep uses fresh probes; sampler/F/world untouched)."""
+    world, sigma, M, T, n_seed, n_bar = args
+    # self-sufficient in a fresh (spawned) process: put the ui-v5 engine tree on the path
+    # before importing, so `import ets` resolves exactly as it does in the server.
+    if _ARCH_V6 not in sys.path:
+        sys.path.insert(0, _ARCH_V6)
+    from cloud.companion.eigen_experimental import temperature_sweep
+    r = temperature_sweep(world, sigma, M, [T], n_seed=n_seed, n_bar=n_bar)
+    if isinstance(r, dict) and isinstance(r.get("sweep"), list) and r["sweep"]:
+        return r["sweep"][0], {k: r[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
+    return None, None
 _EIGEN_WORD_FLOOR = 0.6  # |loading| a scalar observable needs to earn a word
 _EIGEN_WORD_MAP = {"density": "busier", "cont": "steady", "novelty": "fresh"}
 
@@ -505,8 +524,8 @@ class StreamPlayer:
                 self._eigen_args = None              # nothing to compute
         # MODES-BY-TEMPERATURE (PREREG-temperature-sweep + addendum): the pad reselects its
         # steering basis to the modes measured at the operator's TEMP. That table is measured
-        # ONCE per world by an off-playback background worker (7x the boot ensemble, so it runs
-        # AFTER the eigen lands) and cached to a sidecar, exactly like the eigen modes — so any
+        # ONCE per world by an off-playback background worker (a coarse 4-point grid measured
+        # in PARALLEL across processes, run AFTER the eigen lands) and cached to a sidecar — so any
         # world, existing OR freshly trained, gets the temperature axis automatically with no
         # manual step. A cache hit (committed demo, an admin upload, or a prior auto-run) loads
         # instantly and skips compute.
@@ -656,8 +675,8 @@ class StreamPlayer:
             logger.warning("could not persist sweep cache at %s", path)
 
     def _ensure_sweep_started(self) -> None:
-        """Start the deferred modes-by-temperature measurement exactly once. It is 7x the
-        boot ensemble, so it is triggered only AFTER the eigen worker lands (chained from
+        """Start the deferred modes-by-temperature measurement exactly once. It is heavier than
+        the boot ensemble, so it is triggered only AFTER the eigen worker lands (chained from
         `_eigen_worker`) or by a pure reader via world_info() — never on the audio path,
         never before audio has warmed. Idempotent; defensive against a bare test player."""
         args = getattr(self, "_sweep_args", None)
@@ -678,40 +697,75 @@ class StreamPlayer:
         floor, real measured eigenvectors) — reads only the frozen world/sigma via fresh
         probes; never touches settlement/F.
 
-        AUDIO SAFETY (auditor Note A): this one-time, multi-minute measurement DEFERS while
-        playback is live — it parks between temperatures until `self._playing` clears — so it
-        can never push the realtime produce loop past deadline and cause mid-stream
-        under-runs on a constrained host. It resumes the instant playback pauses; a set
-        played nonstop simply shows the honest `sweep_pending` state until the first pause.
-        A failure is logged (pending clears) rather than left silently stuck."""
+        AUDIO SAFETY: this one-time measurement DEFERS while playback is live — it parks before
+        launching (serial path: between temperatures) until `self._playing` clears — so it does
+        not push the realtime produce loop past deadline on a constrained host. Two disclosed
+        residuals: (1) the PARALLEL path checks the defer guard once before launching the pool
+        but does NOT re-check mid-batch, so if playback STARTS mid-sweep the pool finishes the
+        remaining (<=4) temps on cpu_count-1 cores during playback — bounded, one core reserved
+        for audio, spawn-isolated; (2) each of the up-to-(cpu_count-1) workers unpickles its own
+        copy of the world (memory bounded by core count; falls to serial on <=2 cores). It
+        resumes the instant playback pauses; a set played nonstop shows the honest
+        `sweep_pending` state until the first pause. A failure is logged, not left stuck."""
         import time as _t
         try:
-            from cloud.companion.eigen_experimental import temperature_sweep
             # RESUME: seed from any partial table already measured (survives eviction/redeploy).
             prior = self._sweep if isinstance(self._sweep, dict) else None
             rows = list(prior["sweep"]) if (prior and prior.get("sweep")) else []
             done_T = {round(float(r["T_s"]), 4) for r in rows}
-            meta = ({k: prior[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
-                    if (prior and "observable_names" in prior) else None)
-            for T in grid:
-                if round(float(T), 4) in done_T:
-                    continue                             # already measured — resume past it
-                # Park (don't compute) while audio is live — heavy work only in idle windows.
-                while getattr(self, "_playing", None) is not None and self._playing.is_set():
-                    _t.sleep(_SWEEP_DEFER_POLL)
-                part = temperature_sweep(self.world, sigma, self.M, [T],
-                                         n_seed=n_seed, n_bar=n_bar)
-                if not (isinstance(part, dict) and isinstance(part.get("sweep"), list) and part["sweep"]):
-                    return                               # honest: measurement produced nothing usable
-                if meta is None:
-                    meta = {k: part[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
-                rows.append(part["sweep"][0])
-                rows.sort(key=lambda r: float(r["T_s"]))
-                landed = dict(meta); landed["sweep"] = list(rows)
-                self._sweep = landed                     # land incrementally (atomic reassign)
-                # PERSIST each temperature as it lands — an eviction here loses nothing; the
-                # next load resumes the remaining temperatures from this sidecar.
+            meta = [{k: prior[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
+                    if (prior and "observable_names" in prior) else None]   # cell (closure-mutable)
+            remaining = [T for T in grid if round(float(T), 4) not in done_T]
+            if not remaining:
+                return
+
+            def _persist(row):
+                # land one measured temperature: atomic in-memory reassign + incremental
+                # sidecar write, so an eviction mid-sweep loses nothing (next load resumes).
+                rows.append(row); rows.sort(key=lambda r: float(r["T_s"]))
+                if meta[0] is None:
+                    return                               # no meta yet (shouldn't happen once a row lands)
+                landed = dict(meta[0]); landed["sweep"] = list(rows)
+                self._sweep = landed
                 self._write_sweep_cache(landed, n_seed, n_bar)
+
+            # Park (don't launch heavy compute) while audio is live — measurement runs in idle
+            # windows only, so it can never starve realtime playback.
+            while getattr(self, "_playing", None) is not None and self._playing.is_set():
+                _t.sleep(_SWEEP_DEFER_POLL)
+
+            n_workers = max(1, min((os.cpu_count() or 1) - 1, len(remaining)))
+            if n_workers <= 1:
+                # single core: serial, still incremental + resumable + audio-deferred per temp.
+                from cloud.companion.eigen_experimental import temperature_sweep
+                for T in remaining:
+                    while getattr(self, "_playing", None) is not None and self._playing.is_set():
+                        _t.sleep(_SWEEP_DEFER_POLL)
+                    part = temperature_sweep(self.world, sigma, self.M, [T],
+                                             n_seed=n_seed, n_bar=n_bar)
+                    if not (isinstance(part, dict) and part.get("sweep")):
+                        return
+                    if meta[0] is None:
+                        meta[0] = {k: part[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
+                    _persist(part["sweep"][0])
+            else:
+                # PARALLEL: the temperatures are independent, so measure them across worker
+                # PROCESSES (the settlement is GIL-bound — threads don't help). 'spawn' keeps a
+                # threaded server safe; max_workers leaves a core free for the audio loop. Each
+                # future's row is persisted as it completes (still incremental + resumable).
+                import concurrent.futures as _f
+                import multiprocessing as _mp
+                ctx = _mp.get_context("spawn")
+                jobs = [(self.world, sigma, self.M, T, n_seed, n_bar) for T in remaining]
+                with _f.ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as ex:
+                    futs = [ex.submit(_sweep_one_temp, j) for j in jobs]
+                    for fut in _f.as_completed(futs):
+                        row, rmeta = fut.result()
+                        if row is None:
+                            continue
+                        if meta[0] is None:
+                            meta[0] = rmeta
+                        _persist(row)
         except Exception:                                # pragma: no cover (defensive)
             logger.exception("modes-by-temperature background sweep failed")
         finally:
