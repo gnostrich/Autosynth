@@ -2055,15 +2055,11 @@
     var out = [];
     if(k <= 0) return out;
     if(k === 1){
-      // HONEST SINGLE MODE (radial magnitude): only the DISTANCE from centre bears
-      // force — the angle is inert (drag any direction, same response). The gap is
-      // (handle magnitude - achieved magnitude), the SAME (handle - mark) tether as
-      // the old 1-D strip, just read radially. Released -> 0 (T-3). Never a 2nd mode.
-      if(!pad || !pad.held){ out.push(0); return out; }
-      var rH = Math.min(1, Math.hypot(pad.x, pad.y));
-      var rM = (typeof pad.markX === "number" && typeof pad.markY === "number")
-        ? Math.min(1, Math.hypot(pad.markX, pad.markY)) : null;
-      out.push(rM === null ? 0 : (rH - rM));
+      // HONEST SINGLE MODE (signed X axis): the single mode maps to the pad's X
+      // axis, SIGNED — magnitude-and-sign identical to the old 1-D strip's
+      // gap(handle, achieved). Y is dead (no 2nd mode); only X bears force.
+      // Released / no mark -> 0 (the shared `gap` gate, T-3).
+      out.push(pad ? gap(pad.x, pad.markX, pad.held) : 0);
       return out;
     }
     out.push(pad ? gap(pad.x, pad.markX, pad.held) : 0);
@@ -2250,6 +2246,16 @@
         bx.title = radialCompositionString(radialModes[0].composition); }
       if(by && radialModes[1]){ by.style.background = radialRgbToCss(radialBadgeColor(radialModes[1].composition));
         by.title = radialCompositionString(radialModes[1].composition); }
+      if(radialK === 1){
+        // SINGLE MODE: a static, centered HORIZONTAL gradient of mode-0's own chroma
+        // over the pad's dark base — neutral at centre, saturating toward BOTH signed
+        // ends (honestly one signed axis). NOT a radial-from-centre fill (rejected).
+        var base1 = [16, 20, 26];
+        var rim1 = radialLerpRgb(base1, radialAxisColorFor(0),
+          radialSatForGain(radialModes[0].gain, radialFloor, radialMaxAbs));
+        radialEls.pad.style.background = "linear-gradient(90deg, " + radialRgbToCss(rim1)
+          + " 0%, " + radialRgbToCss(base1) + " 50%, " + radialRgbToCss(rim1) + " 100%)";
+      }
     }
     if(radialEls.strips){
       for(var i = 0; i < radialEls.strips.length; i++){
@@ -2270,38 +2276,26 @@
     var y = radialPadState.held ? radialPadState.y : (radialPadState.markY !== null ? radialPadState.markY : radialPadState.y);
     radialEls.puck.style.left = ((x + 1) / 2 * 100) + "%";
     radialEls.puck.style.top  = ((1 - y) / 2 * 100) + "%";     // screen-y grows down
-    if(radialPadState.markX !== null && radialPadState.markY !== null){
+    // k===1: the mark rides the horizontal centerline (Y is a dead axis, markY stays
+    // null). This is a DISPLAY coordinate only — markY is never WRITTEN to 0 (UL-1:
+    // the stored mark is the bare signed projection, nothing else).
+    var mkY = (radialK === 1) ? 0 : radialPadState.markY;
+    if(radialPadState.markX !== null && mkY !== null){
       radialEls.mark.style.left = ((radialPadState.markX + 1) / 2 * 100) + "%";
-      radialEls.mark.style.top  = ((1 - radialPadState.markY) / 2 * 100) + "%";
+      radialEls.mark.style.top  = ((1 - mkY) / 2 * 100) + "%";
       radialEls.mark.style.visibility = "visible";
     } else {
       radialEls.mark.style.visibility = "hidden";
     }
-    if(radialK === 1){
-      // NAIVELY RADIAL COLOR: a single-mode radial gradient of mode-0's own chroma —
-      // pale (equilibrium) at centre, saturating with DISTANCE outward. No 2nd-axis
-      // hue (there is only one mode); the puck/mark tints track their own radius.
-      var col0 = radialAxisColorFor(0);
-      var sat0 = radialSatForGain(radialModes[0] ? radialModes[0].gain : 0, radialFloor, radialMaxAbs);
-      var rim0 = radialLerpRgb([128,128,128], col0, sat0);
-      radialEls.pad.style.background =
-        "radial-gradient(circle at 50% 50%, rgb(128,128,128) 0%, " + radialRgbToCss(rim0) + " 100%)";
-      var rPuck = Math.min(1, Math.hypot(x, y));
-      radialEls.pad.style.boxShadow = "inset 0 0 40px -6px "
-        + radialRgbToCss(radialLerpRgb([128,128,128], col0, sat0 * rPuck));
-      if(radialPadState.markX !== null){
-        var rMk = Math.min(1, Math.hypot(radialPadState.markX, radialPadState.markY));
-        radialEls.mark.style.borderColor = radialRgbToCss(radialLerpRgb([128,128,128], col0, sat0 * rMk));
-      }
-      return;
-    }
     var colorA = radialAxisColorFor(0), colorB = radialAxisColorFor(1);
     var satA = radialSatForGain(radialModes[0] ? radialModes[0].gain : 0, radialFloor, radialMaxAbs);
     var satB = radialSatForGain(radialModes[1] ? radialModes[1].gain : 0, radialFloor, radialMaxAbs);
+    // k===1: satB is 0 (no 2nd mode) so radialPadColorAt reduces to a signed-X tint
+    // of mode-0's chroma (centre neutral -> ends saturated); no second-axis hue.
     var puckColor = radialPadColorAt(x, y, colorA, satA, colorB, satB);
     radialEls.pad.style.boxShadow = "inset 0 0 40px -6px " + radialRgbToCss(puckColor);
     if(radialPadState.markX !== null){
-      var dotColor = radialPadColorAt(radialPadState.markX, radialPadState.markY, colorA, satA, colorB, satB);
+      var dotColor = radialPadColorAt(radialPadState.markX, mkY, colorA, satA, colorB, satB);
       radialEls.mark.style.borderColor = radialRgbToCss(dotColor);
     }
   }
@@ -2346,8 +2340,7 @@
   function radialPadDown(ev){
     if(!radialEls.pad) return;
     var p = radialPosFromPadEvent(ev, radialEls.pad);
-    if(radialK === 1) radialPadState.lastX = Math.min(1, Math.hypot(p.x, p.y));  // baseline RADIUS
-    else { radialPadState.lastX = p.x; radialPadState.lastY = p.y; }             // TETHER T-2 baseline
+    radialPadState.lastX = p.x; radialPadState.lastY = p.y;  // TETHER T-2 baseline
     radialPadState.held = true;
     try{ ev.currentTarget.setPointerCapture(ev.pointerId); }catch(_){}
     ev.preventDefault();
@@ -2356,28 +2349,12 @@
   function radialPadMove(ev){
     if(!radialPadState.held || !radialEls.pad) return;
     var p = radialPosFromPadEvent(ev, radialEls.pad);
-    if(radialK === 1){
-      // SINGLE MODE: the handle is a RADIUS; the pointer's angle is purely cosmetic
-      // (puck drawn wherever the drag points). Only the radial distance is tethered
-      // toward the achieved magnitude and only that distance bears force (mode 0).
-      var pr = Math.min(1, Math.hypot(p.x, p.y));
-      var ptheta = (p.x || p.y) ? Math.atan2(p.y, p.x) : 0;
-      var dr = pr - radialPadState.lastX; radialPadState.lastX = pr;
-      var rH = Math.min(1, Math.hypot(radialPadState.x, radialPadState.y));
-      var rM = (typeof radialPadState.markX === "number" && typeof radialPadState.markY === "number")
-        ? Math.min(1, Math.hypot(radialPadState.markX, radialPadState.markY)) : null;
-      rH = Math.max(0, Math.min(1, tetherHandleNext(rH, dr, rM, radialYieldForMode(0))));
-      radialPadState.x = rH * Math.cos(ptheta);
-      radialPadState.y = rH * Math.sin(ptheta);
-      ev.preventDefault();
-      sendSteerNow(); radialDrawPad();
-      return;
-    }
     var dx = p.x - radialPadState.lastX, dy = p.y - radialPadState.lastY;
     radialPadState.lastX = p.x; radialPadState.lastY = p.y;
     radialPadState.x = Math.max(-1, Math.min(1,
       tetherHandleNext(radialPadState.x, dx, radialPadState.markX, radialYieldForMode(0))));
-    radialPadState.y = Math.max(-1, Math.min(1,
+    // k===1: the Y axis is DEAD (no 2nd mode) — the puck stays on the centerline.
+    if(radialK >= 2) radialPadState.y = Math.max(-1, Math.min(1,
       tetherHandleNext(radialPadState.y, dy, radialPadState.markY, radialYieldForMode(1))));
     ev.preventDefault();
     sendSteerNow(); radialDrawPad();
@@ -2515,24 +2492,9 @@
       var comp = radialModes[i].composition || {};
       var achieved = radialProjectReading(comp, lanes, roles);
       if(achieved === null) continue;
-      if(radialK === 1){
-        // SINGLE MODE (radial): the achieved reading's MAGNITUDE is the mark's
-        // radius; its sign/angle is inert (only magnitude bears meaning). The mark
-        // sits on the puck's own radial line so the tether pull is purely radial.
-        var rMark = Math.abs(achieved);
-        var theta = (radialPadState.x || radialPadState.y)
-          ? Math.atan2(radialPadState.y, radialPadState.x) : 0;
-        radialPadState.markX = rMark * Math.cos(theta);
-        radialPadState.markY = rMark * Math.sin(theta);
-        var rH = Math.min(1, Math.hypot(radialPadState.x, radialPadState.y));
-        // TETHER: held -> pull the radius toward the mark each frame (UL-1/TW-1);
-        // released -> the radius follows the living mark (handle tracks mark, T-3).
-        if(radialPadState.held) rH = Math.max(0, Math.min(1,
-          tetherHandleNext(rH, 0, rMark, radialYieldForMode(0))));
-        else rH = scalarFollow(rH, rMark, radialPadState.held);
-        radialPadState.x = rH * Math.cos(theta);
-        radialPadState.y = rH * Math.sin(theta);
-      } else if(i === 0){
+      // k===1 uses the SAME i===0 path as k>=2's X axis: the mark is the BARE
+      // signed projection (markX = achieved, UL-1), Y is never written (dead).
+      if(i === 0){
         radialPadState.markX = achieved;
         if(radialPadState.held) radialPadState.x = Math.max(-1, Math.min(1,
           tetherHandleNext(radialPadState.x, 0, achieved, radialYieldForMode(0))));
