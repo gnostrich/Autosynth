@@ -28,3 +28,6 @@ dist/
 
 # environment disk-guard runtime log (not project content)
 disk_guard.log
+
+# derived eigenmode sidecar caches (computed per-deploy on the writable volume)
+*.eigen.json
