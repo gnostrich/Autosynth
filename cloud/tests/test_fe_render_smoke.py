@@ -5,8 +5,8 @@ applies). This gate loads / in headless chromium and asserts real rendered facts
 
 Standing requirement for any FE-touching change (operator directive, 2026-07-17).
 
-It also pins the FIELD swap at the render level: the FIELD canvas is present and the
-role-pads / XY vector-pad elements are GONE.
+It also pins the FIELD REMOVAL (OPEN_ENDS item 2, 2026-07-18) at the render level:
+the FIELD canvas is GONE and the radial eigen-mode pad hero is present instead.
 """
 from __future__ import annotations
 
@@ -137,18 +137,16 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
                 assert shown == [pane_id], \
                     f"clicking #{tab_id} should show exactly [{pane_id}], got {shown}"
 
-            # (5) the FIELD surface is present; role-pads / XY are GONE.
+            # (5) the FIELD is GONE; the radial eigen-mode pad hero is present instead
+            # (OPEN_ENDS item 2). The field's canvas/legend/drill/tutorial surface must
+            # not exist anywhere in the served markup.
             page.click("#tabPlay")
-            assert page.query_selector("#steerSurface") is not None, "field slot missing"
-            assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
-            assert page.query_selector("#fieldLegend") is not None, "track legend missing"
-            # (5b) MOBILE-UX: the fullscreen-snap affordance renders on the field pane.
-            assert page.query_selector("#fieldExpand") is not None, \
-                "field fullscreen affordance (#fieldExpand) missing"
-            assert page.query_selector("#padRow") is None, "role pads still present"
-            assert page.query_selector("#xyPad") is None, "XY vector pad still present"
-            assert page.query_selector("#puck") is None, "XY puck still present"
-            assert page.query_selector("#drillBack") is None, "drill overlay still present"
+            assert page.query_selector("#padHero") is not None, "pad hero missing"
+            assert page.query_selector("#radialWrap") is not None, "radial pad mount missing"
+            for gone_id in ("steerSurface", "fieldCanvas", "fieldLegend", "fieldExpand",
+                            "fieldTut", "fieldStatus", "padRow", "xyPad", "puck", "drillBack"):
+                assert page.query_selector("#" + gone_id) is None, \
+                    f"removed field/legacy element still present: #{gone_id}"
 
             # (7) REBRAND: the wordmark is "autosynth", the inline logo mark is present,
             # and the old ETS header/subtext is gone (no "Equilibrium Tape Synth", no
@@ -160,8 +158,12 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
                 assert gone not in body_text, f"old ETS branding still present: {gone!r}"
             logo_svg = page.query_selector(".mark .logo svg")
             assert logo_svg is not None, "inline logo SVG mark missing from the header"
+            # LOGO (item 4): concept C "Two-Mode Superposition" — two overlaid mode
+            # paths (E1 blue + E2 magenta) + two white node-cap circles.
             paths = page.eval_on_selector_all(".mark .logo svg path", "els => els.length")
-            assert paths >= 3, f"logo mark should be the 3-stroke glyph, got {paths} paths"
+            assert paths == 2, f"logo mark should be the two-mode-superposition glyph (2 paths), got {paths}"
+            caps = page.eval_on_selector_all(".mark .logo svg circle", "els => els.length")
+            assert caps == 2, f"logo mark should have 2 node-cap circles, got {caps}"
             assert page.query_selector("#ambient") is not None, "ambient prism canvas missing"
 
             # (8) DARK ONLY (operator, 2026-07-18): the theme toggle is GONE, the
@@ -175,11 +177,12 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
                 "#ambient", "el => getComputedStyle(el).display")
             assert amb_disp == "block", f"ambient must always run, got {amb_disp}"
 
-            # the field canvas is actually laid out (non-zero box) — really rendered.
-            box = page.eval_on_selector("#fieldCanvas",
+            # the pad hero is actually laid out (non-zero box) — really rendered, and
+            # is the dominant element (the star of the page, item 4 layout intent).
+            box = page.eval_on_selector("#padHero",
                                         "el => { const r = el.getBoundingClientRect();"
                                         " return {w: r.width, h: r.height}; }")
-            assert box["w"] > 100 and box["h"] > 100, f"field canvas not laid out: {box}"
+            assert box["w"] > 100 and box["h"] > 100, f"pad hero not laid out: {box}"
 
             # (9) WEB-FAB REMEDIATION — the three remediated surfaces render HONEST:
             #  Fix 1 (tape): the sine-art SVG waveform (#wav) is GONE; the lane shows
@@ -223,8 +226,9 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
 def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
     """OPEN_ENDS #16(c) render smoke: a PUBLIC (hosted) keyless visitor lands on the
     app (NOT the access page), the Play pane shows the HONEST empty-state text
-    (pointer to Explore), and the field canvas renders empty — no fabricated squares,
-    no noise preview. The instrument stays NOT-ready until a set is opened/trained."""
+    (pointer to Explore), and the pad hero renders empty (no world loaded, no
+    fabricated modes/pucks). The instrument stays NOT-ready until a set is
+    opened/trained."""
     server = _ServerProc(tmp_path, public=True)
     try:
         server.wait_healthy()
@@ -247,24 +251,18 @@ def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
             assert "No set loaded" in lock_text, lock_text
             assert "Explore" in lock_text, lock_text
 
-            # the instrument is NOT ready -> the field is never initialised/drawn, so
-            # the canvas carries no fabricated squares (empty field = empty).
+            # the instrument is NOT ready -> the radial pad is never built (no world,
+            # no telemetry), so it carries no fabricated modes/puck (empty = empty).
             cls = page.eval_on_selector("#instrument", "el => el.className")
             assert "ready" not in cls.split(), f"instrument must be un-ready: {cls!r}"
 
-            # the field canvas element still EXISTS and is laid out (honest empty
-            # surface, not a removed one).
-            assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
-
-            # MOBILE-UX: the expand affordance exists even on the empty landing, and
-            # the ONE-TIME tutorial overlay is NOT visible before a world exists
-            # (it shows only on the world.ready transition + unset ets_tut_v1 flag).
-            assert page.query_selector("#fieldExpand") is not None, \
-                "field fullscreen affordance (#fieldExpand) missing"
-            tut_hidden = page.eval_on_selector(
-                "#fieldTut",
-                "el => el.hidden === true && getComputedStyle(el).display === 'none'")
-            assert tut_hidden, "tutorial overlay must stay hidden with no world loaded"
+            # the pad-hero element still EXISTS and is laid out (honest empty surface,
+            # not a removed one) — it just carries the "no world loaded" placeholder.
+            assert page.query_selector("#padHero") is not None, "pad hero missing"
+            assert page.query_selector("#radialWrap") is not None, "radial pad mount missing"
+            wrap_text = page.eval_on_selector("#radialWrap", "el => el.textContent")
+            assert "no world loaded" in wrap_text.lower(), \
+                f"radial pad must show an honest empty state, got {wrap_text!r}"
 
             shot = tmp_path / "fe_public_empty_state.png"
             page.screenshot(path=str(shot), full_page=True)

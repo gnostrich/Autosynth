@@ -36,7 +36,36 @@ from engine_bridge import StreamPlayer  # noqa: E402
 _INDEX = (Path(__file__).resolve().parents[1] / "companion" / "static"
           / "index.html")
 
-from cloud.tests.test_web_field import _inline_js, _js_functions  # noqa: E402
+# Local copies of the shared JS-extraction helpers (test_web_field.py, whose
+# FIELD PURE LOGIC these were named for, was retired with the field itself —
+# OPEN_ENDS item 2; this module's own use of them is field-independent, so the
+# helpers move in-tree rather than import from a deleted module). Identical to
+# the copies in test_web_scalar_lanes.py / test_eigenpanel.py / test_web_fab_guard.py.
+
+def _inline_js() -> str:
+    html = _INDEX.read_text()
+    blocks = re.findall(r"<script>(.*?)</script>", html, re.S)
+    assert blocks, "no inline <script> found in index.html"
+    return max(blocks, key=len)
+
+
+def _js_functions(src: str):
+    out = {}
+    for m in re.finditer(r"function\s+([A-Za-z_$][\w$]*)\s*\(", src):
+        name = m.group(1)
+        i = src.index("{", m.end() - 1)
+        depth, j = 0, i
+        while j < len(src):
+            ch = src[j]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        out[name] = src[i + 1:j]
+    return out
 
 
 class _FakePlayer:

@@ -125,15 +125,17 @@ def _strip_comments(src: str) -> str:
 
 
 def test_scalar_force_reads_no_observable():
-    """SCALAR-FORCE: the force computation must not read a machine mark/observable
-    (no meter-in-force feedback loop). scalarForce takes only (handle, grab, held)
-    and its CODE references none of the observable stores."""
+    """SCALAR-FORCE / TETHER T-1 (operator amendment): the force is
+    f(handle - mark_CURRENT), so `mark` is now a plain PARAMETER (the caller
+    passes whatever the live mark is THIS tick) — but scalarForce's own CODE
+    must still never independently FETCH an observable store (no meter-in-force
+    feedback loop reaching past its parameters)."""
     m = re.search(r"function\s+scalarForce\s*\(([^)]*)\)", _scalar_block())
     assert m, "scalarForce missing"
     params = [p.strip() for p in m.group(1).split(",") if p.strip()]
-    assert params == ["handle", "grab", "held"], params
+    assert params == ["handle", "mark", "held"], params
     code = _strip_comments(_js_functions(_scalar_block()).get("scalarForce", ""))
-    for banned in ("mark", "lanes", "telemetry", "scalarMark"):
+    for banned in ("lanes", "telemetry", "scalarMark"):
         assert banned not in code, f"scalarForce code must not read an observable ({banned})"
 
 
@@ -143,10 +145,10 @@ def test_scalar_force_reads_no_observable():
 def test_scalar_payload_one_datum_per_armed_lane_disarmed_silent():
     driver = """
     var lanes = {
-      continuity:  { armed:true,  handle:0.8, grab:0.5, held:true  },  // pushing
-      novelty:     { armed:true,  handle:0.5, grab:0.5, held:false },  // released -> 0
-      density:     { armed:false, handle:0.9, grab:0.2, held:true  },  // DISARMED -> absent
-      gauge:       { armed:false, handle:0.9, grab:0.2, held:true  },  // degenerate -> absent
+      continuity:  { armed:true,  handle:0.8, mark:0.5, held:true  },  // pushing
+      novelty:     { armed:true,  handle:0.5, mark:0.5, held:false },  // released -> 0
+      density:     { armed:false, handle:0.9, mark:0.2, held:true  },  // DISARMED -> absent
+      gauge:       { armed:false, handle:0.9, mark:0.2, held:true  },  // degenerate -> absent
       temperature: { armed:true,  handle:0.5 }
     };
     var p = scalarPayload(lanes);
