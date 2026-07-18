@@ -31,3 +31,8 @@ disk_guard.log
 
 # derived eigenmode sidecar caches (computed per-deploy on the writable volume)
 *.eigen.json
+# auto-generated modes-by-temperature sidecar caches (measured per-world on the writable
+# volume). The committed, self-contained demo sidecar is the ONE exception (R5) so a fresh
+# clone shows the temperature axis without recomputing.
+*.sweep.json
+!demo.etsworld.sweep.json

@@ -178,6 +178,16 @@ _EIGEN_N_BOOT = 60       # bootstrap resamples for the eigenvalue SE
 # instantly on every subsequent load. Audio-first + cached modes, no fight.
 _EIGEN_N_NULL = 200      # label-shuffle null draws for the floor
 _EIGEN_FLOOR_PCT = 97.5  # null floor percentile of max|eigenvalue|
+# MODES-BY-TEMPERATURE (PREREG-temperature-sweep): the T_s grid the auto-sweep measures a
+# world's mode-set at, so the pad can reselect its basis as the operator heats. The default
+# T_s=1.0 IS in the grid (it must be — the pad restores the authoritative basis there). This
+# is 7x the single-temperature ensemble, so it runs LAST (after the boot eigen lands) in the
+# same off-playback background thread, cached to a sidecar; never on the audio path.
+_SWEEP_T_GRID = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
+_SWEEP_DEFER_POLL = 1.5  # while audio is live, the sweep worker parks between temperatures
+                         # (this poll interval) instead of computing — so a one-time,
+                         # multi-minute measurement can never starve realtime playback on a
+                         # constrained host. It resumes the instant playback pauses.
 _EIGEN_WORD_FLOOR = 0.6  # |loading| a scalar observable needs to earn a word
 _EIGEN_WORD_MAP = {"density": "busier", "cont": "steady", "novelty": "fresh"}
 
@@ -493,9 +503,18 @@ class StreamPlayer:
             if cached is not None:
                 self._eigen = cached                 # honest measured result, pending=False
                 self._eigen_args = None              # nothing to compute
-        # MODES-BY-TEMPERATURE table (PREREG-temperature-sweep): pre-measured modes at a
-        # grid of T_s, read from a sidecar so the pad can show what exists at each TEMP.
+        # MODES-BY-TEMPERATURE (PREREG-temperature-sweep + addendum): the pad reselects its
+        # steering basis to the modes measured at the operator's TEMP. That table is measured
+        # ONCE per world by an off-playback background worker (7x the boot ensemble, so it runs
+        # AFTER the eigen lands) and cached to a sidecar, exactly like the eigen modes — so any
+        # world, existing OR freshly trained, gets the temperature axis automatically with no
+        # manual step. A cache hit (committed demo, an admin upload, or a prior auto-run) loads
+        # instantly and skips compute.
         self._sweep = self._load_sweep_cache()
+        self._sweep_thread: Optional[threading.Thread] = None
+        self._sweep_lock = threading.Lock()
+        self._sweep_args = ((sigma, list(_SWEEP_T_GRID), eigen_n_seed, eigen_n_bar)
+                            if (self._sweep is None and sigma is not None and self.M > 0) else None)
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -574,18 +593,107 @@ class StreamPlayer:
     def _sweep_cache_path(self) -> str:
         return str(self.world_path) + ".sweep.json"
 
+    def _sweep_cache_stamp(self, n_seed: int, n_bar: int) -> dict:
+        """Identity of the world+params an AUTO-generated sweep cache is valid for —
+        same contract as the eigen stamp, so a world-file change forces a recompute and
+        a stale/foreign table can never be served."""
+        try:
+            st = os.stat(self.world_path)
+            wsig = [int(st.st_size), int(st.st_mtime)]
+        except OSError:
+            wsig = None
+        return {"n_seed": int(n_seed), "n_bar": int(n_bar), "M": int(self.M),
+                "grid": list(_SWEEP_T_GRID), "world": wsig}
+
     def _load_sweep_cache(self):
-        """The modes-by-temperature table for this world, or None. A list of
-        {T_s, k, modes, eigen_floor} rows. Read-only; never fabricated (written only
-        from a real temperature_sweep run)."""
+        """The modes-by-temperature table for this world, or None. A dict with a
+        `sweep` list of {T_s, k, modes, eigen_floor} rows. Read-only; never fabricated
+        (written only from a real temperature_sweep run — committed demo, admin upload,
+        or the auto-worker). If the blob carries a `stamp` (auto-generated caches do),
+        it is validated against the current world+params so a stale auto-cache is
+        rejected; externally-supplied tables (committed demo / admin upload) carry no
+        stamp and are trusted as-is."""
         try:
             with open(self._sweep_cache_path(), "r") as f:
                 blob = json.load(f)
         except (OSError, ValueError):
             return None
-        if isinstance(blob, dict) and isinstance(blob.get("sweep"), list):
-            return blob
-        return None
+        if not (isinstance(blob, dict) and isinstance(blob.get("sweep"), list)):
+            return None
+        stamp = blob.get("stamp")
+        if stamp is not None:
+            n_seed = int(blob.get("n_seed", _EIGEN_N_SEED)); n_bar = int(blob.get("n_bar", _EIGEN_N_BAR))
+            if stamp != self._sweep_cache_stamp(n_seed, n_bar):
+                return None                              # stale auto-cache → recompute
+        return blob
+
+    def _write_sweep_cache(self, result: dict, n_seed: int, n_bar: int) -> None:
+        """Persist a REAL measured sweep result next to the world (atomic), stamped so a
+        later world/param change invalidates it. Same durability contract as the eigen
+        cache — the modes-by-temperature table survives eviction + redeploy."""
+        path = self._sweep_cache_path()
+        blob = dict(result); blob["stamp"] = self._sweep_cache_stamp(n_seed, n_bar)
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(blob, f)
+            os.replace(tmp, path)                        # atomic
+        except OSError:
+            logger.warning("could not persist sweep cache at %s", path)
+
+    def _ensure_sweep_started(self) -> None:
+        """Start the deferred modes-by-temperature measurement exactly once. It is 7x the
+        boot ensemble, so it is triggered only AFTER the eigen worker lands (chained from
+        `_eigen_worker`) or by a pure reader via world_info() — never on the audio path,
+        never before audio has warmed. Idempotent; defensive against a bare test player."""
+        args = getattr(self, "_sweep_args", None)
+        lock = getattr(self, "_sweep_lock", None)
+        if args is None or lock is None:
+            return
+        with lock:
+            if self._sweep_thread is not None:
+                return
+            t = threading.Thread(target=self._sweep_worker, args=args, daemon=True)
+            self._sweep_thread = t
+            t.start()
+
+    def _sweep_worker(self, sigma, grid, n_seed: int, n_bar: int) -> None:
+        """Measure the temperature sweep off-thread ONE temperature at a time, landing the
+        table incrementally (atomic reassignment of `self._sweep`) and persisting the
+        sidecar when complete. Uses the experimental temperature_sweep (per-T_s re-derived
+        floor, real measured eigenvectors) — reads only the frozen world/sigma via fresh
+        probes; never touches settlement/F.
+
+        AUDIO SAFETY (auditor Note A): this one-time, multi-minute measurement DEFERS while
+        playback is live — it parks between temperatures until `self._playing` clears — so it
+        can never push the realtime produce loop past deadline and cause mid-stream
+        under-runs on a constrained host. It resumes the instant playback pauses; a set
+        played nonstop simply shows the honest `sweep_pending` state until the first pause.
+        A failure is logged (pending clears) rather than left silently stuck."""
+        import time as _t
+        try:
+            from cloud.companion.eigen_experimental import temperature_sweep
+            rows = []
+            meta = None
+            for T in grid:
+                # Park (don't compute) while audio is live — heavy work only in idle windows.
+                while getattr(self, "_playing", None) is not None and self._playing.is_set():
+                    _t.sleep(_SWEEP_DEFER_POLL)
+                part = temperature_sweep(self.world, sigma, self.M, [T],
+                                         n_seed=n_seed, n_bar=n_bar)
+                if not (isinstance(part, dict) and isinstance(part.get("sweep"), list) and part["sweep"]):
+                    return                               # honest: measurement produced nothing usable
+                if meta is None:
+                    meta = {k: part[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
+                rows.extend(part["sweep"])
+                landed = dict(meta); landed["sweep"] = list(rows)
+                self._sweep = landed                     # land incrementally (atomic reassign)
+            if self._sweep is not None:
+                self._write_sweep_cache(self._sweep, n_seed, n_bar)
+        except Exception:                                # pragma: no cover (defensive)
+            logger.exception("modes-by-temperature background sweep failed")
+        finally:
+            self._sweep_args = None                      # sweep_pending clears either way
 
     def _eigen_worker(self, sigma, eigen_n_seed: int, eigen_n_bar: int) -> None:
         """Runs the FULL authoritative eigenmode ensemble off-thread, then lands
@@ -601,6 +709,10 @@ class StreamPlayer:
             result["pending"] = False
             self._eigen = result
             self._write_eigen_cache(result, eigen_n_seed, eigen_n_bar)
+            # CHAIN: now that the single-temperature ensemble has landed, kick the
+            # (heavier) modes-by-temperature sweep LAST — audio has long since warmed and
+            # the eigen is done, so this is the lowest-priority background measurement.
+            self._ensure_sweep_started()
         except Exception as exc:                       # pragma: no cover (defensive)
             logger.exception("eigenmode background computation failed")
             self._eigen = {"modes": [], "eigen_floor": None, "k": 0,
@@ -627,6 +739,11 @@ class StreamPlayer:
         # compute before the first bar and starve the warm (the silent-audio bug).
         if not self._playing.is_set():
             self._ensure_eigen_started()
+            # A pure reader (opens a set, never presses play) also auto-measures the
+            # modes-by-temperature sweep — same not-playing guard so a status poll never
+            # starts the heavy compute ahead of a first bar. During playback the produce
+            # loop kicks it (after eigen), so it is covered either way.
+            self._ensure_sweep_started()
         # `is_trained` reports truthfully which world is loaded: True for the
         # user's freshly cloud-trained corpus (built by the train->play seam,
         # cloud.companion.train_local: local ingest -> cloud anchor-fit -> local
@@ -694,6 +811,12 @@ class StreamPlayer:
                 # steering basis per-T_s (a faithful steering change — see the FE + the prereg
                 # addendum, NOT display-only). None until a sweep is cached.
                 "modes_by_temperature": (self._sweep.get("sweep") if getattr(self, "_sweep", None) else None),
+                # sweep_pending: the modes-by-temperature table is still being measured in
+                # the background (honest "measuring temperature modes…" state, distinct from
+                # a world that simply has no table). True while the auto-sweep worker is armed
+                # — including while a PARTIAL table has landed (incremental measurement) — and
+                # cleared (in the worker's finally) once the full grid is done or it fails.
+                "sweep_pending": bool(getattr(self, "_sweep_args", None) is not None),
                 # SIGMA_PHI (OPEN_ENDS #22/23 tether amendment): the world's own
                 # MEASURED calibration scale per direction lane — the "lane's own
                 # calibration gain" the living-mark/tether law (T-2) reads for the
@@ -988,6 +1111,9 @@ class StreamPlayer:
         kicked_eigen = False                       # LOCAL once-flag (never reads
                                                    # self._warmed — a bare test-harness
                                                    # player has no such attr)
+        kicked_sweep = False                       # modes-by-temperature: kicked once the
+                                                   # eigen is done (cached or landed), so a
+                                                   # cache-hit-eigen world still auto-sweeps
         while self._playing.is_set():
             try:
                 pcm, _ = self.produce_one_bar()
@@ -1013,6 +1139,15 @@ class StreamPlayer:
                 # AUDIO-FIRST: now that a bar has warmed, kick off the deferred
                 # heavy eigenmode ensemble (it never blocked the first sound).
                 self._ensure_eigen_started()
+            if not kicked_sweep:
+                # eigen done (cached, or the worker landed and chained already) → make sure
+                # the modes-by-temperature sweep is started even when eigen was a cache hit
+                # and no worker ran to chain it. getattr-guarded: a bare test-harness player
+                # (object.__new__, no _eigen) simply never triggers this. Idempotent.
+                _eig = getattr(self, "_eigen", None)
+                if _eig is not None and not _eig.get("pending", True):
+                    kicked_sweep = True
+                    self._ensure_sweep_started()
             now = _time.monotonic()
             if t0 is None or now - (t0 + sent / self.sr) > self.PACE_REANCHOR_SECONDS:
                 t0 = now - sent / self.sr          # anchor/re-anchor at emission
