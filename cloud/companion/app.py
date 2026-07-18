@@ -1231,6 +1231,45 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, self.hub.admin_unshare(sid))
             return
 
+        # /api/admin/eigen_spectrum — EXPERIMENTAL diagnostic (prereg:
+        # papers/PREREG-natural-eigen-cutoff.md). Key-gated. Runs the ADDITIVE
+        # experimental module (cloud.companion.eigen_experimental.diagnose) on a set's
+        # world in a BACKGROUND thread (full ensemble ~minutes) and returns the full
+        # spectrum + floor + the baseline/alternative mode counts. Does NOT touch the
+        # protected baseline estimator or any engine/settlement/render path.
+        if path == "/api/admin/eigen_spectrum":
+            key = ""; sid = None
+            if body:
+                try:
+                    j = json.loads(body.decode()); key = str(j.get("key", "")); sid = j.get("set_id")
+                except Exception:
+                    pass
+            if not self.hub.access_keys or key not in self.hub.access_keys:
+                self._json(401, {"ok": False, "error": "invalid access key"}); return
+            entry = self.hub.catalog.get(sid) if sid else None
+            if entry is None:
+                self._json(404, {"ok": False, "error": "unknown set_id"}); return
+            if getattr(self.hub, "_eigen_diag", None) is None:
+                self.hub._eigen_diag = {}; self.hub._eigen_diag_lock = threading.Lock()
+            def _run_diag(set_id, world_path):
+                try:
+                    player = self.hub.registry.trained_player(world_path, getattr(self.hub, "seed", 0))
+                    from ets.engine.engine import resolve_sigma
+                    from cloud.companion.eigen_experimental import diagnose
+                    d = diagnose(player.world, resolve_sigma(player.wf, None), int(player.M))
+                    with self.hub._eigen_diag_lock:
+                        self.hub._eigen_diag[set_id] = {"status": "done", "result": d}
+                except Exception as exc:
+                    with self.hub._eigen_diag_lock:
+                        self.hub._eigen_diag[set_id] = {"status": "error", "error": "%s: %s" % (type(exc).__name__, exc)}
+            with self.hub._eigen_diag_lock:
+                cur = self.hub._eigen_diag.get(sid)
+                if cur is None:
+                    self.hub._eigen_diag[sid] = {"status": "computing"}
+                    threading.Thread(target=_run_diag, args=(sid, entry.world_path), daemon=True).start()
+                    cur = self.hub._eigen_diag[sid]
+            self._json(200, cur); return
+
         # Resolve the session (never None on the serving path: keyless-local ->
         # default; keyed -> owner-by-token; otherwise the visitor's own anon session).
         session = self._session()
