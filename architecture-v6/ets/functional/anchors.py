@@ -126,6 +126,25 @@ def _prune(state, protos):
                    pis=[pi[:, idx] for pi in state.pis])
 
 
+def coupling_weighted_B(pis, protos):
+    """The coupling-weighted anchor band profile of a set of couplings — the
+    fidelity readout of paper2 §2 ("same anchor-profile = same sound"). Each
+    anchor's row is the mass-weighted (by coupled mass ``pi.sum(0)``) mean of its
+    units' own simplex band profiles, itself renormalised onto the simplex. This
+    is VERBATIM the form the LAMBDA-free NCE reference world already carries
+    (``training/world.py`` "coupling-weighted band profile per anchor"); no new
+    theory, hyperparameter, or library. Rows on the band simplex; (M, n_bands)."""
+    M = pis[0].shape[1]
+    n_bands = protos[0].band_profile.shape[1]
+    Bw = np.zeros((M, n_bands)); wsum = np.zeros(M)
+    for pi, P in zip(pis, protos):
+        bp = P.band_profile / (P.band_profile.sum(1, keepdims=True) + 1e-12)
+        Bw += pi.T @ bp; wsum += pi.sum(0)
+    B = Bw / (wsum[:, None] + 1e-12)
+    B = B / (B.sum(1, keepdims=True) + 1e-12)
+    return B
+
+
 def build_world(protos, seed=0, sweeps=8, sigma=None):
     """Self-size the anchors on `protos` and settle their supports.
 
@@ -133,6 +152,16 @@ def build_world(protos, seed=0, sweeps=8, sigma=None):
         truncation of the cross-track traffic (Hankel) operator.
     (2) SETTLE: solve the single functional F (block-coordinate, Lyapunov-certified
         descent) for the free-support barycenter (D, a) at M*.
+    (3) FREEZE B: replace the uniform band-blind fixed-point B with the coupling-
+        weighted band profile of the SETTLED, PRUNED couplings (paper2 §2 fidelity;
+        PREREG-informative-B.md §2). B becomes a derived freeze-time readout of the
+        world's OWN couplings — data-coupled, deliberately NOT the F-argmin in the
+        B direction (F is band-indifferent at the uniform fixed point). The solver's
+        descent, settlement, and the settled D/a/theta/pi are UNCHANGED (update_B is
+        a no-op on uniform B, so the settled state is bit-identical THROUGH the
+        solve); only the FINAL frozen B differs. B stays FROZEN post-training (I-9).
+        F_final is then recomputed on the FROZEN state, so the receipt certifies the
+        world AS FROZEN with its informative B.
     `sigma` is the FROZEN corpus-level affinity scale (calibrate once on the
     reference corpus, then apply to every arm); None falls back to this set's
     median (standalone use only). Returns (state, info)."""
@@ -142,12 +171,18 @@ def build_world(protos, seed=0, sweeps=8, sigma=None):
     state = init_state(protos, M=M, seed=seed)
     state, traj = sv.batch_solve(state, protos, max_sweeps=sweeps)
     state = _prune(state, protos)
+    # (3) informative B at freeze — a data-coupled readout of the settled couplings.
+    state = replace(state, B=coupling_weighted_B(state.pis, protos))
+    F_final = float(ff.F(state, protos)[0])              # F of the FROZEN world
+    F_init = float(ff.F(init_state(protos, M=M, seed=seed), protos)[0])
     info = {
         "effective_rank": float(er),
         "n_anchors": int(state.M),
         "sigma": float(sigma),
         "role_dist_mean": float(D_role[~np.eye(len(D_role), dtype=bool)].mean()),
-        "F_final": float(traj[-1]),
+        "F_init": F_init,
+        "F_final": F_final,
+        "seed": int(seed),
         "F_monotone": bool(np.all(np.diff(np.asarray(traj)) <= 1e-9)),
     }
     return state, info

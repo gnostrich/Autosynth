@@ -296,13 +296,24 @@ def verify_receipt(protos, result: Result, atol: float = 1e-6) -> bool:
         rank of the traffic operator) (pruning only removes anchors);
       * the traffic effective rank matches the receipt (re-derived, cheap);
       * F(returned world, protos) equals the receipt's F_final (the block solve's
-        settled value) — the tightest check: perturbing any of D/a/B/theta/pi
-        moves F off the certified value.
+        settled value, recomputed on the FROZEN informative-B world) — the tightest
+        check: perturbing any of D/a/B/theta/pi moves F off the certified value;
+      * F_init is INDEPENDENTLY recomputed from (M, seed) — init_state is
+        deterministic — and the world must have settled DOWNHILL: F_final <= F_init
+        (PREREG-informative-B.md §4). A world that does not sit below its own random
+        start is rejected regardless of a lying monotone flag;
+      * F_monotone must be True — the solver's own descent-monotonicity flag; a
+        world whose block solve reported a non-monotone descent is rejected.
+
+    The new F_init / F_monotone / seed fields are REQUIRED — a receipt lacking them
+    is rejected (no old-receipt shim; receipts are ephemeral and device-verified in
+    the same round-trip, PREREG §4).
     """
     r = result.receipt
     state = result.fstate
 
-    for key in ("effective_rank", "n_anchors", "sigma", "F_final"):
+    for key in ("effective_rank", "n_anchors", "sigma",
+                "F_init", "F_final", "F_monotone", "seed"):
         if key not in r:
             raise ReceiptError(f"receipt missing required field {key!r}")
 
@@ -328,4 +339,26 @@ def verify_receipt(protos, result: Result, atol: float = 1e-6) -> bool:
         raise ReceiptError(
             f"F-descent value mismatch: recomputed {float(F_val)} vs certified "
             f"F_final {float(r['F_final'])} (world does not settle where claimed)")
+
+    # Independently re-derive F_init from (M, seed): init_state is deterministic, so
+    # this is a real re-derivation of the descent's START, not a trust of the field.
+    M0 = max(1, int(round(er)))
+    state0 = an.init_state(protos, M=M0, seed=int(r["seed"]))
+    F_init_re, _ = ff.F(state0, protos)
+    F_init_re = float(F_init_re)
+    if abs(F_init_re - float(r["F_init"])) > max(atol, 1e-6 * abs(F_init_re)):
+        raise ReceiptError(
+            f"F_init mismatch: recomputed {F_init_re} vs receipt "
+            f"{float(r['F_init'])} (initial state does not match certified start)")
+
+    # Require descent: the frozen world must sit at or below its random start.
+    if float(r["F_final"]) > float(r["F_init"]) + max(atol, 1e-6 * abs(F_init_re)):
+        raise ReceiptError(
+            f"F did not descend: F_final {float(r['F_final'])} > F_init "
+            f"{float(r['F_init'])} (world does not settle below its start)")
+
+    # Sanity-check the solver's own monotonicity flag.
+    if not bool(r["F_monotone"]):
+        raise ReceiptError(
+            "F_monotone is False: the block solve reported a non-monotone descent")
     return True
