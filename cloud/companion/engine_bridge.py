@@ -167,6 +167,14 @@ _EIGEN_N_SEED = 24       # FD ensemble seeds per lane column (authoritative; asy
 _EIGEN_N_BAR = 32        # bars per seed run (authoritative; async)
 _EIGEN_H = 0.75          # FD step, knob units (the deployed interface step)
 _EIGEN_N_BOOT = 60       # bootstrap resamples for the eigenvalue SE
+# BOOT ensemble (live serving): DELIBERATELY CHEAP. The authoritative 24x32 ensemble
+# is ~32x the compute and, run at boot in the daemon eigen thread on a single-core
+# container, STARVES the realtime audio produce loop (measured: warmed=True but the
+# stream goes silent). Audio is non-negotiable; the live pad uses this cheap boot
+# ensemble, while offline tools/CLI pass the authoritative _EIGEN_N_SEED/_EIGEN_N_BAR
+# explicitly. Scales down further for wide corpora (many observable columns M).
+_EIGEN_BOOT_N_SEED = 4   # cheap boot seeds (was the pre-redesign production default)
+_EIGEN_BOOT_N_BAR = 6    # cheap boot bars
 _EIGEN_N_NULL = 200      # label-shuffle null draws for the floor
 _EIGEN_FLOOR_PCT = 97.5  # null floor percentile of max|eigenvalue|
 _EIGEN_WORD_FLOOR = 0.6  # |loading| a scalar observable needs to earn a word
@@ -344,8 +352,8 @@ class StreamPlayer:
     Everything else reads produced state."""
 
     def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None,
-                 is_trained: bool = False, eigen_n_seed: int = _EIGEN_N_SEED,
-                 eigen_n_bar: int = _EIGEN_N_BAR):
+                 is_trained: bool = False, eigen_n_seed: int = _EIGEN_BOOT_N_SEED,
+                 eigen_n_bar: int = _EIGEN_BOOT_N_BAR):
         # Force the ui-v5 engine tree to the FRONT of sys.path (membership isn't
         # enough — root engine-v1 must not shadow it), THEN assert we actually
         # resolved the capped engine. If root ets was imported first, fail LOUD
