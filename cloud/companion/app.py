@@ -821,6 +821,20 @@ class Hub:
             self._persist_session(session)
         return {"ok": True, "shared": session.shared, "set_id": sid}
 
+    def admin_unshare(self, set_id):
+        """Force-delist a set by id, regardless of which session owns it. Gated at
+        the request layer by a valid access key — this is the operator's catalog
+        janitor for stale/duplicate shares whose owning session token is no longer
+        held. Removes the entry from the live catalog AND the durable store so it
+        stays gone across reboots (same durability contract as owner unshare)."""
+        with self._lock:
+            existed = set_id in self.catalog or set_id in self.store.catalog
+            self.catalog.pop(set_id, None)
+            self.store.catalog.pop(set_id, None)
+            if existed:
+                self.store.save_catalog()
+        return {"ok": True, "removed": bool(existed), "set_id": set_id}
+
     def explore(self, session):
         with self._lock:
             entries = list(self.catalog.values())
@@ -1191,6 +1205,30 @@ class _Handler(BaseHTTPRequestHandler):
                                  "auth_required": True})
                 return
             self._json(200, {"ok": True, "token": token, "keyed": True}, cookie=token)
+            return
+
+        # /api/admin/unshare — operator catalog janitor: force-delist a set by id.
+        # Gated by a valid access key presented in the body (the SAME secret that
+        # authorizes training), NOT by set ownership — because a stale/duplicate
+        # share's owning session token may no longer be held. Keyless deploys have
+        # no secret to present, so the endpoint is inert there (401).
+        if path == "/api/admin/unshare":
+            key = ""
+            sid = None
+            if body:
+                try:
+                    j = json.loads(body.decode())
+                    key = str(j.get("key", ""))
+                    sid = j.get("set_id")
+                except Exception:
+                    pass
+            if not self.hub.access_keys or key not in self.hub.access_keys:
+                self._json(401, {"ok": False, "error": "invalid access key"})
+                return
+            if not sid:
+                self._json(400, {"ok": False, "error": "set_id required"})
+                return
+            self._json(200, self.hub.admin_unshare(sid))
             return
 
         # Resolve the session (never None on the serving path: keyless-local ->
