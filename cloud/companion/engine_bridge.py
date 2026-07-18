@@ -76,6 +76,246 @@ def anchor_profile_armed(B) -> bool:
     return (row_ptp / scale) > _PROFILE_ARMING_EPS
 
 
+# ---------------------------------------------------------------------------
+# EIGENPANEL (OPEN_ENDS #23; E1/E2) — the object's own control basis.
+#
+# READ-ONLY, once at world load: authors nothing, mutates no settlement. The
+# METHOD reproduces papers/findings/EIGEN-modes-2026-07-18.md exactly (its
+# PREREG scratchpad/eigen/PREREG.md, its script scratchpad/eigen/run_eigen.py)
+# at a load-time-viable ensemble size — same estimator, same decision rule,
+# smaller N (disclosed precision tradeoff below).
+#
+# CORRECTION ON RECORD (superseding the original directive's wording): the
+# "constrained covariance" is NOT the plain sample covariance of the
+# observables. That was measured to be WRONG on this very object — the
+# marginal covariance is fooled by the P5 finding (continuity is armed-but-
+# inert: its marginal variance is the LARGEST of any observable, ~8, yet its
+# steering response is ~zero). Variance and response decouple exactly where
+# FDT breaks. A covariance-basis panel would render the dead continuity knob
+# as the biggest knob in the room — re-committing the disarmed lie inside the
+# eigenbasis. Theorem A's actual identity is d<Phi>/du = (1/eps)*Cov|_projected
+# — the RESPONSE kernel realizes that projection automatically (a saturated/
+# inert lane's response row is measured ~0, whether or not its raw variance
+# is large). So the basis here is the SYMMETRIZED RESPONSE KERNEL:
+#
+#   R_ij = d<Phi_i>/du_j            (central finite difference, common seeds)
+#   K_ij = R_ij / sigma_i           (the world's OWN sigma_phi; scale-consistent)
+#   Ksym = (K + K^T)/2              (Theorem B: the true tilt-tilt kernel is
+#                                     Maxwell-symmetric; the antisymmetric part
+#                                     is the D1-D4 sampler-ordering artifact,
+#                                     proven RESIDUAL-NULL, so symmetrizing is
+#                                     the honest projection, not a fudge)
+#
+# eigh(Ksym) -> eigenvalues = the honest GAINS (signed: a negative gain is an
+# INVERTED response, retained and flagged, never dropped or folded to |.|
+# silently). k = eigenvalues whose magnitude clears a MEASURED noise floor.
+#
+# OBSERVABLE SET (a second wall, found and resolved here): the directive also
+# asked for "fill" (region occupancy sum) as its own observable alongside the
+# per-anchor region masses. But fill = sum(region masses) EXACTLY, every bar,
+# by construction — an exact linear dependency. Folding it into the kernel as
+# an extra row/column makes the matrix rank-deficient in a way that, once you
+# drop "fill" back out again to build the FORCE (there is no engine lane for
+# "aggregate fill" — only the per-anchor region lane exists), breaks exact
+# eigenvector orthogonality on the pushed subspace (EP-2 needs push_i . push_j
+# == 0 for i != j; algebraically dot(v_i, v_j) restricted to a de-facto
+# subspace of an orthonormal basis is NOT itself orthogonal in general, and
+# here it provably is only when the dropped coordinate's own component is
+# zero, which is not guaranteed for every mode). The clean fix: don't put the
+# redundant coordinate in the matrix in the analysis. The kernel is built over
+# the actual force-bearing observables only (region_0..M-1, density, cont,
+# novelty — exactly ets.panel.lanes' four DIRECTION lanes, minus gauge, which
+# is structurally degenerate at v0 and carried at sigma=0 -> its row is the
+# explicit zero axis). "fill" is then reported as a DERIVED display quantity
+# per surviving mode, fill_i = sum_a v_i[region_a] — which for any mode with
+# nonzero eigenvalue is the object's TRUE aggregate-fill loading, not an
+# approximation (it's an exact identity: for K symmetric with Ksym*w=0 on the
+# "fill minus sum(region)" null direction, every eigenvector of a nonzero
+# eigenvalue is orthogonal to that null direction, i.e. v[fill] == sum(v[region])
+# — the same number you'd get by including fill as a column and then
+# discarding it, without the orthogonality cost). No information is lost;
+# the matrix stays exactly the space the force actually pushes.
+#
+# ENSEMBLE (disclosed precision tradeoff): the authoritative E1/E2 run used
+# N_SEED=24, N_BAR=32, a separate N_POOL=48 null pool, B_null=4000 Monte-Carlo
+# draws (wall ~85s/world). A companion boot cannot pay that per world load.
+# Production defaults here (_EIGEN_N_SEED / _EIGEN_N_BAR below) are chosen to
+# keep load-time cost to a few seconds; the null floor is derived from the
+# SAME finite-difference ensemble via a label-shuffle (destroy the +/-h
+# assignment, keep the per-column noise) rather than a separate u=0 pool, to
+# avoid a second ensemble's worth of bars. Same estimator, same 2-part
+# decision rule (|gain|>floor AND |gain|-2*SE>floor via seed bootstrap),
+# smaller N -> wider CIs, not a different method.
+_EIGEN_N_SEED = 4        # FD ensemble seeds per lane column (production default)
+_EIGEN_N_BAR = 6         # bars per seed run
+_EIGEN_H = 0.75          # FD step, knob units (the deployed interface step)
+_EIGEN_N_BOOT = 60       # bootstrap resamples for the eigenvalue SE
+_EIGEN_N_NULL = 200      # label-shuffle null draws for the floor
+_EIGEN_FLOOR_PCT = 97.5  # null floor percentile of max|eigenvalue|
+_EIGEN_WORD_FLOOR = 0.6  # |loading| a scalar observable needs to earn a word
+_EIGEN_WORD_MAP = {"density": "busier", "cont": "steady", "novelty": "fresh"}
+
+
+def _eigen_obs_names(M: int):
+    return [f"region{i}" for i in range(M)] + ["density", "cont", "novelty"]
+
+
+def _eigen_phi_vec(phi, M: int) -> np.ndarray:
+    reg = np.asarray(phi["region"], float).reshape(-1)[:M]
+    return np.concatenate([reg, [float(phi["density"]), float(phi["cont"]),
+                                 float(phi["novelty"])]])
+
+
+def _eigen_lane_vector(M: int, region_idx=None, region_val: float = 0.0,
+                       density: float = 0.0, cont: float = 0.0, novelty: float = 0.0):
+    from ets.panel.lanes import default_lane_vector
+    u = default_lane_vector(M)
+    u.resize_region(M)
+    if region_idx is not None:
+        u.u_region[int(region_idx)] = float(region_val)
+    u.u_density = float(density)
+    u.u_continuity = float(cont)
+    u.u_novelty = float(novelty)
+    return u
+
+
+def _eigen_run_mean(world, sigma, u, seed: int, n_bar: int, M: int) -> np.ndarray:
+    from ets.writer.tilt import layer0
+    from ets.writer.stream import StreamWriter
+    tilt = layer0(u, sigma)
+    w = StreamWriter(world, seed=int(seed))
+    acc = np.zeros(M + 3, dtype=np.float64)
+    for _ in range(n_bar):
+        acc += _eigen_phi_vec(w.write_bar(tilt=tilt).phi, M)
+    return acc / n_bar
+
+
+def _eigen_node_means(world, sigma, builder, M: int, seed0: int, n_seed: int,
+                      n_bar: int) -> np.ndarray:
+    return np.stack([_eigen_run_mean(world, sigma, builder(), seed0 + i, n_bar, M)
+                     for i in range(n_seed)])
+
+
+def compute_eigenmodes(world, sigma, M: int, n_seed: int = _EIGEN_N_SEED,
+                       n_bar: int = _EIGEN_N_BAR, h: float = _EIGEN_H,
+                       n_boot: int = _EIGEN_N_BOOT, n_null: int = _EIGEN_N_NULL,
+                       floor_pct: float = _EIGEN_FLOOR_PCT,
+                       rng_seed: int = 20260718) -> dict:
+    """The object's native control eigenbasis (E1/E2; see the module-level
+    doctring above for the full derivation and the two walls it resolves).
+    Read-only: builds fresh ``StreamWriter`` instances at probe leans (never
+    touches ``world`` or any live engine state) and returns a JSON-ready dict:
+
+        {"modes": [{"index", "gain", "sign", "composition", "earned_word"}, ...],
+         "eigen_floor": float, "k": int, "basis": "response_kernel_sym",
+         "observable_names": [...]}
+
+    ``modes`` holds ONLY the surviving (k) modes, sorted by |gain| descending
+    (so mode[0]/mode[1] are the top-two for the FE's XY pad). A world with no
+    calibration (``sigma is None``) or M<=0 returns an honest empty result —
+    no computation attempted, no fabricated axis."""
+    M = int(M)
+    if sigma is None or M <= 0:
+        return {"modes": [], "eigen_floor": None, "k": 0,
+                "basis": "response_kernel_sym", "observable_names": []}
+    D = M + 3
+    names = _eigen_obs_names(M)
+    sig = np.concatenate([np.asarray(sigma.region, float).reshape(-1)[:M],
+                          [float(sigma.density), float(sigma.cont), float(sigma.novelty)]])
+    # sigma=0 (degenerate/disarmed observable, e.g. gauge is excluded entirely,
+    # but density/cont/novelty/region CAN legitimately be sigma=0 on some other
+    # world): guard the row, don't divide by zero — the explicit-zero-axis
+    # treatment the PREREG established for gauge, generalized to any lane.
+    sig_safe = np.where(sig > 0.0, sig, 1.0)
+
+    builders = []
+    for i in range(M):
+        builders.append((
+            (lambda ii=i: _eigen_lane_vector(M, region_idx=ii, region_val=+h)),
+            (lambda ii=i: _eigen_lane_vector(M, region_idx=ii, region_val=-h))))
+    builders.append(((lambda: _eigen_lane_vector(M, density=+h)),
+                     (lambda: _eigen_lane_vector(M, density=-h))))
+    builders.append(((lambda: _eigen_lane_vector(M, cont=+h)),
+                     (lambda: _eigen_lane_vector(M, cont=-h))))
+    builders.append(((lambda: _eigen_lane_vector(M, novelty=+h)),
+                     (lambda: _eigen_lane_vector(M, novelty=-h))))
+
+    R = np.zeros((D, D))
+    node_data = []          # (mp, mm) per column, each (n_seed, D) -- for null + bootstrap
+    for j, (up, um) in enumerate(builders):
+        mp = _eigen_node_means(world, sigma, up, M, 70000 + j * 1000, n_seed, n_bar)
+        mm = _eigen_node_means(world, sigma, um, M, 70000 + j * 1000 + 500, n_seed, n_bar)
+        node_data.append((mp, mm))
+        R[:, j] = (mp.mean(0) - mm.mean(0)) / (2.0 * h)
+
+    def _ksym(Rmat):
+        K = Rmat / sig_safe[:, None]
+        K[sig <= 0.0, :] = 0.0
+        return 0.5 * (K + K.T)
+
+    Ksym = _ksym(R)
+    w_eig, V = np.linalg.eigh(Ksym)
+    order = np.argsort(-np.abs(w_eig))
+    w_eig, V = w_eig[order], V[:, order]
+
+    rng = np.random.default_rng(rng_seed)
+    # NULL FLOOR: shuffle which runs are labeled "+h" vs "-h" per column (destroys
+    # the systematic FD signal, preserves the per-column sampling noise) — the
+    # response-kernel analogue of "shuffle the series and recompute the spectrum".
+    null_max = []
+    for _ in range(n_null):
+        Rn = np.zeros((D, D))
+        for j, (mp, mm) in enumerate(node_data):
+            both = np.concatenate([mp, mm], axis=0)
+            idx = rng.permutation(both.shape[0])
+            half = both.shape[0] // 2
+            a, b = both[idx[:half]], both[idx[half:2 * half]]
+            Rn[:, j] = (a.mean(0) - b.mean(0)) / (2.0 * h)
+        wn, _ = np.linalg.eigh(_ksym(Rn))
+        null_max.append(float(np.max(np.abs(wn))))
+    floor = float(np.percentile(null_max, floor_pct)) if null_max else 0.0
+
+    # BOOTSTRAP SE: resample the FD seed block per column, recompute, track the
+    # spread of the SAME sorted-by-|.| slot across resamples.
+    boot = []
+    for _ in range(n_boot):
+        Rb = np.zeros((D, D))
+        for j, (mp, mm) in enumerate(node_data):
+            idx = rng.integers(0, n_seed, n_seed)
+            Rb[:, j] = (mp[idx].mean(0) - mm[idx].mean(0)) / (2.0 * h)
+        wb, _ = np.linalg.eigh(_ksym(Rb))
+        boot.append(wb[np.argsort(-np.abs(wb))])
+    se = np.std(np.stack(boot), axis=0) if boot else np.zeros(D)
+
+    surviving = []
+    for r in range(D):
+        lam, s = float(w_eig[r]), float(se[r])
+        surviving.append(abs(lam) > floor and abs(lam) - 2.0 * s > floor)
+    k = int(sum(surviving))
+
+    modes = []
+    out_idx = 0
+    for r in range(D):
+        if not surviving[r]:
+            continue
+        vec = V[:, r]
+        comp = {names[a]: float(vec[a]) for a in range(D)}
+        comp["fill"] = float(sum(vec[a] for a in range(M)))   # derived (see docstring)
+        best_key, best_val = None, 0.0
+        for key in ("density", "cont", "novelty"):
+            v = abs(comp[key])
+            if v > best_val:
+                best_key, best_val = key, v
+        word = _EIGEN_WORD_MAP[best_key] if (best_key and best_val >= _EIGEN_WORD_FLOOR) else None
+        gain = float(w_eig[r])
+        modes.append({"index": out_idx, "gain": gain, "sign": (1 if gain >= 0.0 else -1),
+                      "composition": comp, "earned_word": word})
+        out_idx += 1
+
+    return {"modes": modes, "eigen_floor": floor, "k": k,
+           "basis": "response_kernel_sym", "observable_names": names}
+
+
 class StreamPlayer:
     """Owns a loaded world + engine and a produce loop. The settlement input is
     staged by :meth:`set_region` (the region-tilt vector lane) and the typed
@@ -87,7 +327,8 @@ class StreamPlayer:
     Everything else reads produced state."""
 
     def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None,
-                 is_trained: bool = False):
+                 is_trained: bool = False, eigen_n_seed: int = _EIGEN_N_SEED,
+                 eigen_n_bar: int = _EIGEN_N_BAR):
         # Force the ui-v5 engine tree to the FRONT of sys.path (membership isn't
         # enough — root engine-v1 must not shadow it), THEN assert we actually
         # resolved the capped engine. If root ets was imported first, fail LOUD
@@ -178,6 +419,15 @@ class StreamPlayer:
         # columns — the ROLE->UNIT drill (pools) and the TRACK-square LEAN — while the
         # TRACK->ROLE drill and ROLE bias (which do not route through B) stay armed.
         self._profile_armed = anchor_profile_armed(self.world.fstate.B)
+        # EIGENPANEL (OPEN_ENDS #23; E1/E2) — the object's native control basis,
+        # computed ONCE here from the SYMMETRIZED RESPONSE KERNEL of the sanctioned
+        # scalar/region lanes (see compute_eigenmodes' docstring: the P5-covariance
+        # trap and the redundant-"fill" wall, both resolved there). Read-only:
+        # authors nothing, mutates no settlement, touches no live engine state
+        # (fresh StreamWriter probes only). A world with no σ_φ calibration yields
+        # an honest empty result (k=0), never a fabricated axis.
+        self._eigen = compute_eigenmodes(self.world, sigma, self.M,
+                                         n_seed=eigen_n_seed, n_bar=eigen_n_bar)
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -238,7 +488,15 @@ class StreamPlayer:
                 # recorded failure (None while healthy). Real flags, never inferred.
                 "warmed": bool(self._warmed),
                 "last_error": self.last_error,
-                "bar_seconds": float(self.engine.writer.bar_seconds)}
+                "bar_seconds": float(self.engine.writer.bar_seconds),
+                # EIGENPANEL (OPEN_ENDS #23; E1/E2): the object's native control
+                # basis, computed once at load (compute_eigenmodes). "modes" is the
+                # radial surface's ENTIRE axis set — self-sizing: k=0 on a flat/
+                # uncalibrated world (honest, no disarm theater), k grows with the
+                # object's real spectrum. Never hand-set, never recomputed per-steer.
+                "modes": self._eigen["modes"], "eigen_floor": self._eigen["eigen_floor"],
+                "k": self._eigen["k"], "basis": self._eigen["basis"],
+                "observable_names": self._eigen["observable_names"]}
 
     # --- STATIC per-world field telemetry (read-only, once-per-world) -------
     def static_field(self) -> dict:
