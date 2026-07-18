@@ -544,11 +544,12 @@ class StreamPlayer:
     # --- world info ---------------------------------------------------------
     def world_info(self) -> dict:
         # A reader that opens a set but never presses play still deserves its
-        # modes: trigger the deferred eigenmode measurement here too (idempotent;
-        # the produce loop triggers it on first warm otherwise). It runs off-thread
-        # so this call returns immediately with the honest pending state until it
-        # lands.
-        self._ensure_eigen_started()
+        # modes — but ONLY start the heavy ensemble here when NOT playing. If the
+        # produce loop is running, it starts the eigen AFTER the first bar warms
+        # (audio-first); triggering it from a status poll would start the heavy
+        # compute before the first bar and starve the warm (the silent-audio bug).
+        if not self._playing.is_set():
+            self._ensure_eigen_started()
         # `is_trained` reports truthfully which world is loaded: True for the
         # user's freshly cloud-trained corpus (built by the train->play seam,
         # cloud.companion.train_local: local ingest -> cloud anchor-fit -> local
