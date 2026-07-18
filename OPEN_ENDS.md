@@ -403,3 +403,32 @@ legacy drawer, E6). Physics/harness/archive unchanged; consolidated build spec:
   -> legacy drawer + archive move same train -> deploy (no retrain; durable
   sessions). make-B-informative runs parallel; panel auto-recomputes modes on
   the richer object when it lands. Wall-envelope stat rides the B retrain.
+
+## 24. CHROMATIC LAW (operator amendment, 2026-07-18) — display layer only
+Color renders the object's spectrum; nothing hand-picked. Folds into the radial
+build (#23). Physics/force-path/EP-1..6 unchanged. Ship all three:
+- C-1 RANK->HUE: modes by eigenvalue -> spectral position (mode1 largest=red,
+  descending rank->violet). Axis identity = its mode's hue.
+- C-2 EIGENVALUE->SATURATION: vividness = |eigenvalue| vs measured floor;
+  near-floor washes out, below-floor invisible/absent (CH-2). Recompute w/ modes.
+- C-3 COMPOSITION->RGB MIX. PRE-REGISTERED PRIMARY TABLE (fixed once, never
+  per-world): density=R(255,0,0); continuity/run=G(0,255,0); novelty/recency=
+  B(0,0,255); region0=cyan(0,255,255); region1=magenta(255,0,255); region2=
+  yellow(255,255,0); further region_k cycle the secondary triad. Mode badge
+  color = RGB mix of |eigenvector loadings| (normalized weights); SIGN = +/-
+  tick per component in the hover bar-chart, NOT in hue.
+- PAD TEXTURE: color(u) = loading-weighted RGB blend of the two axis-modes'
+  colors by the point's coords, saturation x C-2 x radial distance (center
+  neutral, rim full chroma). Continuous field, no hand-painted gradient.
+  Machine dot = achieved-projection color (its drift IS telemetry); user puck
+  neutral white/outline.
+- FIELD roles: hue=role identity, saturation=live settled weight (UNIFY with
+  the brightness law, don't double-encode).
+- METERS: SLIDE warm/cool sequential (unsigned); LOOP diverging-through-zero
+  (flips side on sign flip); TEMP throttle blue->red.
+RULES: display-only (no color feeds control/F); palette pre-registered ONCE
+(this table); CH-1 (colors derive ONLY from rank/eigenvalue/loadings/achieved
+projections/meter values — injected hand-set color FAILS); CH-2 (fade tracks
+floor); accessibility (hue NEVER alone — rank index number + badge bar-chart
+always present; colorblind-safe by redundancy not palette distortion). Auditor
+verifies CH-1/CH-2 + EP-1..6 unchanged.
