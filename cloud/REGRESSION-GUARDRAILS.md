@@ -14,10 +14,23 @@ prevents it. Read this before touching `cloud/companion/`.
 - **The core engine was NOT changed** — `tests/invariants/test_manifest.py` and
   `cloud/tests/test_freeze_only_byte_identity.py` passed 18/18. The fault was 100% in
   the serving wrapper (`engine_bridge.py`).
-- **Fix:** the *boot* ensemble is `_EIGEN_BOOT_N_SEED=4 / _EIGEN_BOOT_N_BAR=6` (cheap).
-  The authoritative `_EIGEN_N_SEED=24 / _EIGEN_N_BAR=32` are for **offline tools only**,
-  passed explicitly. Audio is non-negotiable; k≥2 at boot is not worth starving sound.
-- **GUARD:** `test_serving_regressions.py::test_boot_eigen_ensemble_is_cheap`.
+- **Fix (superseded — cheap boot ensemble):** an early fix dropped the boot ensemble
+  to `4×6`. It restored audio but **collapsed `k` to 1** (a noisy ensemble raises the
+  shuffle-null floor so only the strongest mode survives) — the operator lost the
+  multi-mode pad. Cheap-boot was the WRONG lever.
+- **Fix (current — measure off-playback, cache):** on a single core the measurement
+  and realtime audio cannot coexist (either starves the other), so the modes are
+  **never computed on the playback path**. The live pad uses the **full authoritative
+  `24×32`** ensemble, measured ONCE off-playback (idle load, or `wait_eigen` for
+  tools) and persisted to a **sidecar cache** (`world_path + ".eigen.json"`, stamped by
+  world file + params so a stale/foreign cache can never be served), then read
+  instantly on every load — survives eviction and redeploy. Result: full multi-mode
+  `k` **and** smooth audio, no fight. The produce loop kicks the deferred measurement
+  only after the first bar warms; `world_info` only self-triggers it when NOT playing.
+- **The core engine is NOT changed** — manifest + freeze byte-identity hold (18/18).
+- **GUARD:** `test_boot_ensemble_resolves_k_ge_2_with_the_real_defaults` + the
+  cold-start/eigenpanel suites; the sidecar cache is faithfulness-audited (stores only
+  the real measured result, never fabricated).
 
 ## R-2 — Merge duplicated DOM → broke JS (also silent audio contributor)
 - **Symptom:** the live `index.html` had **duplicate** `id="outboard"`, `#legacyDrawer`,

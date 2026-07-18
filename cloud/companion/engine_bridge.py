@@ -959,6 +959,9 @@ class StreamPlayer:
         import time as _time
         t0 = None                                  # anchored on FIRST EMISSION
         sent = 0                                   # samples emitted so far
+        kicked_eigen = False                       # LOCAL once-flag (never reads
+                                                   # self._warmed — a bare test-harness
+                                                   # player has no such attr)
         while self._playing.is_set():
             try:
                 pcm, _ = self.produce_one_bar()
@@ -978,8 +981,9 @@ class StreamPlayer:
                 break
             # WARMED (OPEN_ENDS #21d): the first successfully produced bar ends
             # the cold window — the honest flag /api/world reports.
-            if not self._warmed:
-                self._warmed = True
+            self._warmed = True
+            if not kicked_eigen:
+                kicked_eigen = True
                 # AUDIO-FIRST: now that a bar has warmed, kick off the deferred
                 # heavy eigenmode ensemble (it never blocked the first sound).
                 self._ensure_eigen_started()
