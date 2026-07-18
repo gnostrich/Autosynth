@@ -658,7 +658,7 @@
 #panePlay .tape-panel { display: none !important; }
 /* USE THE SPACE: the pad is the hero — make it fill the viewport height so the
    two components own the screen instead of hugging the top and leaving a void. */
-#panePlay { display: flex; flex-direction: column; }
+#panePlay.active { display: flex; flex-direction: column; }  /* .active only — never leak onto other tabs */
 #panePlay #playGrid { flex: 1 1 auto; align-items: stretch; min-height: 72vh; }
 #panePlay .pad-hero { min-height: 72vh; align-self: stretch; }
 #panePlay #knobsBand { align-self: stretch; }
