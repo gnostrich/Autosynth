@@ -687,10 +687,12 @@ class StreamPlayer:
                 "k": self._eigen["k"], "basis": self._eigen["basis"],
                 "observable_names": self._eigen["observable_names"],
                 "eigen_pending": bool(self._eigen.get("pending", False)),
-                # MODES-BY-TEMPERATURE (PREREG-temperature-sweep): a pre-measured table
-                # [{T_s, k, modes, eigen_floor}, ...] so the pad can show the modes that
-                # exist at the CURRENT TEMP (petals freezing in/out as the operator heats).
-                # Read-only, off-playback measurement; None until a sweep is cached.
+                # MODES-BY-TEMPERATURE (PREREG-temperature-sweep + addendum): a table of the
+                # object's eigenmodes measured across sampler temperatures T_s
+                # [{T_s, k, modes, eigen_floor}, ...]. The measurement is off-playback and
+                # read-only w.r.t. audio/settlement; the FE USES it to reselect the pad's
+                # steering basis per-T_s (a faithful steering change — see the FE + the prereg
+                # addendum, NOT display-only). None until a sweep is cached.
                 "modes_by_temperature": (self._sweep.get("sweep") if getattr(self, "_sweep", None) else None),
                 # SIGMA_PHI (OPEN_ENDS #22/23 tether amendment): the world's own
                 # MEASURED calibration scale per direction lane — the "lane's own
