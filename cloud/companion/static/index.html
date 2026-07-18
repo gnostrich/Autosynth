@@ -656,8 +656,15 @@
 #panePlay #legacyDrawer,           /* legacy VARY/SPREAD/DENSITY drawer */
 #panePlay .lib.panel,              /* source library (lives on Object tab) */
 #panePlay .tape-panel { display: none !important; }
-/* let the two remaining glass cells breathe evenly */
-#panePlay #knobsBand { align-self: start; }
+/* USE THE SPACE: the pad is the hero — make it fill the viewport height so the
+   two components own the screen instead of hugging the top and leaving a void. */
+#panePlay { display: flex; flex-direction: column; }
+#panePlay #playGrid { flex: 1 1 auto; align-items: stretch; min-height: 72vh; }
+#panePlay .pad-hero { min-height: 72vh; align-self: stretch; }
+#panePlay #knobsBand { align-self: stretch; }
+@media (max-width: 900px){
+  #panePlay #playGrid, #panePlay .pad-hero { min-height: 56vh; }
+}
 </style>
 </head>
 <body>
