@@ -296,6 +296,10 @@ behind the WEBFAB remediation (same files; no concurrent edits):
     accumulation + threshold + ~350ms cooldown = one layer per gesture; bias
     px->step normalization across deltaModes (named constants). Interim
     workaround told to operator: click = exactly one layer in, header = out.
+(a2) PRISM PERF (measured 2026-07-18: prism ON = 18fps + 3.7s long tasks;
+    prism OFF = 59fps, everything else <1%): render at half-res, cap 30fps,
+    pause on hidden tab, static-freeze on software-GL renderers. FE lag is
+    NOT server-side; more Railway CPU only shortens train/cold-start.
 (b) LEGEND AT DEPTH: drilled view keeps a compact parent-track + role-shade
     key (second layer currently unreadable).
 (c) PRODUCE-LOOP HONESTY: bare except->break in engine_bridge._loop dies
