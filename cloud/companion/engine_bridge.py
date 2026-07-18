@@ -184,6 +184,10 @@ _EIGEN_FLOOR_PCT = 97.5  # null floor percentile of max|eigenvalue|
 # is 7x the single-temperature ensemble, so it runs LAST (after the boot eigen lands) in the
 # same off-playback background thread, cached to a sidecar; never on the audio path.
 _SWEEP_T_GRID = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
+_SWEEP_DEFER_POLL = 1.5  # while audio is live, the sweep worker parks between temperatures
+                         # (this poll interval) instead of computing — so a one-time,
+                         # multi-minute measurement can never starve realtime playback on a
+                         # constrained host. It resumes the instant playback pauses.
 _EIGEN_WORD_FLOOR = 0.6  # |loading| a scalar observable needs to earn a word
 _EIGEN_WORD_MAP = {"density": "busier", "cont": "steady", "novelty": "fresh"}
 
@@ -654,21 +658,38 @@ class StreamPlayer:
             t.start()
 
     def _sweep_worker(self, sigma, grid, n_seed: int, n_bar: int) -> None:
-        """Run the FULL temperature sweep off-thread, land the real table in ONE atomic
-        assignment (`self._sweep = ...`) and persist it to the sidecar so future
-        loads/redeploys read it instantly. Uses the experimental temperature_sweep
-        (per-T_s re-derived floor, real measured eigenvectors) — reads only the frozen
-        world/sigma via fresh probes; never touches settlement/F. A failure is recorded
-        honestly (pending clears) rather than left silently stuck."""
+        """Measure the temperature sweep off-thread ONE temperature at a time, landing the
+        table incrementally (atomic reassignment of `self._sweep`) and persisting the
+        sidecar when complete. Uses the experimental temperature_sweep (per-T_s re-derived
+        floor, real measured eigenvectors) — reads only the frozen world/sigma via fresh
+        probes; never touches settlement/F.
+
+        AUDIO SAFETY (auditor Note A): this one-time, multi-minute measurement DEFERS while
+        playback is live — it parks between temperatures until `self._playing` clears — so it
+        can never push the realtime produce loop past deadline and cause mid-stream
+        under-runs on a constrained host. It resumes the instant playback pauses; a set
+        played nonstop simply shows the honest `sweep_pending` state until the first pause.
+        A failure is logged (pending clears) rather than left silently stuck."""
+        import time as _t
         try:
             from cloud.companion.eigen_experimental import temperature_sweep
-            result = temperature_sweep(self.world, sigma, self.M, grid,
-                                       n_seed=n_seed, n_bar=n_bar)
-            if isinstance(result, dict) and isinstance(result.get("sweep"), list):
-                self._sweep = result
-                self._write_sweep_cache(result, n_seed, n_bar)
-            else:                                        # honest: measurement produced nothing usable
-                self._sweep_args = None
+            rows = []
+            meta = None
+            for T in grid:
+                # Park (don't compute) while audio is live — heavy work only in idle windows.
+                while getattr(self, "_playing", None) is not None and self._playing.is_set():
+                    _t.sleep(_SWEEP_DEFER_POLL)
+                part = temperature_sweep(self.world, sigma, self.M, [T],
+                                         n_seed=n_seed, n_bar=n_bar)
+                if not (isinstance(part, dict) and isinstance(part.get("sweep"), list) and part["sweep"]):
+                    return                               # honest: measurement produced nothing usable
+                if meta is None:
+                    meta = {k: part[k] for k in ("M", "n_seed", "n_bar", "observable_names")}
+                rows.extend(part["sweep"])
+                landed = dict(meta); landed["sweep"] = list(rows)
+                self._sweep = landed                     # land incrementally (atomic reassign)
+            if self._sweep is not None:
+                self._write_sweep_cache(self._sweep, n_seed, n_bar)
         except Exception:                                # pragma: no cover (defensive)
             logger.exception("modes-by-temperature background sweep failed")
         finally:
@@ -792,10 +813,10 @@ class StreamPlayer:
                 "modes_by_temperature": (self._sweep.get("sweep") if getattr(self, "_sweep", None) else None),
                 # sweep_pending: the modes-by-temperature table is still being measured in
                 # the background (honest "measuring temperature modes…" state, distinct from
-                # a world that simply has no table). True only while the auto-sweep is armed
-                # and no table has landed yet.
-                "sweep_pending": bool(getattr(self, "_sweep_args", None) is not None
-                                      and getattr(self, "_sweep", None) is None),
+                # a world that simply has no table). True while the auto-sweep worker is armed
+                # — including while a PARTIAL table has landed (incremental measurement) — and
+                # cleared (in the worker's finally) once the full grid is done or it fails.
+                "sweep_pending": bool(getattr(self, "_sweep_args", None) is not None),
                 # SIGMA_PHI (OPEN_ENDS #22/23 tether amendment): the world's own
                 # MEASURED calibration scale per direction lane — the "lane's own
                 # calibration gain" the living-mark/tether law (T-2) reads for the
