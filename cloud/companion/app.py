@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import logging
 import os
 import secrets
 import sys
@@ -42,6 +43,8 @@ from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger("ets.companion")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # APPEND (never insert at 0): the ui-v5 engine tree (architecture-v6) must keep the
@@ -168,6 +171,15 @@ class Companion:
     def session_files(self):
         return sorted(p.name for p in self.session_dir.iterdir()
                       if p.is_file() and p.name != "world.npz")
+
+    def ingested_track_names(self):
+        """The REAL ingested audio filenames of this session's corpus, in the same
+        sorted order the train seam consumes them — so index i IS track id i (the
+        T0,T1,... order the Source Library shows). The single source both the
+        /api/world name override and the share-catalog snapshot read; never an
+        invented name (empty when no audio was ingested)."""
+        return [f for f in self.session_files()
+                if os.path.splitext(f)[1].lower() in _AUDIO_EXTS]
 
     def reset(self) -> dict:
         """Clear the current corpus + world so a fresh corpus can be loaded — the
@@ -397,7 +409,7 @@ class CatalogEntry:
     path a session's own trained world uses (no separate render surface)."""
 
     def __init__(self, set_id, name, owner, world_path, region_armed, disarmed,
-                 owner_token):
+                 owner_token, track_names=None):
         self.set_id = set_id
         self.name = name
         self.owner = owner
@@ -405,6 +417,11 @@ class CatalogEntry:
         self.region_armed = bool(region_armed)
         self.disarmed = list(disarmed or [])
         self.owner_token = owner_token           # only the owner may unshare
+        # HONEST attribution the owner OPTED to publish with the set: the real
+        # ingested filenames by track id ({int tid: name}), snapshotted at share
+        # time. Served only via /api/world to sessions that OPENED this set (the
+        # legend/labels), never invented — empty means "keep the generic labels".
+        self.track_names = dict(track_names or {})
 
     def available(self) -> bool:
         # honest availability: the world file must still be on disk to play it.
@@ -422,10 +439,24 @@ class CatalogEntry:
 
 class Hub:
     """Per-server owner of sessions, the shared engine registry, the access-key gate,
-    and the shared-set catalog. In KEYLESS mode (no ``ETS_ACCESS_KEYS``) there is a
-    single default session and NO gate — today's behavior, unchanged. In KEYED mode
-    each authenticated visitor gets its own session (its own ingest dir + trained
-    world), and every /api route except health + auth requires a session token."""
+    and the shared-set catalog.
+
+    Session model (one rule): whoever is NOT the machine's owner gets their OWN
+    session. Concretely:
+      * KEYLESS-LOCAL — the single default session (the person at the machine IS
+        the owner; one corpus at a time, R4). Unchanged.
+      * KEYED — a valid token resolves to that visitor's OWNER session; every
+        keyless request resolves to a PER-VISITOR anonymous session (minted with an
+        ``ets_session`` cookie on first API contact). Anonymous visitors are
+        ISOLATED from each other: one visitor's opened set never appears on
+        another's Play page.
+      * KEYLESS-PUBLIC (legacy) — same per-visitor anonymous sessions; the R6
+        demo-only 503 gate on owner surfaces is unchanged.
+    Sessions are POINTERS (opened set, ingest dir, flags) — engines stay shared and
+    bounded through the ONE WorldRegistry LRU, so per-visitor sessions add no
+    engine memory. Anonymous sessions live in a capped in-memory LRU (known #17:
+    in-memory, reset on redeploy; an evicted visitor honestly re-lands on the empty
+    state and can re-open a set)."""
 
     def __init__(self, cloud_url="inproc", session_dir=None, play_world=None,
                  seed=0, public=False, access_keys=None, max_loaded=None) -> None:
@@ -445,17 +476,22 @@ class Hub:
             max_loaded = int(os.environ.get("ETS_MAX_LOADED_WORLDS", "2"))
         self.registry = WorldRegistry(max_loaded=max_loaded)
         self.sessions: "dict[str, Companion]" = {}
+        # PER-VISITOR anonymous sessions (keyless requests on keyed/public deploys),
+        # token -> Companion, LRU-capped. Pointers only — engines stay in the shared
+        # registry, so the cap is about not accreting session objects forever
+        # (in-memory, known #17), not about engine RAM.
+        self.max_anon = int(os.environ.get("ETS_MAX_ANON_SESSIONS", "1024"))
+        self.anon_sessions: "OrderedDict[str, Companion]" = OrderedDict()
         self.catalog: "dict[str, CatalogEntry]" = {}
         self._lock = threading.Lock()
         # the keyless / local single session shares the base dir so its on-disk
-        # layout (and the existing tests' expectations) are exactly unchanged.
+        # layout (and the existing tests' expectations) are exactly unchanged. It
+        # serves ONLY keyless-LOCAL requests now; on keyed/public deploys keyless
+        # requests get per-visitor anonymous sessions instead (never this shared
+        # object — the cross-visitor leak fix). is_visitor mirrors the deploy mode
+        # for back-compat with direct constructions in tests.
         self.default_session = self._make_session(self._base)
         self.default_session.public = self.public
-        # In a KEYED deploy the default session is the shared VISITOR session handed
-        # to unauthenticated (keyless) requests: read/play/steer/open only, never an
-        # owner (OPEN_ENDS #16). In a keyless deploy it is THE session (local owner or
-        # legacy-public demo consumer), so is_visitor stays False and the owner
-        # predicate falls through to the not-keyed branch.
         self.default_session.is_visitor = self.keyed
 
     @property
@@ -487,6 +523,43 @@ class Hub:
             return None
         with self._lock:
             return self.sessions.get(token)
+
+    # --- per-visitor ANONYMOUS sessions (shared deploys only) ----------------
+    def anon_session(self, token):
+        """Resolve an existing anonymous visitor session by its cookie token, or
+        None (unknown / evicted / restarted server -> the caller mints afresh)."""
+        if not token:
+            return None
+        with self._lock:
+            sess = self.anon_sessions.get(token)
+            if sess is not None:
+                self.anon_sessions.move_to_end(token)
+            return sess
+
+    def new_anon_session(self):
+        """Mint a fresh anonymous visitor session + token (set as the visitor's
+        ``ets_session`` cookie by the handler). Same Companion construction as every
+        other session; is_visitor marks it a non-owner on keyed deploys (the same
+        single owner predicate — no second decision channel)."""
+        token = secrets.token_urlsafe(24)
+        sess = self._make_session(self._base / ("anon_" + token[:12]))
+        sess.is_visitor = self.keyed
+        evicted = []
+        with self._lock:
+            self.anon_sessions[token] = sess
+            while len(self.anon_sessions) > self.max_anon:
+                evicted.append(self.anon_sessions.popitem(last=False)[1])
+        # Disk-side of the LRU (auditor note, 2026-07-18): eviction must also
+        # remove the session's (empty) directory, or crawler traffic accretes
+        # dirs without bound. Visitor sessions cannot ingest, so rmdir — which
+        # refuses non-empty dirs — is the safe form; anything non-empty is left
+        # in place rather than destroyed.
+        for old in evicted:
+            try:
+                os.rmdir(old.session_dir)
+            except OSError:
+                pass
+        return token, sess
 
     def playable_for(self, session):
         """Resolve the engine a session should be playing NOW, honoring revocation:
@@ -524,7 +597,12 @@ class Hub:
                 world_path=session.play_world,
                 region_armed=info.get("region_armed", False),
                 disarmed=info.get("disarmed", []),
-                owner_token=session.set_id)
+                owner_token=session.set_id,
+                # sharing is the owner's opt-in: publish the REAL ingested track
+                # names with the set (index i = track id i, the train-seam order),
+                # so openers see honest attribution instead of "track N".
+                track_names={i: n for i, n in
+                             enumerate(session.ingested_track_names())})
             with self._lock:
                 self.catalog[sid] = entry
             session.shared = True
@@ -554,6 +632,7 @@ class Hub:
 class _Handler(BaseHTTPRequestHandler):
     companion: Companion = None  # set on the server instance below
     hub: "Hub" = None            # the per-server session/registry/catalog owner
+    _mint = None                 # anon token minted for THIS request (reset per request)
 
     # canonical unauthorized body — matches the deployed ets-web probe exactly.
     _UNAUTH = {"ok": False, "error": "unauthorized — enter your access key",
@@ -577,6 +656,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")   # API state is live, never cacheable
+        if cookie is None:
+            # a session token minted while resolving THIS request (an anonymous
+            # visitor's first API contact) rides out on the same response.
+            cookie = getattr(self, "_mint", None)
         if cookie is not None:
             self.send_header("Set-Cookie",
                              f"ets_session={cookie}; Path=/; SameSite=Strict")
@@ -601,21 +684,34 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _session(self):
         """The session for THIS request — never None on the serving path (OPEN_ENDS
-        #16: no access wall). In KEYLESS mode the single default session is always
-        returned (today's behavior). In KEYED mode a valid token resolves to that
-        visitor's OWNER session; a missing/invalid token falls back to the shared
-        VISITOR session (read/play/steer/open only), so a keyless visitor lands on the
-        app instead of an access wall."""
-        if not self.hub.keyed:
+        #16: no access wall). Resolution order:
+          * KEYLESS-LOCAL -> the single default session (the person at the machine
+            is the owner; one corpus at a time). Unchanged.
+          * KEYED, valid token -> that visitor's OWNER session.
+          * otherwise (keyless request on a keyed or public deploy) -> that
+            visitor's OWN anonymous session, resolved by the ``ets_session`` cookie
+            or minted now (the cookie rides out on this response via _json). Two
+            anonymous visitors NEVER share a session, so one visitor's opened set
+            cannot appear on another's Play page. A cookie-less client simply gets
+            a fresh session per request — honest statelessness, never a shared one."""
+        token = self._token()
+        if self.hub.keyed:
+            sess = self.hub.session_for_token(token)
+            if sess is not None:
+                return sess
+        elif not self.hub.public:
             return self.hub.default_session
-        sess = self.hub.session_for_token(self._token())
-        return sess if sess is not None else self.hub.default_session
+        sess = self.hub.anon_session(token)
+        if sess is None:
+            self._mint, sess = self.hub.new_anon_session()
+        return sess
 
     def _can_train(self, session) -> bool:
         """The single OWNER predicate that pins every (public × keyed × visitor)
         combo. A session may ingest/train/reset/share iff it is an OWNER:
-          * KEYED deploy  -> owner iff it is NOT the shared visitor session (i.e. it
-            was reached with a valid token). A keyless visitor is not an owner.
+          * KEYED deploy  -> owner iff it is NOT a visitor session (i.e. it was
+            reached with a valid token). A keyless (anonymous) visitor is not an
+            owner.
           * KEYLESS deploy -> owner iff not public (local run). The legacy
             keyless-public session is the demo-only consumer.
         This is the ONE channel both the POST gate and the FE branch on."""
@@ -625,6 +721,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     # --- GET ----------------------------------------------------------------
     def do_GET(self):  # noqa: N802
+        self._mint = None            # per-request (handlers persist across keep-alive)
         path = self.path.split("?", 1)[0].rstrip("/")
         if path in ("", "/"):
             # NO ACCESS WALL (OPEN_ENDS #16): GET / always serves the app. A keyless
@@ -643,9 +740,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         # The read/play /api routes below serve OWNERS and VISITORS alike (OPEN_ENDS
-        # #16). _session() never returns None on the serving path (keyless -> default;
-        # keyed -> owner-by-token or the shared visitor session); the None guard stays
-        # as a defensive backstop only.
+        # #16). _session() never returns None on the serving path (keyless-local ->
+        # default; keyed -> owner-by-token; otherwise the visitor's own anonymous
+        # session); the None guard stays as a defensive backstop only.
         session = self._session()
         if session is None:
             self._json(401, dict(self._UNAUTH))
@@ -714,21 +811,29 @@ class _Handler(BaseHTTPRequestHandler):
                     log.warning("static_field unavailable -> role-grain-only "
                                 "field: %s", exc)
                     info["field_degraded"] = f"{type(exc).__name__}: {exc}"
-                # HONEST track NAMES: the world carries no source filenames, but the
-                # SESSION knows the real ingested names (session track metadata). For
-                # a session's OWN trained world (not a shared/opened set), override the
-                # bridge's generic "track N" with the true ingested filename by track
-                # index (the same T0,T1… order the Source Library shows). Demo /
-                # shared / non-owning sessions keep the honest generic label — never an
-                # invented name.
+                # HONEST track NAMES: the world carries no source filenames, but two
+                # honest sources exist beyond the bridge's generic "track N":
+                #   * a session's OWN trained world -> the SESSION's real ingested
+                #     filenames by track index (the same T0,T1… order the Source
+                #     Library shows);
+                #   * an OPENED shared set -> the names its OWNER opted to publish
+                #     with it at share time (the catalog snapshot).
+                # Everything else (demo / no shared names) keeps the honest generic
+                # label — never an invented name.
                 names = dict(info.get("track_names", {}))
                 if session._is_trained and session.opened_set_id is None:
-                    audio = [f for f in session.session_files()
-                             if os.path.splitext(f)[1].lower() in _AUDIO_EXTS]
+                    audio = session.ingested_track_names()
                     for tid_str in list(names.keys()):
                         i = int(tid_str)
                         if 0 <= i < len(audio):
                             names[tid_str] = audio[i]
+                elif session.opened_set_id is not None:
+                    entry = self.hub.catalog.get(session.opened_set_id)
+                    shared = entry.track_names if entry is not None else {}
+                    for tid_str in list(names.keys()):
+                        n = shared.get(int(tid_str))
+                        if n:
+                            names[tid_str] = n
                 info["track_names"] = names
             self._json(200, info)
             return
@@ -767,6 +872,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     # --- POST ---------------------------------------------------------------
     def do_POST(self):  # noqa: N802
+        self._mint = None            # per-request (handlers persist across keep-alive)
         path = self.path.split("?", 1)[0].rstrip("/")
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length else b""
@@ -793,8 +899,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "token": token, "keyed": True}, cookie=token)
             return
 
-        # Resolve the session (never None on the serving path: keyless -> default;
-        # keyed -> owner-by-token or the shared visitor session).
+        # Resolve the session (never None on the serving path: keyless-local ->
+        # default; keyed -> owner-by-token; otherwise the visitor's own anon session).
         session = self._session()
 
         # OWNER GATE (OPEN_ENDS #16): the corpus surfaces (ingest/train/reset/share)

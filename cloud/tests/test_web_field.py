@@ -103,7 +103,7 @@ def _assigns_settled(body: str) -> bool:
 # world section), plus any direct assignment to a store (caught by _assigns_settled).
 BRIGHTNESS_WRITERS = {"fieldApplySettled", "fieldApplyStatic"}
 INPUT_HANDLERS = {"fieldOnWheel", "fieldOnMove", "fieldZoom", "fieldOnClick",
-                  "fieldTouchStart", "fieldTouchMove"}
+                  "fieldTouchStart", "fieldTouchMove", "fieldTouchEnd"}
 
 
 def _input_handler_violations(src: str):
@@ -167,6 +167,74 @@ def test_field_inv_wheel_reaches_the_steer_post_not_the_fill():
                 stack.append(c)
     assert "sendSteer" in reach, "the wheel handler must route bias to /api/steer"
     assert not (reach & BRIGHTNESS_WRITERS), "the wheel handler must not write any fill"
+
+
+def _reach(src, start):
+    """All names reachable (transitively, same-source) from function `start`."""
+    funcs = _js_functions(src)
+    seen, stack, reach = set(), [start], set()
+    while stack:
+        fn = stack.pop()
+        if fn in seen:
+            continue
+        seen.add(fn)
+        for c in _called_names(funcs.get(fn, "")):
+            reach.add(c)
+            if c in funcs:
+                stack.append(c)
+    return reach
+
+
+def test_field_inv_touch_drag_reaches_the_steer_post_not_the_fill():
+    """MOBILE BIAS (one-finger vertical drag): the touch-move handler must reach the
+    SAME steer POST the wheel uses (fieldAddBias -> sendSteer) and must not reach any
+    telemetry applier — the touch lane is the wheel lane, not a second channel."""
+    src = _inline_js()
+    reach = _reach(src, "fieldTouchMove")
+    assert "fieldAddBias" in reach, "touch drag must use the wheel's bias entry"
+    assert "sendSteer" in reach, "touch drag must route bias to /api/steer"
+    assert not (reach & BRIGHTNESS_WRITERS), "touch drag must not write any fill"
+
+
+def test_touch_tap_never_zooms_in_and_synthetic_click_is_suppressed():
+    """MOBILE TAP: touchend never drills IN (fieldZoomInto unreachable — a tap shows
+    the tooltip only); the header tap-out affordance stays; and the click handler
+    suppresses the touch-synthesized click so a tap cannot zoom through it."""
+    src = _inline_js()
+    funcs = _js_functions(src)
+    reach = _reach(src, "fieldTouchEnd")
+    assert "fieldZoomInto" not in reach, "a tap must NEVER zoom into a square"
+    assert "fieldZoomOut" in reach, "the header tap = zoom-out affordance must stay"
+    assert "sendSteer" not in reach and "fieldAddBias" not in reach, \
+        "a tap must not emit anything"
+    assert "fieldLastTouchEnd" in funcs.get("fieldOnClick", ""), \
+        "fieldOnClick must suppress the synthetic click after a touch"
+    assert "fieldLastTouchEnd" in funcs.get("fieldTouchEnd", ""), \
+        "fieldTouchEnd must arm the synthetic-click suppressor"
+
+
+@pytest.mark.skipif(_NODE is None, reason="node not available")
+def test_touch_drag_steps_pure():
+    """~30px of vertical drag = one wheel-notch-equivalent bias step, through the
+    SAME fieldAddBias clamp (saturating, never a mute)."""
+    driver = _pure_logic_block() + """
+    var a = fieldDragSteps(65);           // 2 steps + 5px remainder
+    var b = fieldDragSteps(-35);          // -1 step + -5px remainder
+    var c = fieldDragSteps(29);           // sub-threshold: no step yet
+    if(a.steps !== 2 || Math.abs(a.rem - 5) > 1e-9){ console.log('FAIL a'); process.exit(1); }
+    if(b.steps !== -1 || Math.abs(b.rem + 5) > 1e-9){ console.log('FAIL b'); process.exit(1); }
+    if(c.steps !== 0 || c.rem !== 29){ console.log('FAIL c'); process.exit(1); }
+    // a 90px upward drag consumed in 15px increments = exactly 3 bias steps
+    var bias = {}, k = JSON.stringify(['role', 0]), acc = 0;
+    for(var i=0;i<6;i++){
+      acc += 15;
+      var s = fieldDragSteps(acc); acc = s.rem;
+      if(s.steps) fieldAddBias(bias, k, s.steps * FIELD_BIAS_STEP);
+    }
+    if(Math.abs(bias[k] - 3*FIELD_BIAS_STEP) > 1e-9){ console.log('FAIL acc ' + bias[k]); process.exit(1); }
+    console.log('OK');
+    """
+    assert _run_node(driver) == "OK"
 
 
 _ECHO_SRC = """
@@ -552,3 +620,49 @@ def test_legend_trunc_middle_keeps_head_and_tail():
     assert "…" in long_out and len(long_out) <= 20
     assert long_out.startswith("a_very") and long_out.endswith(".wav")
     assert short_out == "short.wav"            # under the limit -> untouched
+
+
+# --- honest track-family colouring (role/unit squares vs the legend code) ----
+
+def test_role_hue_inventor_is_gone():
+    # the old fieldRoleColor invented hues (i*47 % 360) that collided with OTHER
+    # tracks' legend colours — the operator misread a role square as another track.
+    assert "fieldRoleColor" not in _inline_js(), \
+        "fieldRoleColor (invented role hues) must be gone — family shades only"
+
+
+@pytest.mark.skipif(_NODE is None, reason="node not available")
+def test_role_shades_stay_in_the_parent_tracks_family():
+    driver = _pure_logic_block() + """
+    // drilled into track 3 (stack carries it): every role shade keeps the PARENT
+    // track's hue exactly — never a hue that belongs to another track.
+    if(fieldParentTrack([['track',3],['role',1]]) !== 3){ console.log('FAIL parent'); process.exit(1); }
+    if(fieldParentTrack([]) !== null){ console.log('FAIL root'); process.exit(1); }
+    if(fieldParentTrack([['role',2]]) !== null){ console.log('FAIL roleonly'); process.exit(1); }
+    var base = '#7CA8FF';                       // a track palette colour
+    var hue = Math.round(fieldHexToHsl(base).h);
+    var seen = {};
+    for(var i=0;i<6;i++){
+      var c = fieldFamilyShade(base, i);
+      var m = c.match(/^hsl\\((\\d+),/);
+      if(!m || parseInt(m[1],10) !== hue){ console.log('FAIL hue ' + c); process.exit(1); }
+      seen[c] = 1;                              // shades must be distinguishable
+    }
+    if(Object.keys(seen).length < 4){ console.log('FAIL distinct'); process.exit(1); }
+    console.log('OK');
+    """
+    assert _run_node(driver) == "OK"
+
+
+@pytest.mark.skipif(_NODE is None, reason="node not available")
+def test_degraded_role_view_is_neutral_grey_not_track_like():
+    driver = _pure_logic_block() + """
+    // no track parent (the role-grain-only / degraded field): a NEUTRAL grey ramp,
+    // zero saturation — colour never claims a track the payload didn't name.
+    for(var i=0;i<8;i++){
+      var c = fieldFamilyShade(null, i);
+      if(c.indexOf('hsl(0,0%') !== 0){ console.log('FAIL grey ' + c); process.exit(1); }
+    }
+    console.log('OK');
+    """
+    assert _run_node(driver) == "OK"

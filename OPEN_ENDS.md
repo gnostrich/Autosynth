@@ -274,6 +274,21 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
 - Cert for www.autosynth.fun: still in Railway's issuance queue (DNS verified
   perfect; recreated once already).
 
+## 20. Morning-after fix batch (2026-07-18, operator mobile-testing feedback)
+Shipped through builder→auditor (PASS-WITH-NOTES, notes fixed/recorded):
+mobile drag-to-bias + tap-never-zooms; role/unit colours in parent-track hue
+family (grey when degraded); dark-only (light mode + toggle removed);
+per-visitor anonymous sessions (the "your set on my Play page" leak); shared
+sets carry the owner's real track names to openers; no-store cache headers
+(stale demo page on phones); latent NameError in the degraded-field path.
+Auditor notes recorded: anon-dir eviction cleanup (fixed + tested); R1
+amendment wording widened on the record to the operator's #16 front door;
+cookie flags (HttpOnly/Secure) parked for the hardening pass (#17).
+QUEUED NEXT (operator, this morning): (a) mobile fullscreen-landscape snap for
+the field (wall: iPhone Safari allows neither element-fullscreen nor
+orientation lock — honest max is fill-the-viewport + use rotation);
+(b) a very simple ONE-TIME tutorial overlay on first Play.
+
 ## 19. Stream pacing bug — found BY the audio-capture test (2026-07-18 morning)
 The silent play-video complaint led to a real find: capturing /api/stream with
 an unthrottled listener measured the produce loop free-running at **10.8x

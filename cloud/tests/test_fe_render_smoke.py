@@ -161,6 +161,17 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
             assert paths >= 3, f"logo mark should be the 3-stroke glyph, got {paths} paths"
             assert page.query_selector("#ambient") is not None, "ambient prism canvas missing"
 
+            # (8) DARK ONLY (operator, 2026-07-18): the theme toggle is GONE, the
+            # page renders dark regardless of OS scheme, and the ambient canvas is
+            # actually displayed (no longer theme-gated).
+            assert page.query_selector("#themeBtn") is None, "theme toggle must be gone"
+            body_bg = page.eval_on_selector(
+                "body", "el => getComputedStyle(el).backgroundColor")
+            assert body_bg == "rgb(5, 6, 11)", f"body must be obsidian dark: {body_bg}"
+            amb_disp = page.eval_on_selector(
+                "#ambient", "el => getComputedStyle(el).display")
+            assert amb_disp == "block", f"ambient must always run, got {amb_disp}"
+
             # the field canvas is actually laid out (non-zero box) — really rendered.
             box = page.eval_on_selector("#fieldCanvas",
                                         "el => { const r = el.getBoundingClientRect();"

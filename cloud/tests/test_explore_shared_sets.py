@@ -27,6 +27,11 @@ class _FakePlayer:
     def stop(self): pass
     def set_region(self, r): self.regions.append(r)
     def world_info(self): return {"region_armed": True, "disarmed": []}
+    def static_field(self):
+        # the bridge's honest generics for a 2-track trained world (the /api/world
+        # name override rewrites these from session / share-catalog metadata).
+        return {"profiles": {}, "unit_pools": {},
+                "track_names": {0: "track 0", 1: "track 1"}}
 
 
 @pytest.fixture
@@ -171,3 +176,88 @@ def test_share_explore_path_imports_no_decoder():
            if m in banned or any(m == b or m.startswith(b + ".") for b in banned)
            or m.rsplit(".", 1)[-1] in banned_leaf}
     assert not hit, f"share/explore path imports a decoder: {hit}"
+
+
+# ---------------- honest shared track names (owner opt-in attribution) -------
+
+def test_share_snapshots_the_real_ingested_track_names(hub, tmp_path):
+    owner = _owner_with_trained_set(hub, tmp_path)
+    # the owner's real corpus: index i = track id i (the train-seam sort order).
+    Path(owner.session_dir, "bass_take2.wav").write_bytes(b"a")
+    Path(owner.session_dir, "kick_loop.mp3").write_bytes(b"b")
+    hub.share(owner, True)
+    entry = hub.catalog[owner.set_id]
+    assert entry.track_names == {0: "bass_take2.wav", 1: "kick_loop.mp3"}
+    # the PUBLIC catalog card stays metadata-only (names travel via /api/world to
+    # sessions that OPENED the set, not via the Explore listing).
+    assert "track_names" not in hub.explore(owner)[0]
+
+
+def test_share_with_no_ingested_audio_keeps_generic_labels(hub, tmp_path):
+    owner = _owner_with_trained_set(hub, tmp_path)     # no audio files in the dir
+    hub.share(owner, True)
+    assert hub.catalog[owner.set_id].track_names == {}, \
+        "no real names -> no names (never invented)"
+
+
+def test_opened_shared_set_serves_owner_published_names_end_to_end(tmp_path, monkeypatch):
+    """End-to-end over HTTP: the owner shares a set (with real ingested names); an
+    ANONYMOUS visitor (cookie-minted session) opens it and /api/world returns those
+    names — the legend shows honest attribution, not 'track N'."""
+    import json
+    import threading
+    import urllib.request
+    from cloud.companion.app import serve
+
+    monkeypatch.setattr(app, "_build_stream_player",
+                        lambda path, seed, is_trained: _FakePlayer(path, seed, is_trained))
+    monkeypatch.setenv("ETS_ACCESS_KEYS", "k1")
+    httpd = serve(cloud_url="inproc", host="127.0.0.1", port=0,
+                  session_dir=str(tmp_path / "sess"), public=True)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    url = "http://127.0.0.1:%d" % httpd.server_address[1]
+
+    def req(path, method="GET", cookie=None, token=None, body=None):
+        headers = {}
+        data = json.dumps(body).encode() if body is not None else None
+        if cookie:
+            headers["Cookie"] = "ets_session=" + cookie
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        r = urllib.request.Request(url + path, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(r, timeout=30) as resp:
+            sc = dict(resp.headers).get("Set-Cookie", "")
+            minted = sc.split("ets_session=", 1)[1].split(";", 1)[0] \
+                if "ets_session=" in sc else None
+            return resp.status, json.loads(resp.read() or b"{}"), minted
+
+    try:
+        # OWNER: authenticate, fake a trained 2-track corpus, share it over the wire.
+        _, auth, _ = req("/api/auth", method="POST", body={"key": "k1"})
+        tok = auth["token"]
+        owner = httpd.hub.sessions[tok]
+        tw = Path(owner.session_dir) / "trained.etsworld"
+        tw.write_bytes(b"world")
+        Path(owner.session_dir, "bass_take2.wav").write_bytes(b"a")
+        Path(owner.session_dir, "kick_loop.mp3").write_bytes(b"b")
+        owner._is_trained = True
+        owner.play_world = str(tw)
+        code, sh, _ = req("/api/share", method="POST", token=tok,
+                          body={"on": True, "name": "My Set"})
+        assert code == 200 and sh["ok"] is True
+
+        # ANONYMOUS visitor: cookie minted on first contact; open the shared set.
+        _, _, vtok = req("/api/status")
+        assert vtok
+        code, opened, _ = req("/api/open", method="POST", cookie=vtok,
+                              body={"set_id": sh["set_id"]})
+        assert code == 200 and opened["ok"] is True
+        # /api/world for the opener carries the owner's REAL published names.
+        _, w, _ = req("/api/world", cookie=vtok)
+        assert w["track_names"] == {"0": "bass_take2.wav", "1": "kick_loop.mp3"}, w
+
+        # a fresh anonymous visitor who did NOT open it sees nothing of the set.
+        _, w2, _ = req("/api/world")
+        assert w2.get("track_names") is None and w2["loaded"] is False
+    finally:
+        httpd.shutdown(); httpd.server_close()

@@ -12,14 +12,19 @@ breaking one, STOP and surface it — never silently.
   *R1 amendment — OPT-IN SHARED SETS, demo phase (operator-signed 2026-07-17;
   recorded decision + scope in `cloud/PREREG-explore-shared-sets.md`).* On the
   ACCESS-KEYED hosted deploy, a user may explicitly SHARE a set they trained;
-  the server then renders that set for other keyed users (audible + steerable
-  via the Explore page). This narrowly relaxes the "no server-side audio
-  library" clause for EXPLICITLY SHARED sets only: sharing is opt-in per set
-  (default OFF), unshare/delete actually revokes (auditor-verified EXP-B), and
-  a shared set is always ATTRIBUTED ("by <owner>" / "shared set") — the second
-  clause, never passing someone else's audio off as the user's own, stays
-  fully in force. Keyless/public visitors still get only the self-contained
-  demo (R6 unchanged). The hardened privacy forks (owner-online rendering /
+  the server then renders that set for other users (audible + steerable via
+  the Explore page). *Audience widened on the record 2026-07-18 to match the
+  operator's front-door decision (OPEN_ENDS #16, 2026-07-17/18: keyless
+  visitors land on an empty Play and may open shared sets from Explore):
+  "other users" includes KEYLESS anonymous visitors, each in their own
+  per-visitor session. Attribution travels with the set — including the
+  owner's published track names — only to sessions that OPENED it.* This
+  narrowly relaxes the "no server-side audio library" clause for EXPLICITLY
+  SHARED sets only: sharing is opt-in per set (default OFF), unshare/delete
+  actually revokes (auditor-verified EXP-B), and a shared set is always
+  ATTRIBUTED ("by <owner>" / "shared set") — the second clause, never passing
+  someone else's audio off as the user's own, stays fully in force. The
+  founding demo is not surfaced on the hosted site (operator, #16(c)). The hardened privacy forks (owner-online rendering /
   self-contained-only) recorded in the prereg remain the path for any
   post-demo tightening.
 
