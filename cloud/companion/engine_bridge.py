@@ -493,6 +493,9 @@ class StreamPlayer:
             if cached is not None:
                 self._eigen = cached                 # honest measured result, pending=False
                 self._eigen_args = None              # nothing to compute
+        # MODES-BY-TEMPERATURE table (PREREG-temperature-sweep): pre-measured modes at a
+        # grid of T_s, read from a sidecar so the pad can show what exists at each TEMP.
+        self._sweep = self._load_sweep_cache()
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -567,6 +570,22 @@ class StreamPlayer:
             os.replace(tmp, path)                        # atomic
         except OSError:
             logger.warning("could not persist eigen cache at %s", path)
+
+    def _sweep_cache_path(self) -> str:
+        return str(self.world_path) + ".sweep.json"
+
+    def _load_sweep_cache(self):
+        """The modes-by-temperature table for this world, or None. A list of
+        {T_s, k, modes, eigen_floor} rows. Read-only; never fabricated (written only
+        from a real temperature_sweep run)."""
+        try:
+            with open(self._sweep_cache_path(), "r") as f:
+                blob = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if isinstance(blob, dict) and isinstance(blob.get("sweep"), list):
+            return blob
+        return None
 
     def _eigen_worker(self, sigma, eigen_n_seed: int, eigen_n_bar: int) -> None:
         """Runs the FULL authoritative eigenmode ensemble off-thread, then lands
@@ -668,6 +687,13 @@ class StreamPlayer:
                 "k": self._eigen["k"], "basis": self._eigen["basis"],
                 "observable_names": self._eigen["observable_names"],
                 "eigen_pending": bool(self._eigen.get("pending", False)),
+                # MODES-BY-TEMPERATURE (PREREG-temperature-sweep + addendum): a table of the
+                # object's eigenmodes measured across sampler temperatures T_s
+                # [{T_s, k, modes, eigen_floor}, ...]. The measurement is off-playback and
+                # read-only w.r.t. audio/settlement; the FE USES it to reselect the pad's
+                # steering basis per-T_s (a faithful steering change — see the FE + the prereg
+                # addendum, NOT display-only). None until a sweep is cached.
+                "modes_by_temperature": (self._sweep.get("sweep") if getattr(self, "_sweep", None) else None),
                 # SIGMA_PHI (OPEN_ENDS #22/23 tether amendment): the world's own
                 # MEASURED calibration scale per direction lane — the "lane's own
                 # calibration gain" the living-mark/tether law (T-2) reads for the

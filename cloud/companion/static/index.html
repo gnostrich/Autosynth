@@ -1371,6 +1371,20 @@
         // RADIAL EIGENPANEL (OPEN_ENDS #23): self-size to the object's OWN
         // measured control basis (world_info.modes/k, computed once at load).
         applyRadialModes(w);
+        // MODES-BY-TEMPERATURE (PREREG-temperature-sweep + addendum): the pre-measured table
+        // of the object's eigenmodes across sampler temperatures. As the operator heats the
+        // TEMP throttle the pad reselects its control basis to the modes measured at that
+        // T_s (petals freeze in/out) — a faithful steering change, since the engine settles
+        // at T_s. We snapshot the FULL authoritative boot ensemble here so the DEFAULT
+        // operating point (T_s=1.0) always restores to it — never a sweep row. Null until a
+        // sweep is uploaded/committed for this world (then the pad is unchanged from before).
+        radialModesByT = (w.modes_by_temperature && w.modes_by_temperature.length) ? w.modes_by_temperature : null;
+        radialAuthoritative = {
+          modes: (w.modes || []),
+          k: (typeof w.k === "number") ? w.k : ((w.modes && w.modes.length) || 0),
+          eigen_floor: (typeof w.eigen_floor === "number") ? w.eigen_floor : 0
+        };
+        radialLastTempIdx = -1;   // authoritative basis is what applyRadialModes(w) just installed
         // TRAIN TRACKLIST (item 3): the honest per-track display names for this
         // world's constituent tracks (real names for the owner's own trained
         // world; "track N"/"demo track N" placeholders elsewhere — bridge
@@ -1929,6 +1943,10 @@
     if(L.chaos){
       var Ts = scalarTemp(L.handle);
       el.val.textContent = Ts.toFixed(2);   // T_s magnitude
+      // MODES-BY-TEMPERATURE: the sampler is now settling at this T_s, so reselect the pad's
+      // control basis to the modes measured there — petals freeze in/out as real physics.
+      // Steering change (see applyRadialModesForTemp); no-op unless a sweep table is loaded.
+      applyRadialModesForTemp(Ts);
       // TEMP color law (C amendment): blue -> red over the lane's OWN declared
       // range (SCALAR_T_LO..SCALAR_T_HI) — no separate hand-set constant.
       el.handle.style.background = radialRgbToCss(meterTempColor(Ts));
@@ -2226,6 +2244,20 @@
   /* ===== END RADIAL PURE LOGIC ===== */
 
   var radialModes = [], radialK = 0, radialFloor = 0, radialMaxAbs = 0;
+  // MODES-BY-TEMPERATURE (PREREG-temperature-sweep + addendum): pre-measured table of the
+  // object's eigenmodes at a grid of sampler temperatures T_s. This is a STEERING change,
+  // not decoration: the pad's control basis IS `radialModes`/`radialK`, so reselecting it
+  // per-T_s changes what the puck steers. That is faithful physics — the engine settles at
+  // T_s, so the modes measured at T_s ARE the real steerable directions at that operating
+  // point. At the DEFAULT operating point (T_s=1.0) we always use the FULL authoritative
+  // boot ensemble (radialAuthoritative), never a sweep row — so load-time and TEMP-default
+  // agree exactly and there is no silent downgrade. Off-default, we use the sweep row (the
+  // best available measurement at that T_s). radialLastTempIdx = -1 means "authoritative
+  // installed"; >=0 indexes the sweep row currently installed.
+  var radialModesByT = null, radialLastTempIdx = -1, radialAuthoritative = null;
+  var RADIAL_DEFAULT_TS = 1.0;   // engine's neutral sampler temperature (CHAOS default)
+  var RADIAL_TEMP_TOL = 0.05;    // dead-band around default: inside it the pad keeps the
+                                 // authoritative ensemble regardless of what rows the grid has
   // TETHER T-2 (radial): pad/strip state now tracks lastX/lastY/lastV — the raw
   // POINTER position at the previous tick — so drag is a DELTA (never an
   // absolute jump), letting the mark-ward pull (yieldRate) genuinely compose
@@ -2490,6 +2522,51 @@
       return;
     }
     buildRadialOnce();
+  }
+
+  // MODES-BY-TEMPERATURE: reselect the pad's control basis to the object's REAL measured
+  // eigenmodes at the current sampler temperature T_s. This is a steering change (radialModes
+  // IS the /api/steer basis), faithful because the engine settles at T_s — the modes measured
+  // there are the genuine steerable directions at that operating point. A lookup into the
+  // pre-measured sweep table, never a live re-solve. Two rules keep it honest:
+  //   (1) at the DEFAULT operating point (T_s=1.0) we ALWAYS restore the full authoritative
+  //       boot ensemble — never a sweep row — so load-time and TEMP-default agree exactly and
+  //       the pad is never silently downgraded from the authoritative basis;
+  //   (2) off-default we install the sweep row for the nearest measured T_s (the best
+  //       available measurement there). radialLastTempIdx caches the installed basis so an
+  //       unchanged operating point does no work. No-ops entirely when no sweep is loaded.
+  function applyRadialModesForTemp(Ts){
+    if(!radialModesByT || !radialModesByT.length) return;
+    function restoreAuthoritative(){
+      if(radialLastTempIdx === -1) return;          // authoritative already installed
+      radialLastTempIdx = -1;
+      if(radialAuthoritative) applyRadialModes({
+        modes: radialAuthoritative.modes, k: radialAuthoritative.k,
+        eigen_floor: radialAuthoritative.eigen_floor, eigen_pending: false });
+    }
+    // (1) DEFAULT operating point → full authoritative ensemble, never a sweep row. Keyed on
+    //     Ts ITSELF (a property of the operating point), so the guarantee "at default ⇒
+    //     authoritative basis" holds even if the sweep grid carries no exact T_s=1.0 row —
+    //     it does NOT depend on which rows happen to be tabulated.
+    if(Math.abs(Ts - RADIAL_DEFAULT_TS) < RADIAL_TEMP_TOL){ restoreAuthoritative(); return; }
+    // (2) off-default → the measured sweep row for the nearest T_s. If that nearest measured
+    //     point IS the default one, prefer the full-fidelity authoritative ensemble (same
+    //     operating point) rather than a downgraded sweep row.
+    var bestI = 0, bestD = Infinity;
+    for(var i = 0; i < radialModesByT.length; i++){
+      var d = Math.abs((+radialModesByT[i].T_s) - Ts);
+      if(d < bestD){ bestD = d; bestI = i; }
+    }
+    if(Math.abs((+radialModesByT[bestI].T_s) - RADIAL_DEFAULT_TS) < 1e-6){ restoreAuthoritative(); return; }
+    if(bestI === radialLastTempIdx) return;         // same measured row → nothing to rebuild
+    radialLastTempIdx = bestI;
+    var row = radialModesByT[bestI];
+    applyRadialModes({
+      modes: row.modes || [],
+      k: (typeof row.k === "number") ? row.k : (row.modes ? row.modes.length : 0),
+      eigen_floor: (typeof row.eigen_floor === "number") ? row.eigen_floor : 0,
+      eigen_pending: false
+    });
   }
   if(radialWordToggle) radialWordToggle.addEventListener("change", radialLabelBadges);
 

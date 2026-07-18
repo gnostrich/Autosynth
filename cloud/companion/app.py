@@ -1231,6 +1231,42 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, self.hub.admin_unshare(sid))
             return
 
+        # /api/admin/upload_sweep — inject a pre-measured modes-by-temperature table for a
+        # set (writes world_path + ".sweep.json"). Key-gated; the table is a real
+        # temperature_sweep result. Lets the pad show modes-vs-TEMP without the slow
+        # on-container sweep. Read-only w.r.t. audio/settlement.
+        if path == "/api/admin/upload_sweep":
+            key = ""; sid = None; table = None
+            if body:
+                try:
+                    j = json.loads(body.decode()); key = str(j.get("key", "")); sid = j.get("set_id")
+                    table = j.get("table")
+                except Exception:
+                    pass
+            if not self.hub.access_keys or key not in self.hub.access_keys:
+                self._json(401, {"ok": False, "error": "invalid access key"}); return
+            entry = self.hub.catalog.get(sid) if sid else None
+            if entry is None:
+                self._json(404, {"ok": False, "error": "unknown set_id"}); return
+            if not isinstance(table, dict) or not isinstance(table.get("sweep"), list):
+                self._json(400, {"ok": False, "error": "table must be {sweep:[...]}"}); return
+            try:
+                path_out = str(entry.world_path) + ".sweep.json"
+                tmp = path_out + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(table, f)
+                os.replace(tmp, path_out)
+                # refresh any resident player so world_info picks it up immediately.
+                try:
+                    p = self.hub.registry.trained_player(entry.world_path, getattr(self.hub, "seed", 0))
+                    p._sweep = p._load_sweep_cache()
+                except Exception:
+                    pass
+                self._json(200, {"ok": True, "rows": len(table["sweep"]), "set_id": sid})
+            except OSError as exc:
+                self._json(500, {"ok": False, "error": str(exc)})
+            return
+
         # /api/admin/eigen_spectrum — EXPERIMENTAL diagnostic (prereg:
         # papers/PREREG-natural-eigen-cutoff.md). Key-gated. Runs the ADDITIVE
         # experimental module (cloud.companion.eigen_experimental.diagnose) on a set's

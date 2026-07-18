@@ -52,3 +52,57 @@ representative; no hidden temperature-dependent mode. Report and stop.
   measurement/render axis, operator's call.
 - H0 (flat): report the flat curve; the single-temperature k is the honest answer, no
   hidden thermal mode. Stop.
+
+---
+
+## ADDENDUM — exposing temperature as a PLAYABLE steering axis (operator's call, taken)
+
+**Status:** the H1 success criterion above explicitly deferred "exposing temperature as a
+measurement/render axis" to the operator. The operator took that call: *"just fix the build
+such that the modes show up as we change temperature … so i can play"* / *"yes do this
+upgrade."* This addendum records the decision and its faithfulness design. **This is a
+STEERING/RENDER change, not read-only** — it is scoped here so it is not mislabeled.
+
+### H1 result (demo, full 24×32 ensemble, per-T_s re-derived floor)
+`k(T_s)`: 0.25→**1**, 0.5→**1**, 1.0→**2**, 1.5→**2**, 2.0→**3**, 3.0→**3**, 4.0→**3**.
+H1 CONFIRMED: modes freeze IN as `T_s` rises (a 2nd steerable mode appears at the default
+`T_s=1.0`, a 3rd by `T_s=2.0`). The trained sets' curves are reported alongside when their
+sweeps land.
+
+### What the exposure does
+The Play pad's control basis IS `radialModes`/`radialK` (the `/api/steer` force vector is
+built from the surviving modes' eigenvector compositions). Exposing temperature as a playable
+axis means: **as the TEMP throttle moves, the pad reselects its control basis to the modes
+measured at that `T_s`.** Petals appear/vanish as the operator heats/cools, and the newly-
+appeared modes become steerable.
+
+### Why this is faithful (not a second hidden channel)
+The engine genuinely settles at `T_s` (the writer samples `p(a) ∝ exp(−F/T_s + Σλφ)`,
+`ξ ~ N(0, T_s·H⁻¹)`). The eigenmodes of the response kernel measured at `T_s` ARE the real
+steerable directions of the object at that operating point. So TEMP does ONE physical thing
+— it sets the sampler's operating temperature — and "more modes become steerable" is the
+faithful *consequence* of that one thing, not a separate undeclared authority. The force
+vector still projects only into the EXISTING sanctioned steer lanes
+(continuity/novelty/density/region); no new control channel to the engine is created.
+
+### Fidelity guards (address the authoritative-vs-sweep split)
+1. **Default operating point uses the FULL authoritative ensemble, never a sweep row.** At
+   `T_s=1.0` (the neutral default, and what the boot ensemble measures) the pad restores the
+   authoritative boot modes (`radialAuthoritative`), so load-time and TEMP-default agree
+   exactly and the pad is never silently downgraded to a sweep-measured row.
+2. **Off-default uses the sweep row for the nearest measured `T_s`** — the best available
+   measurement at that operating point (same estimator, same n_seed/n_bar; there is no
+   separate authoritative ensemble at non-default temperatures).
+3. **Clean return path:** returning the throttle to default reinstalls the authoritative
+   basis; there is no latch-out.
+
+### Data provenance / walls (unchanged from the body)
+- Every mode shown is a REAL measured eigenvector/eigenvalue that survives the double floor
+  (`|λ|>floor AND |λ|−2·SE>floor`) at that `T_s`; nothing is fabricated. A degenerate corpus
+  that resolves no 2nd mode at any `T_s` shows a flat pad honestly.
+- The sweep table is measured off-playback (minutes on the container) and cached in a sidecar
+  (`world_path + ".sweep.json"`); the committed demo carries its own real sweep sidecar so a
+  fresh clone shows the axis (R5 intact). `/api/admin/upload_sweep` (key-gated) injects a
+  set's table without a live re-solve. Sampler / F / world / settlement remain UNTOUCHED —
+  the change is purely which measured basis the pad steers, at the operator's chosen operating
+  temperature.
