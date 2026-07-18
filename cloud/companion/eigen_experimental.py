@@ -99,7 +99,25 @@ def covariance_read(world, sigma, M, n_seed=24, n_bar=32, rng_seed=20260718):
     }
 
 
-def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed):
+def _run_mean_at_T(world, sigma, u, seed, n_bar, M, T_s):
+    """Per-seed mean Phi at a SET temperature T_s (frozen tilt -> dataclasses.replace)."""
+    import dataclasses
+    from ets.writer.tilt import layer0
+    from ets.writer.stream import StreamWriter
+    tilt = dataclasses.replace(layer0(u, sigma), T_s=float(T_s))
+    w = StreamWriter(world, seed=int(seed))
+    acc = np.zeros(M + 3, dtype=np.float64)
+    for _ in range(n_bar):
+        acc += _eigen_phi_vec(w.write_bar(tilt=tilt).phi, M)
+    return acc / n_bar
+
+
+def _node_means_at_T(world, sigma, builder, M, seed0, n_seed, n_bar, T_s):
+    return np.stack([_run_mean_at_T(world, sigma, builder(), seed0 + i, n_bar, M, T_s)
+                     for i in range(n_seed)])
+
+
+def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed, T_s=None):
     """Reproduce the baseline Ksym + null draws + bootstrap SE, but keep every
     intermediate (full spectrum, floor, se). Mirrors compute_eigenmodes exactly."""
     D = M + 3
@@ -115,10 +133,14 @@ def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed):
     builders.append(((lambda: _eigen_lane_vector(M, cont=+h)),    (lambda: _eigen_lane_vector(M, cont=-h))))
     builders.append(((lambda: _eigen_lane_vector(M, novelty=+h)), (lambda: _eigen_lane_vector(M, novelty=-h))))
 
+    def _nm(builder, seed0):
+        if T_s is None:
+            return _eigen_node_means(world, sigma, builder, M, seed0, n_seed, n_bar)
+        return _node_means_at_T(world, sigma, builder, M, seed0, n_seed, n_bar, T_s)
     R = np.zeros((D, D)); node_data = []
     for j, (up, um) in enumerate(builders):
-        mp = _eigen_node_means(world, sigma, up, M, 70000 + j * 1000, n_seed, n_bar)
-        mm = _eigen_node_means(world, sigma, um, M, 70000 + j * 1000 + 500, n_seed, n_bar)
+        mp = _nm(up, 70000 + j * 1000)
+        mm = _nm(um, 70000 + j * 1000 + 500)
         node_data.append((mp, mm)); R[:, j] = (mp.mean(0) - mm.mean(0)) / (2.0 * h)
 
     def _ksym(Rmat):
@@ -151,6 +173,28 @@ def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed):
     # kernel is already whitened by -> a mode of |lambda|~1 is "one sigma of response").
     thermal = float(np.median(sig_safe))
     return names, w_eig, se, floor, sig_safe, thermal
+
+
+def temperature_sweep(world, sigma, M, T_grid, n_seed=24, n_bar=32, rng_seed=20260718):
+    """(1) PREREG-temperature-sweep. Measure k and the mode spectrum at each T_s in the
+    grid, re-deriving the floor at that temperature (floors-first). The response kernel
+    (protected baseline estimator) is unchanged; only the writer temperature is set.
+    A mode crossing the floor as T_s moves is the H1 signal (a mode freezing in/out)."""
+    if sigma is None or int(M) <= 0:
+        return {"error": "no sigma / M<=0"}
+    M = int(M); rows = []
+    for T in T_grid:
+        _n, w, se, floor, sig_safe, thermal = _build_kernel(
+            world, sigma, M, n_seed, n_bar, _EIGEN_H, rng_seed, T_s=float(T))
+        absw = np.abs(w)
+        k = int(np.sum([(absw[r] > floor) and (absw[r] - 2.0 * se[r] > floor)
+                        for r in range(len(w))]))
+        rows.append({"T_s": round(float(T), 4), "k": k, "floor": round(float(floor), 4),
+                     "spectrum_abs": [round(float(x), 4) for x in absw],
+                     "lambda2_over_floor": (round(float(absw[1] / floor), 3)
+                                            if len(w) > 1 and floor > 0 else None)})
+    return {"M": M, "n_seed": n_seed, "n_bar": n_bar,
+            "observable_names": _eigen_obs_names(M), "sweep": rows}
 
 
 def diagnose(world, sigma, M, n_seed=24, n_bar=32, h=_EIGEN_H, rng_seed=20260718):
