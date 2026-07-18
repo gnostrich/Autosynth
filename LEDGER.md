@@ -1045,3 +1045,11 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `8a22628`
 - `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/ui-v6/tests/harness/test_stage1_acceptance.py (2026-07-18T10:24:18+00:00)
+
+### at `15fa073`
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/release-manifest.json (2026-07-18T10:25:54+00:00)
+- `Write` .claude/worktrees/agent-a515847f2e1b619d4/papers/archive/paper1-theorem-D-synth-grammar-ARCHIVED.md (2026-07-18T10:26:11+00:00)
+- `Edit` .claude/worktrees/agent-a515847f2e1b619d4/papers/paper1-typed-control-calculus.md (2026-07-18T10:26:23+00:00)
+- `Write` .claude/worktrees/agent-a515847f2e1b619d4/papers/archive/paper2-synth-grammar-reveal-ARCHIVED.md (2026-07-18T10:26:44+00:00)
+- `Edit` .claude/worktrees/agent-a515847f2e1b619d4/papers/paper2-ets-instrument.md (2026-07-18T10:26:53+00:00)
+- `Write` .claude/worktrees/agent-a515847f2e1b619d4/papers/archive/README.md (2026-07-18T10:27:10+00:00)
