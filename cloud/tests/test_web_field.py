@@ -117,7 +117,15 @@ INPUT_HANDLERS = {"fieldOnWheel", "fieldOnMove", "fieldZoom", "fieldOnClick",
                   # sanctioned scalar force path (sendSteerNow → sendSteer, the
                   # widened WEB-FIELD-D contract) — never a brightness/telemetry
                   # store. WEB-FIELD-INV proves that below.
-                  "scalarOnDown", "scalarOnMove", "scalarOnUp"}
+                  "scalarOnDown", "scalarOnMove", "scalarOnUp",
+                  # the RADIAL EIGENPANEL drag handlers (OPEN_ENDS #23; the
+                  # object's own control basis): the pad puck and the extra
+                  # lean strips. They too reach the engine ONLY through
+                  # sendSteerNow → sendSteer (a basis rotation on top of the
+                  # same scalar/region datums, E4) — never a brightness/
+                  # telemetry store.
+                  "radialPadDown", "radialPadMove", "radialPadUp",
+                  "radialStripDown", "radialStripMove", "radialStripUp"}
 
 
 def _input_handler_violations(src: str):
