@@ -246,6 +246,28 @@ def test_scalar_release_path_has_no_timer_or_easing():
         "the release-follow must assign the mark directly (no incremental easing)"
 
 
+def test_temp_fluctuation_meter_is_telemetry_entropy_display_only():
+    """TEMP (T2) has no negotiation mark, but its CONJUGATE readout is the live
+    fluctuation magnitude = the normalized entropy of the settled role distribution
+    (the H that eps weights in F). Meter-class: telemetry-derived (recomputed from the
+    real roles vector every frame, never a constant), no easing/timer, and DISPLAY-ONLY
+    — it must never feed a control/steer path (delete it -> produced audio byte-identical)."""
+    js = _inline_js()
+    body = _js_functions(js).get("updateTempFluct", "")
+    assert body.strip(), "updateTempFluct missing"
+    # derived from the telemetry `roles` vector via entropy (Math.log), not a constant.
+    assert "roles" in body and "Math.log" in body, "must compute entropy from the roles vector"
+    assert ".fluct.textContent" in body, "must write the read-only readout element"
+    b = _strip_comments(body)
+    for tok in ("setTimeout", "setInterval", "requestAnimationFrame", "lerp", "tween", "easing"):
+        assert tok not in b, f"the meter must have no easing/timer ({tok!r})"
+    # DISPLAY-ONLY: the meter must not touch any control/steer/send path.
+    for tok in ("sendSteer", "/api/steer", "payload", "set_temperature", "scalarForce", "scalarPayload"):
+        assert tok not in b, f"the fluctuation meter must not feed the control path ({tok!r})"
+    # and it is driven from the telemetry frame, not a page-load constant.
+    assert "updateTempFluct(roles)" in js, "applyTelemetry must drive the meter from live roles"
+
+
 # --- SCALAR-CEIL : the ceiling note comes from telemetry, not a flag --------
 
 @pytest.mark.skipif(_NODE is None, reason="node not available")

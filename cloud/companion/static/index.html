@@ -413,6 +413,8 @@
   .slane.inert .slbl .desc{ color: var(--faint); }
   /* CHAOS (T2): a directionless magnitude lane — no machine mark drawn. */
   .slane.chaos .strk .smark{ display:none; }
+  .slane .sfluct{ color: var(--faint); font-size: var(--fs-tiny); letter-spacing:.02em;
+    margin-top: 4px; font-variant-numeric: tabular-nums; }   /* TEMP conjugate readout (T2) */
   /* at-ceiling honest note (real-or-absent; from live telemetry, not a flag). */
   .slane .snote{ grid-column: 2 / 4; font-size:10px; letter-spacing:.04em; color: var(--faint);
     margin-top:-4px; display:none; }
@@ -1843,13 +1845,19 @@
         '<div class="slbl"><div class="name">'+spec.name+'</div><div class="desc">'+spec.desc+'</div></div>'+
         '<div class="strk"><div class="base"></div><div class="smark"></div><div class="shandle"></div></div>'+
         '<div class="sval num">&mdash;</div>'+
-        '<div class="snote"></div>';
+        '<div class="snote"></div>'+
+        // TEMP (T2) has NO negotiation mark (a throttle, not a two-mark lane) — but
+        // its CONJUGATE readout is the live fluctuation magnitude (the settlement's
+        // role-distribution entropy, the H that eps weights in F). A read-only meter
+        // so the throttle is no longer steered blind. Telemetry-derived, no easing,
+        // display-only (delete -> produced audio byte-identical).
+        (spec.chaos ? '<div class="sfluct micro" title="live fluctuation magnitude — the settled role-distribution entropy (0=peaked, 1=maximally spread). The conjugate readout temperature drives. Display-only, telemetry-derived.">spread&nbsp;&mdash;</div>' : '');
       (scalarWraps[spec.group] || scalarWraps.legacy).appendChild(row);
       var strk = row.querySelector(".strk");
       if(spec.chaos) strk.classList.add("vert");     // TEMP: vertical throttle (native gesture)
       scalarEls[spec.key] = { row: row, strk: strk, mark: row.querySelector(".smark"),
         handle: row.querySelector(".shandle"), val: row.querySelector(".sval"),
-        note: row.querySelector(".snote") };
+        note: row.querySelector(".snote"), fluct: row.querySelector(".sfluct") };
       strk.addEventListener("pointerdown", scalarOnDown);
       strk.addEventListener("pointermove", scalarOnMove);
       strk.addEventListener("pointerup", scalarOnUp);
@@ -2727,11 +2735,27 @@
   }
   function closeTelemetry(){ if(es){ try{ es.close(); }catch(e){} es = null; } }
 
+  function updateTempFluct(roles){
+    // T2 CONJUGATE READOUT (meter-class, display-only). The live fluctuation
+    // magnitude temperature drives = the normalized entropy of the settled role
+    // distribution (the H that eps weights in F). A PURE reduction of THIS bar's
+    // telemetry roles — no easing, no smoothing, no stored state; a constant here
+    // would be a fabrication, so it is recomputed every frame from the real vector.
+    var el = scalarEls.temperature; if(!el || !el.fluct) return;
+    var n = roles.length, s = 0, i;
+    for(i=0;i<n;i++){ if(roles[i] > 0) s += roles[i]; }
+    if(s <= 0 || n <= 1){ el.fluct.textContent = "spread —"; return; }
+    var H = 0;
+    for(i=0;i<n;i++){ var p = (roles[i] > 0 ? roles[i] : 0) / s; if(p > 0) H -= p * Math.log(p); }
+    el.fluct.textContent = "spread " + (H / Math.log(n)).toFixed(2);   // normalized [0,1]
+  }
+
   function applyTelemetry(d){
     var roles = d && d.roles;
     if(roles && roles.length){
       applyNowPlaying(d);          // Train's now-playing row highlight (real telemetry)
       updateMeters(roles);
+      updateTempFluct(roles);      // TEMP's conjugate fluctuation-magnitude meter (T2)
     }
     updateLanes(d);               // read-only live φ statistics (real, per bar)
     updateScalarLanes(d);         // scalar lanes' MACHINE MARK + release-follow (real)
