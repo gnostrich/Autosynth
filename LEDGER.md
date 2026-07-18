@@ -1231,3 +1231,15 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `ba2974c`
 - `Edit` cloud/companion/app.py (2026-07-18T16:29:17+00:00)
+
+### at `7bbf0bf`
+- `Edit` cloud/companion/static/index.html (2026-07-18T17:46:59+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T17:47:06+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T17:47:21+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T17:47:36+00:00)
+- `Edit` cloud/tests/test_web_scalar_lanes.py (2026-07-18T17:49:19+00:00)
+
+### at `afc1333`
+- `Write` papers/PREREG-temperature-sweep.md (2026-07-18T17:50:18+00:00)
+- `Edit` cloud/companion/eigen_experimental.py (2026-07-18T17:51:48+00:00)
+- `Write` papers/findings/COV-vs-FD-divergence-2026-07-18.md (2026-07-18T17:54:31+00:00)

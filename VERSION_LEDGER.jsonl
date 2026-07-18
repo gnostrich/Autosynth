@@ -919,3 +919,11 @@
 {"head": "4a3e7b0", "path": "papers/PREREG-natural-eigen-cutoff.md", "tool": "Write", "ts": "2026-07-18T16:08:05+00:00"}
 {"head": "4a3e7b0", "path": "cloud/companion/eigen_experimental.py", "tool": "Write", "ts": "2026-07-18T16:08:56+00:00"}
 {"head": "ba2974c", "path": "cloud/companion/app.py", "tool": "Edit", "ts": "2026-07-18T16:29:17+00:00"}
+{"head": "7bbf0bf", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T17:46:59+00:00"}
+{"head": "7bbf0bf", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T17:47:06+00:00"}
+{"head": "7bbf0bf", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T17:47:21+00:00"}
+{"head": "7bbf0bf", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T17:47:36+00:00"}
+{"head": "7bbf0bf", "path": "cloud/tests/test_web_scalar_lanes.py", "tool": "Edit", "ts": "2026-07-18T17:49:19+00:00"}
+{"head": "afc1333", "path": "papers/PREREG-temperature-sweep.md", "tool": "Write", "ts": "2026-07-18T17:50:18+00:00"}
+{"head": "afc1333", "path": "cloud/companion/eigen_experimental.py", "tool": "Edit", "ts": "2026-07-18T17:51:48+00:00"}
+{"head": "afc1333", "path": "papers/findings/COV-vs-FD-divergence-2026-07-18.md", "tool": "Write", "ts": "2026-07-18T17:54:31+00:00"}
