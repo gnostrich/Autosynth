@@ -31,6 +31,7 @@ CS boundary (load-bearing, mirrors CS-1..CS-5):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import logging
@@ -133,6 +134,13 @@ class Companion:
         self.play_world = play_world
         self._is_trained = False       # True once the seam repoints to the user's world
         self._player = None            # lazy StreamPlayer (the LOCAL decoder)
+        # DURABLE STORE (OPEN_ENDS #17): when this session is a token-bearing keyed or
+        # anonymous session, the Hub tags it with the SHA-256 of its bearer token
+        # (never the raw token) so the on-volume store can persist/restore its pointer
+        # state by hash. The default keyless-local session has no token -> stays None
+        # and is never durably tracked (its files already persist in the base dir).
+        self._store_hash: Optional[str] = None
+        self._store_kind: Optional[str] = None
 
     def player(self):
         """Lazily construct/resolve the LOCAL render bridge. Import is deferred so the
@@ -467,6 +475,113 @@ class CatalogEntry:
                 "mine": bool(mine)}
 
 
+def _hash_token(token: str) -> str:
+    """SHA-256 of a bearer token. The durable store maps hash->session-dir; the raw
+    token (a bearer SECRET) is NEVER written to disk. An incoming bearer/cookie token
+    re-resolves its session on restore by recomputing this hash."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _valid_session_rec(rec) -> bool:
+    return isinstance(rec, dict) and isinstance(rec.get("dir"), str) and bool(rec.get("dir"))
+
+
+def _valid_catalog_rec(rec) -> bool:
+    return (isinstance(rec, dict) and isinstance(rec.get("set_id"), str)
+            and isinstance(rec.get("world_path"), str))
+
+
+class SessionStore:
+    """Durable pointer/metadata store on the session base dir (the Railway volume) —
+    OPEN_ENDS #17. Session FILES already persist on the volume; before this the
+    POINTERS (which token owns which dir, which set is shared, what a session opened)
+    lived only in memory and were wiped on every redeploy, forcing a full retrain +
+    re-share. This persists exactly those pointers + metadata, and NOTHING else.
+
+    Three JSON maps under ``<base>/_store``:
+      * keyed.json   : sha256(token) -> session record   (owner sessions)
+      * anon.json    : sha256(token) -> session record   (anon visitors, LRU order)
+      * catalog.json : set_id        -> shared-set record
+
+    A record is POINTERS + METADATA only (dir path, is_trained + trained world path,
+    opened_set_id, set_id/name, shared flag, last_receipt) — never audio, never a raw
+    token (R1/R5: the store holds no audio beyond what the session dir already holds).
+
+    Robustness: writes are ATOMIC (temp + os.replace, so a process killed mid-write
+    leaves the previous good file). A corrupt/unreadable file is logged LOUDLY and
+    that map starts EMPTY (the server NEVER crashes on a bad store); individually
+    malformed records are skipped and COUNTED (``skipped``), never half-restored
+    silently. The Hub serializes all access under its own lock, so this class holds
+    no lock of its own."""
+
+    KEYED = "keyed.json"
+    ANON = "anon.json"
+    CATALOG = "catalog.json"
+
+    def __init__(self, base_dir) -> None:
+        self.root = Path(base_dir) / "_store"
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.keyed: "dict" = {}
+        self.anon: "OrderedDict" = OrderedDict()   # LRU order (oldest first)
+        self.catalog: "dict" = {}
+        self.skipped = 0
+        self._restore()
+
+    # --- load (boot) -------------------------------------------------------
+    def _read(self, name: str):
+        p = self.root / name
+        if not p.exists():
+            return None
+        try:
+            obj = json.loads(p.read_text())
+            if not isinstance(obj, dict):
+                raise ValueError("store root is not a JSON object")
+            return obj
+        except Exception as exc:
+            log.error("session store: %s is unreadable -> starting it EMPTY (%s)",
+                      name, exc)
+            self.skipped += 1
+            return None
+
+    def _restore(self) -> None:
+        for h, rec in (self._read(self.KEYED) or {}).items():
+            if _valid_session_rec(rec):
+                self.keyed[h] = rec
+            else:
+                self.skipped += 1
+        # JSON preserves object insertion order, so anon.json reloads in LRU order.
+        for h, rec in (self._read(self.ANON) or {}).items():
+            if _valid_session_rec(rec):
+                self.anon[h] = rec
+            else:
+                self.skipped += 1
+        for sid, rec in (self._read(self.CATALOG) or {}).items():
+            if _valid_catalog_rec(rec):
+                self.catalog[sid] = rec
+            else:
+                self.skipped += 1
+        if self.skipped:
+            log.error("session store: skipped %d unreadable/invalid entr%s on restore",
+                      self.skipped, "y" if self.skipped == 1 else "ies")
+
+    # --- save (mutation; the caller holds the Hub lock) --------------------
+    def _write(self, name: str, obj) -> None:
+        # atomic: write a temp sibling then os.replace (a killed mid-write leaves the
+        # prior good file in place; a torn temp is never promoted to the live name).
+        tmp = self.root / (name + ".tmp-" + secrets.token_hex(4))
+        tmp.write_text(json.dumps(obj))
+        os.replace(tmp, self.root / name)
+
+    def save_keyed(self) -> None:
+        self._write(self.KEYED, self.keyed)
+
+    def save_anon(self) -> None:
+        self._write(self.ANON, dict(self.anon))
+
+    def save_catalog(self) -> None:
+        self._write(self.CATALOG, self.catalog)
+
+
 class Hub:
     """Per-server owner of sessions, the shared engine registry, the access-key gate,
     and the shared-set catalog.
@@ -514,6 +629,13 @@ class Hub:
         self.anon_sessions: "OrderedDict[str, Companion]" = OrderedDict()
         self.catalog: "dict[str, CatalogEntry]" = {}
         self._lock = threading.Lock()
+        # DURABLE STORE (OPEN_ENDS #17): the token->dir mappings + share catalog live
+        # on the volume so a redeploy no longer wipes them. Restore happens HERE at
+        # boot: catalog entries rebuild into live CatalogEntry objects (metadata only,
+        # no engine); keyed/anon sessions rebuild LAZILY when a bearer/cookie token
+        # re-resolves by hash (never eagerly at boot -> no engine load, the OOM guard).
+        self.store = SessionStore(self._base)
+        self._restore_catalog()
         # the keyless / local single session shares the base dir so its on-disk
         # layout (and the existing tests' expectations) are exactly unchanged. It
         # serves ONLY keyless-LOCAL requests now; on keyed/public deploys keyless
@@ -536,34 +658,65 @@ class Hub:
         return comp
 
     def authenticate(self, key: str):
-        """Validate a key against ETS_ACCESS_KEYS; on success mint a token and a
-        fresh per-visitor session. Returns the token, or None for a bad key."""
+        """Validate a key against ETS_ACCESS_KEYS; on success mint a token + a fresh
+        per-visitor session, and DURABLY record its hash->dir mapping + state
+        (OPEN_ENDS #17). Returns the token, or None for a bad key. The session dir and
+        set_id are named from the token HASH / an independent random id — never from
+        the token — so no token material lands on the volume."""
         if not key or key not in self.access_keys:
             return None
         token = secrets.token_urlsafe(24)
-        sess = self._make_session(self._base / ("visitor_" + token[:12]))
-        sess.set_id = "set-" + token[:10]
+        h = _hash_token(token)
+        sess = self._make_session(self._base / ("visitor_" + h[:16]))
+        sess.set_id = "set-" + secrets.token_hex(5)
         sess.owner_label = "you"
+        sess._store_hash = h
+        sess._store_kind = "keyed"
         with self._lock:
             self.sessions[token] = sess
+            self.store.keyed[h] = self._session_record(sess, "keyed")
+            self.store.save_keyed()
         return token
 
     def session_for_token(self, token):
         if not token:
             return None
         with self._lock:
-            return self.sessions.get(token)
+            sess = self.sessions.get(token)
+            if sess is not None:
+                return sess
+            # not resident (e.g. the first request after a redeploy): re-resolve by
+            # hash from the durable store and rebuild this session's POINTERS. The
+            # engine is NOT loaded here — player() stays lazy (the OOM guard).
+            h = _hash_token(token)
+            rec = self.store.keyed.get(h)
+            if rec is None:
+                return None
+            sess = self._restore_session(rec, "keyed", h)
+            self.sessions[token] = sess
+            return sess
 
     # --- per-visitor ANONYMOUS sessions (shared deploys only) ----------------
     def anon_session(self, token):
-        """Resolve an existing anonymous visitor session by its cookie token, or
-        None (unknown / evicted / restarted server -> the caller mints afresh)."""
+        """Resolve an existing anonymous visitor session by its cookie token: from the
+        in-memory LRU, or — after a redeploy — rebuilt by hash from the durable store
+        so a returning visitor keeps their opened set (OPEN_ENDS #17). None only when
+        truly unknown / evicted -> the caller mints afresh."""
         if not token:
             return None
         with self._lock:
             sess = self.anon_sessions.get(token)
             if sess is not None:
                 self.anon_sessions.move_to_end(token)
+                return sess
+            h = _hash_token(token)
+            rec = self.store.anon.get(h)
+            if rec is None:
+                return None
+            sess = self._restore_session(rec, "anon", h)
+            self.anon_sessions[token] = sess
+            self.anon_sessions.move_to_end(token)
+            self.store.anon.move_to_end(h)   # LRU touch (persisted on the next mint)
             return sess
 
     def new_anon_session(self):
@@ -572,23 +725,36 @@ class Hub:
         other session; is_visitor marks it a non-owner on keyed deploys (the same
         single owner predicate — no second decision channel)."""
         token = secrets.token_urlsafe(24)
-        sess = self._make_session(self._base / ("anon_" + token[:12]))
+        h = _hash_token(token)
+        sess = self._make_session(self._base / ("anon_" + h[:16]))
         sess.is_visitor = self.keyed
-        evicted = []
+        sess._store_hash = h
+        sess._store_kind = "anon"
+        evicted_dirs = []
         with self._lock:
             self.anon_sessions[token] = sess
-            while len(self.anon_sessions) > self.max_anon:
-                evicted.append(self.anon_sessions.popitem(last=False)[1])
-        # Disk-side of the LRU (auditor note, 2026-07-18): eviction must also
-        # remove the session's (empty) directory, or crawler traffic accretes
-        # dirs without bound. Visitor sessions cannot ingest, so rmdir — which
-        # refuses non-empty dirs — is the safe form; anything non-empty is left
-        # in place rather than destroyed.
-        for old in evicted:
-            try:
-                os.rmdir(old.session_dir)
-            except OSError:
-                pass
+            self.store.anon[h] = self._session_record(sess, "anon")
+            # The LRU cap bounds the DURABLE set (the store) — that is what must not
+            # grow without bound across restarts. Evicting the oldest hash drops its
+            # store record AND its live session (if resident) AND queues its dir.
+            while len(self.store.anon) > self.max_anon:
+                eh, erec = self.store.anon.popitem(last=False)
+                for etok, esess in list(self.anon_sessions.items()):
+                    if getattr(esess, "_store_hash", None) == eh:
+                        self.anon_sessions.pop(etok, None)
+                        break
+                evicted_dirs.append(erec.get("dir"))
+            self.store.save_anon()
+        # Disk-side of the LRU (auditor note, 2026-07-18): eviction must also remove
+        # the session's (empty) directory, or crawler traffic accretes dirs without
+        # bound. Visitor sessions cannot ingest, so rmdir — which refuses non-empty
+        # dirs — is the safe form; anything non-empty is left in place, never destroyed.
+        for d in evicted_dirs:
+            if d:
+                try:
+                    os.rmdir(d)
+                except OSError:
+                    pass
         return token, sess
 
     def playable_for(self, session):
@@ -602,6 +768,8 @@ class Hub:
             if entry is None or not entry.available():
                 session.opened_set_id = None
                 session.play_world = session._demo_world
+                # persist the revert so a redeploy doesn't resurrect the stale pointer
+                self._persist_session(session)
             else:
                 session.play_world = entry.world_path
         return session.player()
@@ -636,7 +804,10 @@ class Hub:
                              enumerate(session.ingested_track_names())})
             with self._lock:
                 self.catalog[sid] = entry
+                self.store.catalog[sid] = self._catalog_record(entry)
+                self.store.save_catalog()   # a shared set stays available after reboot
             session.shared = True
+            self._persist_session(session)
             # PRE-WARM on share (OPEN_ENDS #21d): a just-listed set will draw its
             # first stranger-listener cold; warm the ONE shared world now.
             if p is not None:
@@ -644,7 +815,10 @@ class Hub:
         else:
             with self._lock:
                 self.catalog.pop(sid, None)
+                self.store.catalog.pop(sid, None)
+                self.store.save_catalog()   # EXP-B: an unshared set stays gone after reboot
             session.shared = False
+            self._persist_session(session)
         return {"ok": True, "shared": session.shared, "set_id": sid}
 
     def explore(self, session):
@@ -661,7 +835,92 @@ class Hub:
             return None
         session.opened_set_id = set_id
         session.play_world = entry.world_path
+        self._persist_session(session)
         return entry
+
+    # --- durable store: records, restore, persist (OPEN_ENDS #17) ----------
+    def _session_record(self, session, kind: str) -> dict:
+        """The POINTERS + METADATA of a session that must survive a redeploy — never
+        audio, never a raw token. The session's audio FILES already persist in its
+        dir on the same volume; this captures what was previously in-memory only."""
+        return {
+            "dir": str(session.session_dir),
+            "kind": kind,
+            "is_trained": bool(session._is_trained),
+            "trained_world_path": str(session.trained_world_path),
+            "play_world": session.play_world,
+            "last_receipt": session.last_receipt,
+            "opened_set_id": session.opened_set_id,
+            "set_id": session.set_id,
+            "set_name": session.set_name,
+            "owner_label": session.owner_label,
+            "shared": bool(session.shared),
+        }
+
+    @staticmethod
+    def _catalog_record(entry) -> dict:
+        # JSON object keys are strings; track_names uses int track ids, so stringify
+        # on write and int-ify on restore (round-trips exactly).
+        return {
+            "set_id": entry.set_id, "name": entry.name, "owner": entry.owner,
+            "world_path": entry.world_path, "region_armed": entry.region_armed,
+            "disarmed": entry.disarmed, "owner_token": entry.owner_token,
+            "track_names": {str(k): v for k, v in entry.track_names.items()},
+        }
+
+    def _persist_session(self, session) -> None:
+        """Re-write a session's durable record after its pointer state changed. A
+        no-op for the default keyless-local session (no token -> not tracked)."""
+        kind = getattr(session, "_store_kind", None)
+        h = getattr(session, "_store_hash", None)
+        if not kind or not h:
+            return
+        with self._lock:
+            if kind == "keyed":
+                self.store.keyed[h] = self._session_record(session, "keyed")
+                self.store.save_keyed()
+            else:
+                self.store.anon[h] = self._session_record(session, "anon")
+                self.store.save_anon()
+
+    def _apply_record(self, session, rec, kind: str) -> None:
+        session._is_trained = bool(rec.get("is_trained"))
+        session.set_id = rec.get("set_id")
+        session.set_name = rec.get("set_name")
+        session.owner_label = rec.get("owner_label")
+        session.shared = bool(rec.get("shared"))
+        session.last_receipt = rec.get("last_receipt")
+        session.opened_set_id = rec.get("opened_set_id")
+        session.is_visitor = (self.keyed if kind == "anon" else False)
+        if session._is_trained:
+            # repoint at the trained world ON DISK; player() builds the engine lazily
+            # on demand (via the LRU) — no eager engine load at restore (OOM guard).
+            session.play_world = (rec.get("trained_world_path")
+                                  or str(session.trained_world_path))
+        # opened_set_id (if set) is honored by playable_for(), which re-derives
+        # play_world from the live catalog (and revokes if the set is gone).
+
+    def _restore_session(self, rec, kind: str, h: str):
+        session = self._make_session(rec["dir"])
+        session._store_hash = h
+        session._store_kind = kind
+        self._apply_record(session, rec, kind)
+        return session
+
+    def _restore_catalog(self) -> None:
+        for sid, rec in self.store.catalog.items():
+            try:
+                self.catalog[sid] = CatalogEntry(
+                    set_id=rec["set_id"], name=rec.get("name"),
+                    owner=rec.get("owner"), world_path=rec["world_path"],
+                    region_armed=rec.get("region_armed", False),
+                    disarmed=rec.get("disarmed", []),
+                    owner_token=rec.get("owner_token"),
+                    track_names={int(k): v for k, v in
+                                 (rec.get("track_names") or {}).items()})
+            except Exception as exc:
+                self.store.skipped += 1
+                log.error("session store: bad catalog entry %r skipped (%s)", sid, exc)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -968,6 +1227,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/reset":
             # account-free "new corpus": clear session + world, LOCAL-ONLY
             out = session.reset()
+            self.hub._persist_session(session)   # is_trained/receipt cleared -> persist
             self._json(200, {**out, "files": session.session_files()})
             return
 
@@ -1055,6 +1315,9 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception as exc:       # decode/verify/transport
                 self._json(502, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
                 return
+            # train just repointed is_trained / set_id / last_receipt / play_world ->
+            # persist so a redeploy no longer forces a full retrain (OPEN_ENDS #17).
+            self.hub._persist_session(session)
             self._json(200, out)
             return
 

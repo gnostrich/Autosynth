@@ -33,6 +33,48 @@ logger = logging.getLogger("ets.companion.bridge")
 
 _ARCH_V6 = str(Path(__file__).resolve().parents[2] / "architecture-v6")
 
+# Anchor-profile arming (Theorem A arming corollary — papers/paper1-typed-control-
+# calculus.md §3, papers/paper2-ets-instrument.md §2-3). The frozen anchor
+# band-profile matrix ``world.fstate.B`` (M anchors x n_bands) is the coupling's
+# band-grouping observable: a unit's anchor profile is its band's column B[:, band],
+# and the per-track profile / per-role unit pool are reductions of it. If B carries
+# NO information — every anchor row is flat across bands (the band-blind fixed point:
+# F is band-blind, so uniform B is its fixed point, and every world trained to date
+# sits exactly there) — that observable's constrained fluctuation is identically
+# zero. By the fluctuation-dissipation identity two field controls that route
+# THROUGH B then degenerate and DISARM (Phase-1A typing table):
+#   * the ROLE->UNIT drill — the per-role pools are B-column-ranked, and under
+#     uniform B they collapse (tie + top_n insertion order) to a single monopolizing
+#     track: a FALSE attribution, so no honest unit pool exists;
+#   * the TRACK-square LEAN — a track-bias direction built from the (all-ones) flat
+#     profiles collapses onto the global density marginal (phi_density = sum
+#     phi_region): a degenerate T1 whose "lean this track" label would lie.
+# What STAYS ARMED under uniform B (these do NOT route through B's columns): the
+# TRACK->ROLE drill (roles shown by index, no false ranking) and ROLE-square bias
+# (a well-typed T1 tilt through the role indicator e_r). This is Theorem A's
+# degenerate case, MEASURED off B here, never a policy flag: a world whose B has
+# real band spread ARMS all of it automatically, so the pre-registered engine change
+# that makes B informative re-arms with no edit here.
+_PROFILE_ARMING_EPS = 1e-6   # numerical-noise floor on B's RELATIVE row spread
+
+
+def anchor_profile_armed(B) -> bool:
+    """MEASURED arming test for the anchor band-profile observable: ``True`` iff the
+    matrix ``B`` (M x n_bands) DISTINGUISHES bands — i.e. some anchor row varies
+    across bands above the numerical-noise floor. A uniform/degenerate B (the
+    band-blind fixed point, every row flat) returns ``False`` (disarm the unit drill
+    + track lean). The spread is measured RELATIVE to B's own magnitude, so it is
+    scale-invariant and cannot be gamed by rescaling; it reads only the frozen B and
+    nothing downstream."""
+    Bm = np.asarray(B, dtype=np.float64)
+    if Bm.size == 0:
+        return False
+    scale = float(np.max(np.abs(Bm)))
+    if scale <= 0.0:                                   # all-zero B: no information
+        return False
+    row_ptp = float((Bm.max(axis=1) - Bm.min(axis=1)).max())
+    return (row_ptp / scale) > _PROFILE_ARMING_EPS
+
 
 class StreamPlayer:
     """Owns a loaded world + engine and a produce loop. The ONLY method that
@@ -114,6 +156,13 @@ class StreamPlayer:
         from ets.engine.engine import track_anchor_profiles, role_unit_pool
         self._track_profiles = track_anchor_profiles(self.world)   # {tid: (M,)}
         self._role_pools = role_unit_pool(self.world)              # {role: [...]}
+        # ANCHOR-PROFILE ARMING (Theorem A arming corollary; module docstring above).
+        # MEASURED once off the frozen world's anchor band-profile B: True iff B
+        # distinguishes bands (some anchor row varies), False on the band-blind fixed
+        # point (uniform B). It gates the two field controls that route through B's
+        # columns — the ROLE->UNIT drill (pools) and the TRACK-square LEAN — while the
+        # TRACK->ROLE drill and ROLE bias (which do not route through B) stay armed.
+        self._profile_armed = anchor_profile_armed(self.world.fstate.B)
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
@@ -150,6 +199,12 @@ class StreamPlayer:
                 "is_trained": self.is_trained,
                 "armed": armed, "disarmed": disarmed,
                 "region_armed": ("region" in armed),
+                # ANCHOR-PROFILE ARMING (Theorem A corollary): whether the anchor
+                # band-profile observable carries information on THIS world (measured
+                # off B). False on the band-blind fixed point (uniform B) → the FE
+                # disarms the role->unit drill and the track-square lean, keeping the
+                # track->role drill and role bias live.
+                "profile_armed": bool(self._profile_armed),
                 # honest engine-state readouts (OPEN_ENDS #21c/d): warmed = has the
                 # produce loop rendered its first bar; last_error = the loop's
                 # recorded failure (None while healthy). Real flags, never inferred.
@@ -183,16 +238,30 @@ class StreamPlayer:
         if self._static_field_cache is None:
             profiles = {int(t): [float(x) for x in np.asarray(v).reshape(-1)]
                         for t, v in self._track_profiles.items()}
+            # UNIT-DRILL DISARM (Theorem A arming corollary). The per-role unit POOLS
+            # are the role->unit reduction of the band-profile grouping observable. On
+            # the band-blind fixed point (uniform B) that observable carries no
+            # information: the pools collapse (tie + top_n insertion order) to a single
+            # monopolizing track, a FALSE attribution. We refuse to serve them as
+            # informative — the pools are EMPTY when disarmed, and profile_armed says
+            # so honestly, so the FE's floor gate makes role squares non-expandable
+            # (no unit drill). The per-TRACK profiles STAY (tracks are real provenance;
+            # a flat profile is the honest truth of uniform B), keeping the track->role
+            # drill open (roles shown by index, no false ranking) and role bias live;
+            # only the TRACK-square lean is gated off on the FE (profile_armed). A
+            # world whose B is informative arms automatically → pools served.
             pools: dict = {}
-            for role, entries in self._role_pools.items():
-                pools[int(role)] = [
-                    {"unit_id": int(uid), "track_id": int(tid), "band": int(band),
-                     "profile": [float(x) for x in np.asarray(prof).reshape(-1)]}
-                    for (uid, tid, band, prof) in entries]
+            if self._profile_armed:
+                for role, entries in self._role_pools.items():
+                    pools[int(role)] = [
+                        {"unit_id": int(uid), "track_id": int(tid), "band": int(band),
+                         "profile": [float(x) for x in np.asarray(prof).reshape(-1)]}
+                        for (uid, tid, band, prof) in entries]
             kind = "track" if self.is_trained else "demo track"
             names = {int(t): "%s %d" % (kind, int(t)) for t in profiles}
             self._static_field_cache = {"profiles": profiles, "unit_pools": pools,
-                                        "track_names": names}
+                                        "track_names": names,
+                                        "profile_armed": bool(self._profile_armed)}
         return self._static_field_cache
 
     # --- THE SINGLE ENGINE-CONTROL PATH ------------------------------------

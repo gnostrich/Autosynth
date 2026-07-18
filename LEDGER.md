@@ -928,3 +928,63 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `22414b7`
 - `Edit` OPEN_ENDS.md (2026-07-18T08:50:54+00:00)
+
+### at `5c23834`
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:04:33+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:04:41+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:04:47+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:05:35+00:00)
+- `Write` .claude/worktrees/agent-ab2cc6f9a9eab6f74/tools/physrunner/__init__.py (2026-07-18T09:05:40+00:00)
+- `Write` .claude/worktrees/agent-ab2cc6f9a9eab6f74/tools/physrunner/runner.py (2026-07-18T09:07:01+00:00)
+- `Write` .claude/worktrees/agent-ab2cc6f9a9eab6f74/tools/physrunner/Dockerfile (2026-07-18T09:08:05+00:00)
+- `Write` .claude/worktrees/agent-ab2cc6f9a9eab6f74/tools/physrunner/railway.json (2026-07-18T09:08:11+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:08:30+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:08:38+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:08:46+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:08:49+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:08:59+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/engine_bridge.py (2026-07-18T09:09:01+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:09:22+00:00)
+- `Write` .claude/worktrees/agent-ab2cc6f9a9eab6f74/cloud/tests/test_physrunner.py (2026-07-18T09:09:28+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/static/index.html (2026-07-18T09:09:30+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:09:33+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/static/index.html (2026-07-18T09:09:38+00:00)
+
+### at `01bd360`
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/static/index.html (2026-07-18T09:09:54+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/static/index.html (2026-07-18T09:10:02+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/static/index.html (2026-07-18T09:10:10+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/companion/static/index.html (2026-07-18T09:10:16+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_fab_guard.py (2026-07-18T09:10:33+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:10:35+00:00)
+
+### at `a9f2dbb`
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:10:42+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_fab_guard.py (2026-07-18T09:10:43+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:10:53+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:10:59+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:11:09+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:11:28+00:00)
+- `Write` .claude/worktrees/agent-a404f9d8202c61d2d/cloud/PREREG-informative-B.md (2026-07-18T09:11:34+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:11:36+00:00)
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/companion/app.py (2026-07-18T09:11:42+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_payload.py (2026-07-18T09:11:51+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_payload.py (2026-07-18T09:12:02+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_payload.py (2026-07-18T09:12:10+00:00)
+
+### at `b71d513`
+- `Write` .claude/worktrees/agent-a44ab3104ca618d88/cloud/tests/test_durable_session_store.py (2026-07-18T09:12:55+00:00)
+
+### at `1d267de`
+- `Edit` .claude/worktrees/agent-a44ab3104ca618d88/cloud/tests/test_durable_session_store.py (2026-07-18T09:13:18+00:00)
+- `Write` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_role_grain_arming.py (2026-07-18T09:13:40+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_payload.py (2026-07-18T09:14:00+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_payload.py (2026-07-18T09:14:06+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_payload.py (2026-07-18T09:14:14+00:00)
+- `Write` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_disarm.py (2026-07-18T09:15:36+00:00)
+- `Edit` .claude/worktrees/agent-a56907d43308a9667/cloud/tests/test_web_field_disarm.py (2026-07-18T09:15:59+00:00)
+- `Edit` .claude/worktrees/agent-ab2cc6f9a9eab6f74/tools/physrunner/runner.py (2026-07-18T09:16:41+00:00)
+- `Edit` .claude/worktrees/agent-ab2cc6f9a9eab6f74/tools/physrunner/runner.py (2026-07-18T09:16:46+00:00)
+
+### at `cadcae2`
+- `Write` .claude/worktrees/agent-ab2cc6f9a9eab6f74/cloud/tests/test_physrunner.py (2026-07-18T09:17:29+00:00)

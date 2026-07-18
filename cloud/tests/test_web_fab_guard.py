@@ -77,9 +77,12 @@ def _unescape(s: str) -> str:
 
 # --- the caption -> data-source map (the directive's artifact) --------------
 
-# Tokens that make a caption ASSERT a live engine data source.
+# Tokens that make a caption ASSERT a live engine data source. "disarmed" is a
+# real-STATE readout (Theorem A arming corollary): a caption that says a control is
+# disarmed asserts a measured fact about the world, so it must be registered and
+# backed the same as any other data claim.
 _DATA_CLAIM_TOKENS = ("settled", "telemetry", "tolerance", "weight",
-                      "drift", "holonomy")
+                      "drift", "holonomy", "disarmed")
 
 # The three remediated scar phrases — banned verbatim (raw and unescaped).
 _SCAR_PHRASES = ("settled render", "tolerances & weights",
@@ -92,6 +95,12 @@ _SCAR_PHRASES = ("settled render", "tolerances & weights",
 _CAPTION_SOURCE_MAP = {
     "settled telemetry": "fieldApplySettled",   # THE FIELD fill (roles telemetry)
     "from telemetry": "updateTape",              # tape playhead (committed-bar time)
+    # Theorem A arming corollary (OPEN_ENDS #22): the two field controls that route
+    # through the anchor band-profile B disarm on a degenerate (uniform) B. Each
+    # refusal caption is a real-state readout backed by the fn that renders it from
+    # the measured `profile_armed` flag (/api/world, engine_bridge.anchor_profile_armed).
+    "track lean disarmed": "fieldRefuseTrackLean",   # T1 track-lean disarm (uniform B)
+    "unit grain disarmed": "fieldRefuseUnitGrain",   # role->unit drill disarm (uniform B)
 }
 
 
