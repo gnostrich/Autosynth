@@ -1371,6 +1371,12 @@
         // RADIAL EIGENPANEL (OPEN_ENDS #23): self-size to the object's OWN
         // measured control basis (world_info.modes/k, computed once at load).
         applyRadialModes(w);
+        // MODES-BY-TEMPERATURE (PREREG-temperature-sweep): the pre-measured table so the
+        // pad shows the modes that exist at the CURRENT TEMP — petals freeze in/out as the
+        // operator heats. No live re-measure (that's minutes); a lookup into real measured
+        // rows. Null until a sweep is uploaded for this world.
+        radialModesByT = (w.modes_by_temperature && w.modes_by_temperature.length) ? w.modes_by_temperature : null;
+        radialLastTempIdx = -1;
         // TRAIN TRACKLIST (item 3): the honest per-track display names for this
         // world's constituent tracks (real names for the owner's own trained
         // world; "track N"/"demo track N" placeholders elsewhere — bridge
@@ -1929,6 +1935,9 @@
     if(L.chaos){
       var Ts = scalarTemp(L.handle);
       el.val.textContent = Ts.toFixed(2);   // T_s magnitude
+      // MODES-BY-TEMPERATURE: heat freezes modes in/out — snap the pad to the
+      // pre-measured mode-set for this TEMP (no-op unless a sweep table is loaded).
+      applyRadialModesForTemp(Ts);
       // TEMP color law (C amendment): blue -> red over the lane's OWN declared
       // range (SCALAR_T_LO..SCALAR_T_HI) — no separate hand-set constant.
       el.handle.style.background = radialRgbToCss(meterTempColor(Ts));
@@ -2226,6 +2235,11 @@
   /* ===== END RADIAL PURE LOGIC ===== */
 
   var radialModes = [], radialK = 0, radialFloor = 0, radialMaxAbs = 0;
+  // MODES-BY-TEMPERATURE (PREREG-temperature-sweep): pre-measured table {T_s,k,modes,…}
+  // rows, sorted by T_s. As the operator moves TEMP we snap to the nearest measured row
+  // and rebuild the pad from ITS modes — petals freeze in/out with heat. radialLastTempIdx
+  // caches the last applied row so an unchanged TEMP frame does no work (no pad thrash).
+  var radialModesByT = null, radialLastTempIdx = -1;
   // TETHER T-2 (radial): pad/strip state now tracks lastX/lastY/lastV — the raw
   // POINTER position at the previous tick — so drag is a DELTA (never an
   // absolute jump), letting the mark-ward pull (yieldRate) genuinely compose
@@ -2490,6 +2504,30 @@
       return;
     }
     buildRadialOnce();
+  }
+
+  // MODES-BY-TEMPERATURE: snap the pad to the pre-measured mode-set at the CURRENT TEMP.
+  // Real measured rows only (temperature_sweep); a lookup, never a live re-solve. Nearest
+  // grid row wins; an unchanged row is a no-op (radialLastTempIdx) so held telemetry frames
+  // don't rebuild the panel. Faithful: the modes shown are the ones that genuinely survive
+  // the noise floor at that sampler temperature — petals appear/vanish as real physics, not
+  // decoration. No-ops entirely when no sweep table is loaded for this world.
+  function applyRadialModesForTemp(Ts){
+    if(!radialModesByT || !radialModesByT.length) return;
+    var bestI = 0, bestD = Infinity;
+    for(var i = 0; i < radialModesByT.length; i++){
+      var d = Math.abs((+radialModesByT[i].T_s) - Ts);
+      if(d < bestD){ bestD = d; bestI = i; }
+    }
+    if(bestI === radialLastTempIdx) return;   // same measured row → nothing to rebuild
+    radialLastTempIdx = bestI;
+    var row = radialModesByT[bestI];
+    applyRadialModes({
+      modes: row.modes || [],
+      k: (typeof row.k === "number") ? row.k : (row.modes ? row.modes.length : 0),
+      eigen_floor: (typeof row.eigen_floor === "number") ? row.eigen_floor : 0,
+      eigen_pending: false
+    });
   }
   if(radialWordToggle) radialWordToggle.addEventListener("change", radialLabelBadges);
 

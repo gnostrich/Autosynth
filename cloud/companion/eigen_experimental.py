@@ -147,8 +147,8 @@ def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed, T_s=None):
         K = Rmat / sig_safe[:, None]; K[sig <= 0.0, :] = 0.0
         return 0.5 * (K + K.T)
 
-    w_eig, _ = np.linalg.eigh(_ksym(R))
-    order = np.argsort(-np.abs(w_eig)); w_eig = w_eig[order]
+    w_eig, V = np.linalg.eigh(_ksym(R))
+    order = np.argsort(-np.abs(w_eig)); w_eig = w_eig[order]; V = V[:, order]
 
     rng = np.random.default_rng(rng_seed)
     null_max = []
@@ -172,7 +172,7 @@ def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed, T_s=None):
     # thermal scale: the median observable sigma_phi (the physical fluctuation unit the
     # kernel is already whitened by -> a mode of |lambda|~1 is "one sigma of response").
     thermal = float(np.median(sig_safe))
-    return names, w_eig, se, floor, sig_safe, thermal
+    return names, w_eig, se, floor, sig_safe, thermal, V
 
 
 def temperature_sweep(world, sigma, M, T_grid, n_seed=24, n_bar=32, rng_seed=20260718):
@@ -182,26 +182,39 @@ def temperature_sweep(world, sigma, M, T_grid, n_seed=24, n_bar=32, rng_seed=202
     A mode crossing the floor as T_s moves is the H1 signal (a mode freezing in/out)."""
     if sigma is None or int(M) <= 0:
         return {"error": "no sigma / M<=0"}
-    M = int(M); rows = []
+    M = int(M); names = _eigen_obs_names(M); rows = []
     for T in T_grid:
-        _n, w, se, floor, sig_safe, thermal = _build_kernel(
+        _n, w, se, floor, sig_safe, thermal, V = _build_kernel(
             world, sigma, M, n_seed, n_bar, _EIGEN_H, rng_seed, T_s=float(T))
-        absw = np.abs(w)
-        k = int(np.sum([(absw[r] > floor) and (absw[r] - 2.0 * se[r] > floor)
-                        for r in range(len(w))]))
-        rows.append({"T_s": round(float(T), 4), "k": k, "floor": round(float(floor), 4),
+        D = len(w); absw = np.abs(w)
+        surviving = [r for r in range(D)
+                     if (absw[r] > floor) and (absw[r] - 2.0 * se[r] > floor)]
+        # FULL modes (compute_eigenmodes format) for the k surviving modes, so the pad
+        # can render the pre-measured modes at this temperature (petals appearing as T_s
+        # rises). Composition/gain/sign are the real measured eigenvector/eigenvalue.
+        modes = []
+        for out_idx, r in enumerate(surviving):
+            vec = V[:, r]
+            comp = {names[a]: float(vec[a]) for a in range(D)}
+            comp["fill"] = float(sum(vec[a] for a in range(M)))
+            modes.append({"index": out_idx, "gain": float(w[r]),
+                          "sign": (1 if w[r] >= 0.0 else -1), "composition": comp,
+                          "earned_word": None})
+        rows.append({"T_s": round(float(T), 4), "k": len(surviving),
+                     "floor": round(float(floor), 4), "eigen_floor": round(float(floor), 4),
+                     "modes": modes,
                      "spectrum_abs": [round(float(x), 4) for x in absw],
                      "lambda2_over_floor": (round(float(absw[1] / floor), 3)
-                                            if len(w) > 1 and floor > 0 else None)})
+                                            if D > 1 and floor > 0 else None)})
     return {"M": M, "n_seed": n_seed, "n_bar": n_bar,
-            "observable_names": _eigen_obs_names(M), "sweep": rows}
+            "observable_names": names, "sweep": rows}
 
 
 def diagnose(world, sigma, M, n_seed=24, n_bar=32, h=_EIGEN_H, rng_seed=20260718):
     """Full-spectrum diagnostic + baseline and alternative mode counts. Pure report."""
     if sigma is None or int(M) <= 0:
         return {"error": "no sigma / M<=0", "k_baseline": 0}
-    names, w, se, floor, sig_safe, thermal = _build_kernel(world, sigma, int(M), n_seed, n_bar, h, rng_seed)
+    names, w, se, floor, sig_safe, thermal, _V = _build_kernel(world, sigma, int(M), n_seed, n_bar, h, rng_seed)
     absw = np.abs(w)
     # BASELINE cutoff (exactly compute_eigenmodes' rule).
     k_base = int(np.sum([(absw[r] > floor) and (absw[r] - 2.0*se[r] > floor) for r in range(len(w))]))
