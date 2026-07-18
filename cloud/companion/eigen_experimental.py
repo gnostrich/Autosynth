@@ -15,9 +15,88 @@ from __future__ import annotations
 import numpy as np
 
 from cloud.companion.engine_bridge import (
-    _eigen_lane_vector, _eigen_node_means, _eigen_obs_names,
+    _eigen_lane_vector, _eigen_node_means, _eigen_obs_names, _eigen_phi_vec,
     _EIGEN_H, _EIGEN_N_BOOT, _EIGEN_N_NULL, _EIGEN_FLOOR_PCT,
 )
+
+
+def _sigma_vec(sigma, M):
+    sig = np.concatenate([np.asarray(sigma.region, float).reshape(-1)[:M],
+                          [float(sigma.density), float(sigma.cont), float(sigma.novelty)]])
+    return sig, np.where(sig > 0.0, sig, 1.0)
+
+
+def _ensemble_bars_at_zero(world, sigma, M, n_seed, n_bar, seed0=90000):
+    """Collect the JOINT sampling ensemble of settled Phi at the u=0 operating point —
+    every (seed, bar) settled observable vector, the object's own wobble with NO lean
+    applied. This is the 'covariance on the sampling ensemble' E1 originally specified."""
+    from ets.writer.tilt import layer0
+    from ets.writer.stream import StreamWriter
+    u0 = _eigen_lane_vector(M)                 # all-zero lean
+    tilt = layer0(u0, sigma)
+    rows = []
+    for i in range(n_seed):
+        w = StreamWriter(world, seed=int(seed0 + i))
+        for _ in range(n_bar):
+            rows.append(_eigen_phi_vec(w.write_bar(tilt=tilt).phi, M))
+    return np.asarray(rows, float)             # (n_seed*n_bar, D)
+
+
+def covariance_read(world, sigma, M, n_seed=24, n_bar=32, rng_seed=20260718):
+    """(2) SPEC-COMPLIANCE — the E1-original 'covariance on the sampling ensemble' read,
+    as an ALTERNATIVE to the per-lever finite-difference response kernel. At u=0 collect
+    the joint wobble, form the sigma-whitened covariance kernel, eigendecompose, and cut
+    with a marginal-shuffle null (destroy cross-correlation, keep each observable's own
+    variance). Reports k/modes AND which observable dominates the top mode — the P5 tell.
+    Read-only; no engine/settlement change."""
+    if sigma is None or int(M) <= 0:
+        return {"error": "no sigma / M<=0", "k_cov": 0}
+    M = int(M); names = _eigen_obs_names(M)
+    sig, sig_safe = _sigma_vec(sigma, M)
+    ens = _ensemble_bars_at_zero(world, sigma, M, n_seed, n_bar)   # (N, D)
+    D = ens.shape[1]
+
+    def _whiten_cov(A):
+        C = np.cov(A, rowvar=False)
+        K = C / np.outer(sig_safe, sig_safe)      # symmetric, scale-consistent with R/sigma
+        K[sig <= 0.0, :] = 0.0; K[:, sig <= 0.0] = 0.0
+        return K
+
+    w_eig, V = np.linalg.eigh(_whiten_cov(ens))
+    order = np.argsort(-np.abs(w_eig)); w_eig, V = w_eig[order], V[:, order]
+
+    rng = np.random.default_rng(rng_seed)
+    # MARGINAL-SHUFFLE NULL: permute each observable column independently -> destroys the
+    # cross-correlations (the real joint structure) but keeps each marginal variance, so a
+    # mode driven purely by one big-variance observable (the P5 continuity trap) does NOT
+    # clear this floor, while a genuine JOINT mode does.
+    null_max = []
+    for _ in range(_EIGEN_N_NULL // 2 or 1):
+        A = ens.copy()
+        for j in range(D):
+            A[:, j] = A[rng.permutation(A.shape[0]), j]
+        wn, _ = np.linalg.eigh(_whiten_cov(A)); null_max.append(float(np.max(np.abs(wn))))
+    floor = float(np.percentile(null_max, _EIGEN_FLOOR_PCT)) if null_max else 0.0
+    boot = []
+    N = ens.shape[0]
+    for _ in range(_EIGEN_N_BOOT):
+        idx = rng.integers(0, N, N)
+        wb, _ = np.linalg.eigh(_whiten_cov(ens[idx])); boot.append(wb[np.argsort(-np.abs(wb))])
+    se = np.std(np.stack(boot), axis=0) if boot else np.zeros(D)
+
+    absw = np.abs(w_eig)
+    k_cov = int(np.sum([(absw[r] > floor) and (absw[r] - 2.0*se[r] > floor) for r in range(D)]))
+    # dominant observable of the top mode (the P5 tell: is it continuity's variance?)
+    top_dom = names[int(np.argmax(np.abs(V[:, 0])))] if D else None
+    return {
+        "M": M, "cov_floor": floor,
+        "cov_spectrum_abs": [round(float(x), 4) for x in absw],
+        "cov_se": [round(float(x), 4) for x in se],
+        "k_cov": k_cov, "top_mode_dominant_observable": top_dom,
+        "observable_names": names,
+        # raw marginal variances (whitened) — shows continuity's variance directly.
+        "whitened_marginal_var": {names[j]: round(float(np.var(ens[:, j]) / (sig_safe[j]**2)), 4) for j in range(D)},
+    }
 
 
 def _build_kernel(world, sigma, M, n_seed, n_bar, h, rng_seed):
