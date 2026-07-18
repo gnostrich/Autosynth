@@ -1152,3 +1152,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `7f125e2`
 - `Edit` cloud/companion/engine_bridge.py (2026-07-18T12:31:27+00:00)
 - `Edit` cloud/companion/engine_bridge.py (2026-07-18T12:31:32+00:00)
+
+### at `186b4c2`
+- `Write` cloud/REGRESSION-GUARDRAILS.md (2026-07-18T12:37:20+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-18T12:37:52+00:00)

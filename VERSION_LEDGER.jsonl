@@ -864,3 +864,5 @@
 {"head": "acbfcdf", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T12:27:12+00:00"}
 {"head": "7f125e2", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T12:31:27+00:00"}
 {"head": "7f125e2", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T12:31:32+00:00"}
+{"head": "186b4c2", "path": "cloud/REGRESSION-GUARDRAILS.md", "tool": "Write", "ts": "2026-07-18T12:37:20+00:00"}
+{"head": "186b4c2", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-18T12:37:52+00:00"}
