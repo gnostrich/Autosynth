@@ -96,6 +96,18 @@ vector still projects only into the EXISTING sanctioned steer lanes
 3. **Clean return path:** returning the throttle to default reinstalls the authoritative
    basis; there is no latch-out.
 
+### Automatic measurement (any world, no manual step)
+The sweep is measured ONCE per world by an off-playback background worker in
+`StreamPlayer`, mirroring the existing boot-eigen worker: it is triggered only AFTER the
+single-temperature eigen ensemble has landed (it is 7× heavier, so it runs last and never
+before audio warms), computes `temperature_sweep`, lands the table in one atomic assignment,
+and persists a STAMPED sidecar (`world_path + ".sweep.json"`) that self-invalidates on any
+world/param change. So a freshly-trained set gets the temperature axis automatically — the
+set is playable immediately and the axis fills in a few minutes later (`sweep_pending` is the
+honest "measuring temperature modes…" state, distinct from a world that has no table). A
+cache hit (the committed demo, an admin upload, or a prior auto-run) loads instantly. No
+world is ever served a stale or foreign table; nothing runs on the audio path.
+
 ### Data provenance / walls (unchanged from the body)
 - Every mode shown is a REAL measured eigenvector/eigenvalue that survives the double floor
   (`|λ|>floor AND |λ|−2·SE>floor`) at that `T_s`; nothing is fabricated. A degenerate corpus
