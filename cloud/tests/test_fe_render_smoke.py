@@ -274,9 +274,11 @@ def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
 
 
 def test_fe_keyed_public_visitor_sees_unlock_affordance(tmp_path):
-    """OPEN_ENDS #16 render smoke: a keyless visitor on a KEYED+PUBLIC deploy lands
-    on the app (no access wall), Train is hidden (visitor), and the in-app
-    "Unlock training" affordance is present. Clicking it opens the key prompt."""
+    """OPEN_ENDS #16 render smoke (updated 2026-07-18, operator Task 3): a keyless
+    visitor on a KEYED+PUBLIC deploy lands on the app (no access wall). The Object
+    (Train) tab is now ALWAYS visible (read-only tracklist for visitors); the in-app
+    "Unlock training" affordance is scoped to the Object tab only. Switching to the
+    Object tab reveals it, and clicking it opens the key prompt."""
     server = _ServerProc(tmp_path, public=True, keys=["k1"])
     try:
         server.wait_healthy()
@@ -288,13 +290,20 @@ def test_fe_keyed_public_visitor_sees_unlock_affordance(tmp_path):
             page.wait_for_selector("#tabs", timeout=15000)
             assert page.query_selector("#accessGate") is None, "access wall must be gone"
 
-            # visitor: the unlock affordance appears (polled in from /api/world.keyed),
-            # and the Train tab is hidden.
+            # the Object tab is always visible (even for a keyless visitor).
+            assert not page.query_selector("#tabTrain").is_hidden(), \
+                "Object (Train) tab must always be visible"
+            # on the Play tab, the unlock affordance is hidden (scoped to Object tab).
+            page.wait_for_function(
+                "() => { const b = document.getElementById('unlockBtn');"
+                " return b && b.hidden; }", timeout=20000)
+
+            # switching to the Object tab reveals the unlock affordance for a keyed
+            # visitor (world.keyed && !canTrain, polled in from /api/world).
+            page.click("#tabTrain")
             page.wait_for_function(
                 "() => { const b = document.getElementById('unlockBtn');"
                 " return b && !b.hidden; }", timeout=20000)
-            assert page.query_selector("#tabTrain").is_hidden(), \
-                "Train tab must be hidden for a keyless visitor"
 
             # clicking the affordance opens the in-app key prompt (no navigation).
             page.click("#unlockBtn")

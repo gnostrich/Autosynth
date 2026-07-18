@@ -283,20 +283,27 @@ def test_scalar_ceiling_note_is_data_backed_not_hardcoded():
 
 # --- SCALAR-TEMPO : honest not-wired ----------------------------------------
 
-def test_tempo_lane_is_disabled_not_wired_and_drives_nothing():
+def test_tempo_lane_is_fully_removed_from_the_outboard():
+    # OPERATOR CHANGE (2026-07-18): the not-wired TEMPO lane was removed entirely
+    # from the outboard strip (it emitted no force and confused operators). This
+    # test replaces the old "tempo is honestly not-wired" guard: it now asserts
+    # TEMPO is GONE — no SCALAR_LANES entry, no tempo flag, no notwired styling —
+    # and that removing it never opened a fake time-stretch channel.
     js = _inline_js()
     html = _INDEX.read_text()
-    # the descriptor marks tempo not-wired; the arming forces it inert.
     m = re.search(r"SCALAR_LANES\s*=\s*\[(.*?)\];", js, re.S)
-    assert m and "tempo:true" in m.group(1).replace(" ", ""), "TEMPO must be flagged tempo:true"
-    assert "not wired" in html.lower() or "not-wired" in html.lower() or "notwired" in js, \
-        "TEMPO must be honestly labeled not-wired"
-    # tempo has no engine datum and no time-stretch fabrication.
-    assert '"tempo"' not in _js_functions(js).get("scalarPayload", "") and \
-           "tempo:" not in re.search(r"SCALAR_LANE_SETTER\s*=\s*\{([^}]*)\}", js).group(1), \
-        "TEMPO must not route to any engine setter"
+    assert m, "SCALAR_LANES table must exist"
+    lanes = m.group(1)
+    assert "tempo" not in lanes.lower() and "TEMPO" not in lanes, \
+        "TEMPO lane must be gone from SCALAR_LANES"
+    assert "tempo:true" not in js.replace(" ", ""), "no tempo:true flag anywhere"
+    assert "notwired" not in js, "the .notwired (TEMPO) render path must be gone"
+    # the surviving outboard gestures are exactly KEY LOCK (gauge) + TEMP (throttle).
+    assert '"gauge"' in lanes and '"temperature"' in lanes, \
+        "KEY LOCK / GAUGE and TEMP throttle must survive"
+    # removing TEMPO must not have fabricated any time-stretch channel.
     for fake in ("timeStretch", "time_stretch", "stretcher", "resample"):
-        assert fake not in js, f"TEMPO must not fabricate a time-stretch ({fake})"
+        assert fake not in js, f"no fabricated time-stretch ({fake})"
 
 
 # --- bridge / app wiring (static) -------------------------------------------

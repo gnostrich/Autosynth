@@ -411,9 +411,6 @@
   .slane.inert .strk{ cursor:default; pointer-events:none; }
   .slane.inert .strk .shandle{ background: var(--faint); box-shadow:none; }
   .slane.inert .slbl .desc{ color: var(--faint); }
-  /* honest not-yet: TEMPO (T5 clock) is not wired — disabled + labeled, no force. */
-  .slane.notwired{ opacity:.42; }
-  .slane.notwired .strk{ cursor: not-allowed; pointer-events:none; }
   /* CHAOS (T2): a directionless magnitude lane — no machine mark drawn. */
   .slane.chaos .strk .smark{ display:none; }
   /* at-ceiling honest note (real-or-absent; from live telemetry, not a flag). */
@@ -1028,7 +1025,7 @@
                 <span class="hint">extra modes · TEMP throttle · GAUGE frame</span>
               </div>
               <div class="radial-strips" id="radialStripsBand"></div>
-              <div class="slanes" id="outboard"><!-- TEMP / GAUGE / TEMPO injected --></div>
+              <div class="slanes" id="outboard"><!-- TEMP / GAUGE injected --></div>
             </section>
 
             <!-- LANE CONSOLE (display-only) -->
@@ -1188,24 +1185,36 @@
       TABBTN[k].setAttribute("aria-selected", on ? "true" : "false");
     });
     if(name === "explore") loadExplore();
+    refreshUnlock();   // the Unlock affordance lives ONLY on the Object tab
   }
   Object.keys(TABBTN).forEach(function(k){
     TABBTN[k].addEventListener("click", function(){ switchTab(k); });
   });
   function applyTabVisibility(pub){
-    // VISITOR (can't train): only [Play, Explore]; Train removed from the bar entirely
-    // (never a disabled/dead tab). Owners (keyed-authenticated / local) keep Train.
-    TABBTN.train.hidden = !!pub;
-    if(pub && currentTab === "train") switchTab("play");
+    // The Object (Train) tab is ALWAYS visible — visitors see the trained object's
+    // tracklist + receipt READ-ONLY; the POSTING controls (ingest/train/publish)
+    // inside it are owner-gated separately (applyTrainGating). No auto-switch-away.
+    TABBTN.train.hidden = false;
+  }
+  function applyTrainGating(){
+    // The Object tab's READ-ONLY half (#trainSummary: tracklist + receipt) shows for
+    // EVERYONE. The POSTING half (ingest/drop + train/publish) is owner-only: hide it
+    // outright for visitors so a shared-set listener sees only the object, never the
+    // authoring tools. display:none toggling, evaluated wherever world.canTrain is.
+    var show = world.canTrain ? "" : "none";
+    var src = $("sourceSection"), trn = $("trainSection");
+    if(src) src.style.display = show;
+    if(trn) trn.style.display = show;
   }
 
   /* ===== UNLOCK TRAINING — the access-key entry, moved INSIDE the app (#16) ===== */
   var unlockBtn = $("unlockBtn"), keyModal = $("keyModal"), keyForm = $("keyForm");
   var keyInput = $("keyInput"), keyErr = $("keyErr"), keySubmit = $("keySubmit"), keyCancel = $("keyCancel");
   function refreshUnlock(){
-    // Offer the affordance only when a key WOULD do something: the deploy is keyed
-    // and this session is still a visitor. Owners (and keyless deploys) never see it.
-    if(unlockBtn) unlockBtn.hidden = !(world.keyed && !world.canTrain);
+    // Offer the affordance only when a key WOULD do something AND the user is on the
+    // Object tab: the deploy is keyed and this session is still a visitor. Owners
+    // (and keyless deploys) never see it; nor does any tab other than the Object one.
+    if(unlockBtn) unlockBtn.hidden = !(currentTab === "train" && world.keyed && !world.canTrain);
   }
   function openKeyModal(){
     if(!keyModal) return;
@@ -1335,6 +1344,7 @@
       world.canTrain = (w.can_train !== undefined) ? !!w.can_train : !w.public;
       world.keyed = !!w.keyed;
       applyTabVisibility(!world.canTrain);
+      applyTrainGating();   // POSTING controls (ingest/train/publish) owner-only
       // UNLOCK affordance (OPEN_ENDS #16): a keyless VISITOR on a KEYED deploy can
       // enter a key to become an owner. Shown only when there is a key to enter
       // (keyed) AND this session is not already an owner (!canTrain).
@@ -1611,7 +1621,7 @@
     // folds into below — the field's composite bias source is gone (item 2).
     region = new Array(world.M || 0).fill(0);
     var payload = { region: region.slice() };
-    // fold in the ARMED scalar lanes' forces (disarmed/degenerate/tempo emit nothing).
+    // fold in the ARMED scalar lanes' forces (disarmed/degenerate emit nothing).
     var sc = scalarBuilt ? scalarPayload(scalarLaneStates()) : {};
     for(var k in sc) payload[k] = sc[k];
     // RADIAL (E4): a basis rotation ON TOP of the same lanes — the puck's mode-
@@ -1685,7 +1695,7 @@
      datum, mirroring the desktop _push). Arming is gated on the world's MEASURED
      σ_φ (steerable = identifiable AND σ>0): a disarmed OR degenerate lane renders
      greyed AND inert (emits no force). CHAOS (T2) is directionless magnitude with
-     no machine mark; TEMPO (T5) is honestly not-wired (disabled, no force). */
+     no machine mark. */
 
   /* ===== SCALAR LANE PURE LOGIC (test-extractable: force / payload / follow / ceiling) =====
      DOM-free arithmetic mirrored from the engine's lane ranges (ets.panel.lanes):
@@ -1744,7 +1754,7 @@
   function scalarPayload(lanes){
     // The scalar half of the /api/steer force vector: each ARMED direction lane's
     // force through its ONE datum, plus CHAOS temperature. A DISARMED/degenerate
-    // lane (armed:false) or TEMPO (not in SCALAR_LANE_SETTER) emits NOTHING.
+    // lane (armed:false, not in SCALAR_LANE_SETTER) emits NOTHING.
     var out = {};
     for(var key in SCALAR_LANE_SETTER){
       var L = lanes[key];
@@ -1759,7 +1769,7 @@
   /* ===== TETHER PURE LOGIC (test-extractable: two-way mark<->handle coupling) =====
      LIVING-MARK / TETHER LAW (operator directive, two-way amendment). Applies to
      every T1/lean control (radial pad axes + strips; the legacy VARY/SPREAD/DENSITY
-     sliders) — NEVER to TEMP/TEMPO/CRATE (throttles/switches, no mark exists) or to
+     sliders) — NEVER to TEMP/CRATE (throttles/switches, no mark exists) or to
      gauge (structurally mark-less; SCALAR_MARK_OBS already excludes it).
        T-1 (mark-ward force): the force sent to the engine is f(handle-mark_CURRENT),
            recomputed every tick (scalarForce / radialForceVector's gap input above)
@@ -1803,15 +1813,14 @@
   // OPEN_ENDS #23). continuity/novelty/density are the three T1 lanes the radial's
   // mode-projected force now supersedes — they move to the LEGACY drawer (kept
   // functional for A/B, same bridge datum, zero behavior change). gauge (T3) /
-  // temperature (T2) / tempo (T5) are NOT direction lanes the radial covers — they
+  // temperature (T2) are NOT direction lanes the radial covers — they
   // stay native OUTBOARD gestures (never mixed geometries with the radial).
   var SCALAR_LANES = [
     { key:"continuity",  name:"VARY",     desc:"continuity", mark:true,  group:"legacy" },
     { key:"novelty",     name:"SPREAD",   desc:"novelty",    mark:true,  group:"legacy" },
     { key:"density",     name:"DENSITY",  desc:"density",    mark:true,  group:"legacy" },
     { key:"gauge",       name:"KEY LOCK", desc:"gauge",      mark:false, frame:true, group:"outboard" },
-    { key:"temperature", name:"TEMP",     desc:"throttle",   mark:false, chaos:true, group:"outboard" },
-    { key:"tempo",       name:"TEMPO",    desc:"clock (not wired)", mark:false, tempo:true, group:"outboard" }
+    { key:"temperature", name:"TEMP",     desc:"throttle",   mark:false, chaos:true, group:"outboard" }
   ];
   var scalarLanes = {}, scalarEls = {}, scalarBuilt = false;
   var scalarWraps = { legacy: $("slanes"), outboard: $("outboard") };
@@ -1826,9 +1835,9 @@
       var h0 = spec.chaos ? (1.0 - SCALAR_T_LO) / (SCALAR_T_HI - SCALAR_T_LO) : 0.5;
       scalarLanes[spec.key] = { armed:false, handle:h0, grab:h0, held:false,
         mark:null, markHist:[], atCeiling:false, sigma:null, lastPointer:h0,
-        chaos:!!spec.chaos, frame:!!spec.frame, tempo:!!spec.tempo };
+        chaos:!!spec.chaos, frame:!!spec.frame };
       var row = document.createElement("div");
-      row.className = "slane" + (spec.chaos ? " chaos tempfader" : "") + (spec.tempo ? " notwired" : "");
+      row.className = "slane" + (spec.chaos ? " chaos tempfader" : "");
       row.setAttribute("data-lane", spec.key);
       row.innerHTML =
         '<div class="slbl"><div class="name">'+spec.name+'</div><div class="desc">'+spec.desc+'</div></div>'+
@@ -1841,12 +1850,10 @@
       scalarEls[spec.key] = { row: row, strk: strk, mark: row.querySelector(".smark"),
         handle: row.querySelector(".shandle"), val: row.querySelector(".sval"),
         note: row.querySelector(".snote") };
-      if(!spec.tempo){
-        strk.addEventListener("pointerdown", scalarOnDown);
-        strk.addEventListener("pointermove", scalarOnMove);
-        strk.addEventListener("pointerup", scalarOnUp);
-        strk.addEventListener("pointercancel", scalarOnUp);
-      }
+      strk.addEventListener("pointerdown", scalarOnDown);
+      strk.addEventListener("pointermove", scalarOnMove);
+      strk.addEventListener("pointerup", scalarOnUp);
+      strk.addEventListener("pointercancel", scalarOnUp);
       scalarDraw(spec.key);
     });
   }
@@ -1918,8 +1925,6 @@
       // range (SCALAR_T_LO..SCALAR_T_HI) — no separate hand-set constant.
       el.handle.style.background = radialRgbToCss(meterTempColor(Ts));
       el.handle.style.borderColor = el.handle.style.background;
-    } else if(L.tempo){
-      el.val.innerHTML = "&mdash;";
     } else if(typeof L.mark === "number"){
       el.mark.style.left = (Math.max(0, Math.min(1, L.mark)) * 100) + "%";
       el.mark.style.visibility = "visible";
@@ -1931,7 +1936,7 @@
     el.row.classList.toggle("ceiling", !!L.atCeiling);
     if(L.atCeiling && !el.row.classList.contains("inert")){
       el.note.textContent = "at ceiling — no room to lean on this corpus";
-    } else if(!el.row.classList.contains("inert") && !L.tempo){
+    } else if(!el.row.classList.contains("inert")){
       el.note.textContent = "";
     }
   }
@@ -1995,14 +2000,12 @@
     if(!scalarBuilt) return;
     // STEERABLE = identifiable AND σ_φ>0 (the honest arming); a lane in disarmed OR
     // degenerate is greyed AND inert. steerable is the engine's own measurement
-    // (world_info) — never a hand-set list. CHAOS carries no φ (never disarmed);
-    // TEMPO is not wired (T5 clock; render disabled, never a fake time-stretch).
+    // (world_info) — never a hand-set list. CHAOS carries no φ (never disarmed).
     var steer = (w && w.steerable) || null;
     var dis = (w && w.disarmed) || [];
     var deg = (w && w.degenerate) || [];
     SCALAR_LANES.forEach(function(spec){
       var L = scalarLanes[spec.key], el = scalarEls[spec.key]; if(!L || !el) return;
-      if(spec.tempo){ L.armed = false; return; }              // honest not-wired
       if(spec.chaos){ L.armed = true; return; }               // T2: no φ, always live
       var id = SCALAR_ARM_ID[spec.key];
       L.armed = steer ? (steer.indexOf(id) >= 0)
