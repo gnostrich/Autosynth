@@ -77,8 +77,13 @@ def anchor_profile_armed(B) -> bool:
 
 
 class StreamPlayer:
-    """Owns a loaded world + engine and a produce loop. The ONLY method that
-    mutates the settlement input is :meth:`set_region` (the region-tilt lane).
+    """Owns a loaded world + engine and a produce loop. The settlement input is
+    staged by :meth:`set_region` (the region-tilt vector lane) and the typed
+    scalar-lane setters (:meth:`set_continuity` / :meth:`set_novelty` /
+    :meth:`set_density` / :meth:`set_gauge` / :meth:`set_temperature`); ALL are
+    assembled into the ONE ``LaneVector`` the engine's single ``_tilt_for(u)``
+    consumes (I-1 / C-3). These are the paper2 §2 conjugate-control lanes — the
+    web analog of the desktop panel's per-field lane staging (widget._on_scalar).
     Everything else reads produced state."""
 
     def __init__(self, world_path: str, seed: int = 0, sigma_path: Optional[str] = None,
@@ -116,7 +121,17 @@ class StreamPlayer:
         self.s_phase = self.engine.writer.s_phase
 
         self._bank = None                                # lazy: built on first bar (slow)
-        self._region = np.zeros(self.M, dtype=np.float32)  # the SINGLE control input
+        self._region = np.zeros(self.M, dtype=np.float32)  # region-tilt vector lane
+        # TYPED SCALAR FORCE LANES (paper2 §2; paper1 T1 tilt + T2 thermodynamic).
+        # Each is ONE datum of the lane vector u that the engine's SINGLE
+        # _tilt_for(u) consumes — never a parallel control channel. Defaults are the
+        # lane-spec defaults (direction leans u=0 → identity tilt; T_s=1 sharpness),
+        # so an un-driven lane is byte-identical to region-only play (H-8).
+        self._u_continuity = 0.0     # VARY   → φ_cont     (T1)
+        self._u_novelty = 0.0        # SPREAD → φ_novelty  (T1)
+        self._u_density = 0.0        # DENSITY→ φ_density  (T1)
+        self._u_gauge = 0.0          # KEY LOCK→ gauge frame (T3; degenerate on v0)
+        self._T_s = 1.0              # CHAOS  → temperature (T2, directionless)
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -190,14 +205,27 @@ class StreamPlayer:
         sig = getattr(self.engine, "sigma", None)
         lanes = ["region", "cont", "novelty", "density", "gauge"]
         if sig is None:
-            armed, disarmed = [], list(lanes)
+            armed, disarmed, degenerate = [], list(lanes), []
         else:
             armed = [ln for ln in lanes if sig.is_identifiable(ln)]
             disarmed = [ln for ln in lanes if not sig.is_identifiable(ln)]
+            # DEGENERATE (Theorem A corollary; distinct from disarmed): a lane whose
+            # scale IS identifiable but whose measured σ_φ = 0 — the observable was
+            # constant along the untilted trajectory, so the tilt is the EXACT
+            # identity (λ=0 for every u) and the lane is just as inert as a disarmed
+            # one. On a v0 world φ_gauge is degenerate (frozen frame; tilt.py wall).
+            # Reported so the scalar-lane surface greys BOTH classes honestly — a
+            # lane that cannot lean is never drawn as a live control (real-or-absent).
+            degenerate = [ln for ln in lanes
+                          if sig.is_identifiable(ln) and self._sigma_scalar(sig, ln) == 0.0]
+        # STEERABLE = a lane that can actually apply a tilt: identifiable AND σ>0.
+        # This is the honest arming the scalar force lanes render live vs greyed.
+        steerable = [ln for ln in armed if ln not in degenerate]
         return {"ready": True, "M": self.M, "sr": self.sr,
                 "world": Path(self.world_path).name,
                 "is_trained": self.is_trained,
                 "armed": armed, "disarmed": disarmed,
+                "degenerate": degenerate, "steerable": steerable,
                 "region_armed": ("region" in armed),
                 # ANCHOR-PROFILE ARMING (Theorem A corollary): whether the anchor
                 # band-profile observable carries information on THIS world (measured
@@ -278,11 +306,70 @@ class StreamPlayer:
         with self._lock:
             self._region = vec
 
+    # --- typed scalar force lanes (paper2 §2; each its ONE lane-vector datum) ----
+    # These mirror the desktop panel's per-field lane routing (widget._on_scalar):
+    # each writes exactly ONE field of the staged lane vector; the vector is then
+    # assembled by `_current_lane` and consumed by the SINGLE `_tilt_for(u)`. There
+    # is no second control channel and no per-lane engine setter — the engine's one
+    # control entry (C-3) takes the whole LaneVector.
+    def _set_lean(self, lane_id: str, attr: str, u) -> None:
+        from ets.panel.lanes import spec
+        s = spec(lane_id)
+        try:
+            v = float(u)
+        except (TypeError, ValueError):
+            v = 0.0
+        if not np.isfinite(v):
+            v = 0.0
+        v = max(s.lo, min(s.hi, v))          # the lane's own declared control range
+        with self._lock:
+            setattr(self, attr, v)
+
+    def set_continuity(self, u) -> None:     # VARY (T1, φ_cont)
+        self._set_lean("continuity", "_u_continuity", u)
+
+    def set_novelty(self, u) -> None:        # SPREAD (T1, φ_novelty)
+        self._set_lean("novelty", "_u_novelty", u)
+
+    def set_density(self, u) -> None:        # DENSITY (T1, φ_density)
+        self._set_lean("density", "_u_density", u)
+
+    def set_gauge(self, u) -> None:          # KEY LOCK (T3 frame; degenerate on v0)
+        self._set_lean("gauge", "_u_gauge", u)
+
+    def set_temperature(self, T_s) -> None:  # CHAOS (T2, directionless sharpness)
+        from ets.panel.lanes import spec
+        s = spec("temperature")
+        try:
+            v = float(T_s)
+        except (TypeError, ValueError):
+            v = float(s.default)
+        if not np.isfinite(v):
+            v = float(s.default)
+        v = max(s.lo, min(s.hi, v))
+        with self._lock:
+            self._T_s = v
+
+    @staticmethod
+    def _sigma_scalar(sig, lane: str) -> float:
+        """The scalar σ_φ magnitude of one lane (region → its max per-anchor σ), for
+        the degenerate (identifiable-but-σ=0) test. Reads the registered calibration
+        only; never a hand-set value."""
+        if lane == "region":
+            r = np.asarray(sig.region, float).reshape(-1)
+            return float(r.max()) if r.size else 0.0
+        return float(getattr(sig, lane))
+
     def _current_lane(self):
         from ets.panel.lanes import default_lane_vector
         u = default_lane_vector(self.M)
         with self._lock:
             u.u_region = np.asarray(self._region, dtype=np.float32).copy()
+            u.u_continuity = float(self._u_continuity)
+            u.u_novelty = float(self._u_novelty)
+            u.u_density = float(self._u_density)
+            u.u_gauge = float(self._u_gauge)
+            u.T_s = float(self._T_s)
         return u
 
     # --- bar production (mirrors Engine.produce_one) -----------------------

@@ -15,8 +15,11 @@ Teeth (all must BITE):
                  (SAFE_REGION_MAGNITUDE); full down-bias re-weights, never mutes.
   WEB-FIELD-C    the JS participation-ratio equals anchors.effective_rank (value pin);
                  round(PR) >= 2 gates drill (atomic squares refuse).
-  WEB-FIELD-D    the engine's settlement input stays a SINGLE call site (app.py
-                 .set_region once); the FE adds no new /api/ endpoint, one /api/steer.
+  WEB-FIELD-D    the settlement inputs are the REGION lane PLUS the typed scalar
+                 conjugate lanes (paper2 §2), EACH through its ONE setter, all inside
+                 /api/steer — one endpoint, a richer force vector (the Phase-1A typing
+                 table widened this from "region only"). The FE adds no new /api/
+                 endpoint; /api/steer stays the single engine-control call.
   WEB-FIELD-E    every square/legend id comes from a telemetry/world payload (empty
                  payload -> empty field); the expanded view shows EXACTLY the real
                  child count (no padded/placeholder squares; empty cells not hit-able).
@@ -108,7 +111,13 @@ INPUT_HANDLERS = {"fieldOnWheel", "fieldOnMove", "fieldZoom", "fieldOnClick",
                   # fullscreenchange collapse, the tutorial dismiss): user input
                   # too — none may reach a telemetry writer, transitively.
                   "fieldExpandToggle", "fieldExpandOpen", "fieldExpandClose",
-                  "fieldOnFullscreenChange", "tutDismiss"}
+                  "fieldOnFullscreenChange", "tutDismiss",
+                  # the SCALAR FORCE LANE drag handlers (paper2 §2 conjugate
+                  # controls): they DO reach the engine, but ONLY through the
+                  # sanctioned scalar force path (sendSteerNow → sendSteer, the
+                  # widened WEB-FIELD-D contract) — never a brightness/telemetry
+                  # store. WEB-FIELD-INV proves that below.
+                  "scalarOnDown", "scalarOnMove", "scalarOnUp"}
 
 
 def _input_handler_violations(src: str):
@@ -381,7 +390,14 @@ def test_field_c_floor_gate_two_modes():
     assert _run_node(driver) == "OK"
 
 
-# --- WEB-FIELD-D : single settlement lane, no new endpoint ------------------
+# --- WEB-FIELD-D : the typed settlement lanes, one endpoint, one setter each -
+
+# The region lane + the five typed scalar conjugate lanes (paper2 §2). Each enters
+# the engine through its ONE bridge setter (its ONE lane-vector datum), all inside
+# /api/steer. This is the widened WEB-FIELD-D contract (Phase-1A typing table).
+_SETTLEMENT_SETTERS = ("set_region", "set_continuity", "set_novelty",
+                       "set_density", "set_gauge", "set_temperature")
+
 
 def test_field_d_single_set_region_call_site():
     src = _APP.read_text()
@@ -390,6 +406,22 @@ def test_field_d_single_set_region_call_site():
     call = src.index(".set_region(")
     play = src.index('"/api/play"')
     assert steer < call < play, "set_region must live inside /api/steer only"
+
+
+def test_field_d_typed_scalar_lanes_each_one_setter_inside_steer():
+    """The widened settlement contract: region + the typed scalar lanes, each through
+    its ONE setter, all inside /api/steer. Not 'region only' — the scalar force family
+    is the conjugate-control lanes of paper2 §2 (T1/T2), routed like the desktop
+    _push (one datum per lane). Exactly one call site per setter, and each lives
+    between the /api/steer marker and the next handler (/api/play)."""
+    src = _APP.read_text()
+    steer = src.index('"/api/steer"')
+    play = src.index('"/api/play"')
+    for setter in _SETTLEMENT_SETTERS:
+        call = "." + setter + "("
+        assert src.count(call) == 1, f"{setter} must have exactly ONE call site"
+        idx = src.index(call)
+        assert steer < idx < play, f"{setter} must live inside /api/steer only"
 
 
 def test_field_d_fe_adds_no_new_endpoint_one_steer():
