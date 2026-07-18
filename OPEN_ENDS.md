@@ -274,6 +274,18 @@ Legend: 🔴 blocking play · 🟡 decision needed · 🟢 ready to build · ⚪
 - Cert for www.autosynth.fun: still in Railway's issuance queue (DNS verified
   perfect; recreated once already).
 
+## 19. Stream pacing bug — found BY the audio-capture test (2026-07-18 morning)
+The silent play-video complaint led to a real find: capturing /api/stream with
+an unthrottled listener measured the produce loop free-running at **10.8x
+realtime** (599s of audio in 55s). Consequence for a real listener: the browser
+buffers ever further behind "live", so region steering becomes audible with
+GROWING delay (likely a contributor to earlier "it doesn't seem to respond"
+impressions). FIX: `StreamPlayer._loop` now paces bar EMISSION to realtime with
+a fixed 1.0s lead (`PACE_LEAD_SECONDS`); slow-host under-run path unchanged;
+render content untouched (H-8). Tests: cloud/tests/test_stream_pacing.py
+(PACE-A/B/C). Status: built + tested (116/116) → auditor → deploy → re-record
+the play video WITH the session's real audio muxed in.
+
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
