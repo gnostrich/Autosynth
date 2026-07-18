@@ -20,6 +20,7 @@ changes the arrangement (H-8): u=0 bars are byte-identical to ``render_offline``
 """
 from __future__ import annotations
 
+import logging
 import struct
 import sys
 import threading
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+logger = logging.getLogger("ets.companion.bridge")
 
 _ARCH_V6 = str(Path(__file__).resolve().parents[2] / "architecture-v6")
 
@@ -76,6 +79,16 @@ class StreamPlayer:
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._bar_index = 0
+        # WARMED (OPEN_ENDS #21d): has the produce loop rendered its FIRST bar yet?
+        # False until the loop emits (the bank build + first render is the multi-
+        # minute cold window a listener would otherwise sit through in silence).
+        # Read-only state for /api/world; set once by _loop, never by any input.
+        self._warmed = False
+        # LOOP HONESTY (OPEN_ENDS #21c): the last produce-loop failure, as a
+        # timestamped "<ISO-time> <ExcType>: <msg>" string, or None. Exposed via
+        # world_info()/telemetry so a dead engine reports "engine failed: <type>"
+        # instead of an infinite silent stream.
+        self.last_error: Optional[str] = None
         # latest read-only telemetry (roles 0..1, per-track nowplaying, elapsed
         # seconds) — for /api/telemetry. `nowplaying` starts empty (no bar yet).
         # `lanes` are per-bar Layer-0 φ statistics reduced to intrinsic [0,1]
@@ -137,6 +150,11 @@ class StreamPlayer:
                 "is_trained": self.is_trained,
                 "armed": armed, "disarmed": disarmed,
                 "region_armed": ("region" in armed),
+                # honest engine-state readouts (OPEN_ENDS #21c/d): warmed = has the
+                # produce loop rendered its first bar; last_error = the loop's
+                # recorded failure (None while healthy). Real flags, never inferred.
+                "warmed": bool(self._warmed),
+                "last_error": self.last_error,
                 "bar_seconds": float(self.engine.writer.bar_seconds)}
 
     # --- STATIC per-world field telemetry (read-only, once-per-world) -------
@@ -349,8 +367,23 @@ class StreamPlayer:
         while self._playing.is_set():
             try:
                 pcm, _ = self.produce_one_bar()
-            except Exception:
+            except Exception as exc:
+                # LOOP HONESTY (OPEN_ENDS #21c): a failing engine must be LOUD.
+                # The old bare `except: break` died silently and every listener's
+                # stream then hung forever with no trace. Log the FULL traceback
+                # and record a timestamped last_error for world_info()/telemetry,
+                # then still break — no retry loop: a failing engine must not spin.
+                logger.exception("produce_one_bar failed — the produce loop halts")
+                self.last_error = "%s %s: %s" % (
+                    _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+                    type(exc).__name__, exc)
+                tel = dict(self.telemetry)
+                tel["last_error"] = self.last_error
+                self.telemetry = tel
                 break
+            # WARMED (OPEN_ENDS #21d): the first successfully produced bar ends
+            # the cold window — the honest flag /api/world reports.
+            self._warmed = True
             now = _time.monotonic()
             if t0 is None or now - (t0 + sent / self.sr) > self.PACE_REANCHOR_SECONDS:
                 t0 = now - sent / self.sr          # anchor/re-anchor at emission

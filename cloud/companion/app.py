@@ -287,6 +287,9 @@ class Companion:
                 self._player = None
             else:
                 self._player = player          # reuse the already-loaded player
+            # PRE-WARM on train-complete (OPEN_ENDS #21d): the world just went
+            # live — build its bank + first bars NOW, before any listener.
+            _prewarm_engine(self.registry, trained, player)
             return {"ok": True, "built": True, "receipt": out["receipt"],
                     "world": trained, "is_trained": True, "playback": "live",
                     "set_id": self.set_id,
@@ -319,6 +322,33 @@ class Companion:
 
 class TrainBusy(Exception):
     """Raised when a second concurrent in-proc train is refused (honest 429/busy)."""
+
+
+def _prewarm_engine(registry, world_path: str, player) -> None:
+    """PRE-WARM (OPEN_ENDS #21d): start a world's produce loop the moment it goes
+    LIVE (train completes / a set is shared), instead of waiting for the first
+    listener. ``player.start()`` returns immediately — it spawns the daemon
+    produce-loop thread, and THAT background thread pays the bank build + first
+    renders (the observed ~6-9 min post-deploy cold window), so the first
+    listener connects to an already-warm stream.
+
+    DISCLOSED TRADEOFF (operator-accepted): this spends CPU rendering bars for a
+    world nobody may ever listen to, in exchange for first-listen latency.
+
+    GUARD: only the ONE world involved is ever warmed, and only while it is
+    still resident in the registry LRU (within ETS_MAX_LOADED_WORLDS) — a
+    pre-warm never loads or pins an engine past the memory cap, and an LRU
+    eviction stops a warming loop like any other (``stop()`` on evict).
+
+    A pre-warm failure must not fail the already-completed train/share: it is
+    logged LOUDLY (never swallowed) and the first listener will hit the same
+    error honestly via the bridge's last_error readout."""
+    if registry is not None and world_path not in registry.loaded_worlds():
+        return                       # evicted already — the memory bound wins
+    try:
+        player.start()
+    except Exception:
+        log.exception("pre-warm failed for %s", world_path)
 
 
 def _build_stream_player(world_path: str, seed: int, is_trained: bool):
@@ -586,6 +616,7 @@ class Hub:
         sid = session.set_id
         if on:
             info = {}
+            p = None
             try:
                 p = self.registry.trained_player(session.play_world, session.seed)
                 info = p.world_info()
@@ -606,6 +637,10 @@ class Hub:
             with self._lock:
                 self.catalog[sid] = entry
             session.shared = True
+            # PRE-WARM on share (OPEN_ENDS #21d): a just-listed set will draw its
+            # first stranger-listener cold; warm the ONE shared world now.
+            if p is not None:
+                _prewarm_engine(self.registry, session.play_world, p)
         else:
             with self._lock:
                 self.catalog.pop(sid, None)
