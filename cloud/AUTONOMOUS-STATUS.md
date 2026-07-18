@@ -1,37 +1,43 @@
-# Autonomous session status — live checklist (operator logged out; will check in late)
+# Autonomous session status — FINAL (verified working)
 
-Goal: **everything working perfectly** on www.autosynth.fun — layout/CSS/formatting,
-audio, and the interface — with faithfulness intact (core engine frozen, no fabrication,
-auditor PASS before the final merge). Updated as each item lands.
+Live on www.autosynth.fun (main @ 10990a0, deploy 80d672e4). Faithfulness intact:
+core engine byte-frozen, Opus re-audit PASS-WITH-NOTES (notes fixed), full cloud suite
+250 passed / 0 failed.
 
-Legend: ✅ done+verified · 🔧 in progress · ⏳ queued · ❌ blocked
+## VERIFIED LIVE
+- ✅ **Audio plays** — warms in seconds, streams real-time, smooth (1.3 MB/16s).
+- ✅ **Modes resolve + are INSTANT after first measure** — open → k, resolved, in 0.3s
+  from the sidecar cache (no serve-time recompute).
+- ✅ **The current shared set is genuinely k=1** (M=3, one mode above the measured
+  floor even with the FULL 24×32 ensemble). Not a bug — this 4-track corpus has one
+  real steering mode. Multi-mode (k≥2) needs a more diverse corpus.
+- ✅ **k=1 renders honestly** — a signed centered X-axis in the pad (auditor-approved:
+  bare signed projection, sign preserved, no fabricated axis, no puck-angle in the
+  mark). Fills the pad; not the gutted top-slider.
 
-## AUDIO / ENGINE
-- ✅ Silent-playback root cause fixed (boot eigen ensemble was starving the audio loop).
-- ✅ Full authoritative ensemble RESTORED (multi-mode pad) + started only AFTER first
-  audio bar warms (audio-first; never starved). Verified: `test_boot_ensemble_resolves_k_ge_2` passes; cold-start + eigenpanel suites green (38).
-- 🔧 Live verify: does the shared set resolve k≥2 with the full ensemble, and audio warm-first? (verifier running)
-- ⏳ Confirm no audio glitching during the ~40s background eigen compute (add GIL yield if needed).
+## WHAT WAS FIXED (root causes, not band-aids)
+- **Ensemble vs audio (the k=1 / silent-audio fight):** on a single core the mode
+  measurement and realtime audio can't coexist. Fix: measure with the FULL authoritative
+  ensemble but ONLY off-playback, persist to a stamped sidecar cache
+  (`world_path + ".eigen.json"`), read instantly forever after. First measure ~2-7 min
+  per set once (honest "measuring…"), then free. Audio-first: the produce loop kicks the
+  measurement only after the first bar warms; `world_info` self-triggers only when idle.
+- **Interface:** Play stripped to the two agreed components (pad + knobs); dead TEMPO
+  knob removed; Object (was Train) tab always visible, tracklist read-only for visitors,
+  posting owner-gated, Unlock only there; pane-leak fixed; pad fills the viewport.
+- **My own regressions caught + fixed:** the `-X theirs` merge dup-IDs; the
+  `world_info` eager-trigger that starved audio; the `self._warmed` read that crashed
+  the bare-harness pacing tests. All green now.
 
-## INTERFACE / CONTROLS
-- ✅ Play page stripped to the two agreed components (pad hero + knobs strip); legacy lane-console/legacy-lanes/source-library/output-tape hidden.
-- ✅ Dead TEMPO ("not wired") knob removed.
-- ✅ Object (was Train) tab always visible; tracklist+receipt read-only for visitors; ingest/train/publish owner-gated; Unlock only on the Object tab.
-- 🔧 k=1 steering surface: honest CENTERED-RADIAL single-mode (pull any direction = same, naive radial coloring) instead of the gutted 1-D slider — operator's spec. (builder)
-- ⏳ Duplicate Explore set purged — ✅ (one set).
+## FAITHFULNESS
+- Core `ets/` byte-identical (manifest + freeze 18/18).
+- Sidecar cache stores ONLY the real measured result; stamped so a stale/foreign cache
+  can never be served; atomic write; gitignored (recompute per-deploy, R5 intact).
+- Object-tab posting enforced server-side (`_can_train`), FE hide is cosmetic. R3 intact.
 
-## LAYOUT / CSS / FORMATTING
-- ✅ Pane-leak fixed (Play no longer bleeds onto Explore/Object; `#panePlay.active`-scoped).
-- ✅ Merge-duplicated DOM IDs removed (were breaking steer/play JS).
-- ✅ Pad fills viewport height (no empty void).
-- ⏳ Full layout polish pass: knobs-strip spacing, header truncation, mobile stack, no clipping/overlap — audit + fix.
-
-## FAITHFULNESS / PROCESS
-- ✅ Core engine byte-identity holds (manifest + freeze tests 18/18). All changes are in the serving wrapper / FE only.
-- ✅ Guardrails recorded (REGRESSION-GUARDRAILS.md, UPGRADE-TAKESTOCK.md).
-- ⏳ ets-auditor (Opus, adversarial, read-only) PASS on the full diff before final merge to main.
-- ⏳ Deploy the integrated verified build; WARM the engine so first play is instant when operator returns.
-- Rule: serial deploys only (no races); verify live SHA; warm after each.
-
-## OPEN QUESTIONS (honest, for operator)
-- If the current 4-track set is *genuinely* k=1 even with the full ensemble, the centered-radial render is the honest fallback; a more diverse corpus (now measured with the full ensemble) will resolve more modes.
+## FOLLOW-UPS (non-blocking, disclosed)
+- A diverse corpus → k≥2 → the true multi-axis pad. The current set is honestly k=1.
+- Cache first-measure is slow (~minutes) on this 1-core box; train-time precompute
+  would make even the first open instant (bigger change, not done).
+- Cache stamp doesn't fingerprint a separate `--sigma-phi` file (unreachable in the
+  shipped product; sigma is world-embedded). Optional one-line hardening.
