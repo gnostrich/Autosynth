@@ -181,6 +181,35 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
                                         " return {w: r.width, h: r.height}; }")
             assert box["w"] > 100 and box["h"] > 100, f"field canvas not laid out: {box}"
 
+            # (9) WEB-FAB REMEDIATION — the three remediated surfaces render HONEST:
+            #  Fix 1 (tape): the sine-art SVG waveform (#wav) is GONE; the lane shows
+            #  the honest-empty "waveform not wired" note; the "settled render" caption
+            #  clause is stripped (playhead/clock stay).
+            assert page.query_selector("#wav") is None, \
+                "the cosmetic tape waveform (#wav sine-art) must be removed"
+            assert page.query_selector("#wavEmpty") is not None, \
+                "the honest-empty 'waveform not wired' note must be present"
+            assert "waveform not wired" in body_text, "honest-empty tape label missing"
+            assert "settled render" not in body_text, \
+                "the 'settled render' caption clause must be stripped from the tape"
+
+            #  Fix 2 (lane console): the "tolerances & weights" caption is gone; there
+            #  are no interactive lane sliders (read-only), and no hardcoded number is
+            #  shown under a weights caption.
+            assert "tolerances" not in body_text.lower(), \
+                "the 'tolerances & weights' Lane-Console caption must be gone"
+            n_range = page.eval_on_selector_all(
+                "#lanes input[type=range]", "els => els.length")
+            assert n_range == 0, f"Lane Console must have no interactive sliders, got {n_range}"
+
+            #  Fix 3 (drift -> slide/loop): the 'drift' meter label is gone; the gauge[g]
+            #  slide/loop read-only pair renders (never collapsed to one 'drift' number).
+            micro = page.eval_on_selector_all(
+                ".meter .micro", "els => els.map(e => e.textContent.trim())")
+            assert "drift" not in micro, f"the 'drift' meter label must be gone: {micro}"
+            assert page.query_selector("#mSlide") is not None, "slide[g] readout missing"
+            assert page.query_selector("#mLoop") is not None, "loop[g] readout missing"
+
             # (6) screenshot to the pytest tmp dir for the report.
             shot = tmp_path / "fe_render_smoke.png"
             page.screenshot(path=str(shot), full_page=True)

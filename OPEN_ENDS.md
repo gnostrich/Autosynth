@@ -289,6 +289,26 @@ the field (wall: iPhone Safari allows neither element-fullscreen nor
 orientation lock — honest max is fill-the-viewport + use rotation);
 (b) a very simple ONE-TIME tutorial overlay on first Play.
 
+## 21. NEXT BUILD BATCH (operator feedback, 2026-07-18 late morning) — queued
+behind the WEBFAB remediation (same files; no concurrent edits):
+(a) DESKTOP WHEEL STORM: zoom fires per wheel event -> a trackpad flick skips
+    layer 2 (roles) straight to units; bias likewise saturates. FIX: delta
+    accumulation + threshold + ~350ms cooldown = one layer per gesture; bias
+    px->step normalization across deltaModes (named constants). Interim
+    workaround told to operator: click = exactly one layer in, header = out.
+(a2) PRISM PERF (measured 2026-07-18: prism ON = 18fps + 3.7s long tasks;
+    prism OFF = 59fps, everything else <1%): render at half-res, cap 30fps,
+    pause on hidden tab, static-freeze on software-GL renderers. FE lag is
+    NOT server-side; more Railway CPU only shortens train/cold-start.
+(b) LEGEND AT DEPTH: drilled view keeps a compact parent-track + role-shade
+    key (second layer currently unreadable).
+(c) PRODUCE-LOOP HONESTY: bare except->break in engine_bridge._loop dies
+    silently and streams hang forever; log the traceback loudly.
+(d) COLD-START UX: pre-warm engine at train/share completion (not first
+    listener); FE "engine warming" state instead of silent dead Play (~6-9min
+    observed post-deploy cold window — the operator's "cant play it" report).
+Then: #17 durable session store (operator-confirmed: needed for Explore).
+
 ## 19. Stream pacing bug — found BY the audio-capture test (2026-07-18 morning)
 The silent play-video complaint led to a real find: capturing /api/stream with
 an unthrottled listener measured the produce loop free-running at **10.8x
