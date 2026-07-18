@@ -432,3 +432,16 @@ projections/meter values — injected hand-set color FAILS); CH-2 (fade tracks
 floor); accessibility (hue NEVER alone — rank index number + badge bar-chart
 always present; colorblind-safe by redundancy not palette distortion). Auditor
 verifies CH-1/CH-2 + EP-1..6 unchanged.
+
+## 25. SHELVED (infra exploration, operator 2026-07-18): disposable Railway trainer fleet
+Idea: spin up K ephemeral Railway containers (account-key created/destroyed) to
+train sets in PARALLEL, exploiting the multi-project RAM budget. HONEST SCOPE
+(the reason it's shelved, not built): RAM does NOT pool across containers into
+one job — this buys parallel THROUGHPUT (K distinct sets at once, each <=8GB),
+NOT a higher single-job memory ceiling. A set bigger than 8GB needs DISTRIBUTED
+training (real engine re-architecture), which this does not provide. Operator
+does not need more sets now, so PARKED. If revived: generalize tools/physrunner
+into a stateless trainer service; orchestrator fans out track-subsets; trainers
+push finished worlds to ets-web's catalog (which also fixes the one-session
+multi-share world_path COLLISION — each set in its own container = distinct
+world file). Not for the >8GB single-set case.
