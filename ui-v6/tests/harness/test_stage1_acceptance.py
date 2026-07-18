@@ -29,14 +29,28 @@ from ets.engine.worldfile import load_world
 from ets.panel.tolerances import Tolerances
 from tests.harness.worldtools import write_synthetic_worldfile
 
-# Captured THIS session, on the pre-Stage-1 tree (commit 05f8848, before any
-# edit for this stage), via the exact procedure reproduced below.
+# Golden hashes of a SYNTHETIC world FROZEN at test time (build_world_from_tracks ->
+# anchors.build_world). Originally captured on the pre-Stage-1 tree (commit 05f8848):
+#   world=3c4b4a23..  audio=14eb05a0..  provenance=9f7b651d..
+#
+# RE-BLESSED for engine-v1.1-freeze (PREREG-informative-B.md; informative anchor
+# band-profile B at freeze). That change makes the FROZEN B the coupling-weighted
+# band profile of the settled couplings instead of the uniform band-blind fixed
+# point. It is scoped to FREEZE only and provably leaves the settled D/a/theta/pi
+# BIT-IDENTICAL (verified old-vs-new: D/a/theta/pi array_equal, only B moves,
+# row-ptp 0.0 -> 0.0142); so this synthetic world's `world_sha256` changes (new B),
+# and its render changes through the settled-energy band split `e = col @ B`
+# (realize.py) -> new `audio_sha256`/`provenance_sha256`. This is the INTENDED
+# newly-frozen-world consequence (existing committed .etsworld files are NOT
+# re-frozen and render byte-identical -- see cloud/tests/test_freeze_only_byte_
+# identity.py). The assertions below stay EXACT-equality golden pins; only the
+# reference values are re-based to the v1.1-freeze freeze output.
 PRE_STAGE1_AUDIO_SHA256 = (
-    "14eb05a0a8e5cef66e6c0e1b922d8a5b4d4250425b4219fe188cbca5d6abbf49")
+    "5d7063f2ed29a8da087259e569afb2e6fee7d3243a1ba6a9499084f108cfd013")
 PRE_STAGE1_PROVENANCE_SHA256 = (
-    "9f7b651d2cea5f24a815070c6fbca2f456e3e716bc7e3872dab416f1d69d4453")
+    "b96d5e2aa93984cfb0a1615149b2809bcd9ebeeaa3ada354de47cffa4e76ff2c")
 PRE_STAGE1_WORLD_SHA256 = (
-    "3c4b4a235361c832b83cb154e5a0f9fdb9f57a6cde7893e8130c01921f64a6ef")
+    "d77fff6c124aea00b88312a43d96c98cd57646447b00dea29bc383e040ae8c66")
 
 KNOBS = {"events": [
     {"bar": 1, "lane": "density", "value": 1.5},

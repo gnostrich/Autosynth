@@ -348,3 +348,87 @@ the play video WITH the session's real audio muxed in.
 ## Recommended order
 1 + 2 (diagnose grating & build currency, operator-side, ~5 min) → 3 (roam fix, me) →
 4 (grid decision) → 5/6/7 (background). Freeze ui-v5 only after live-test confirms feel.
+
+## 23. EIGENPANEL / RADIAL / FULLY-NATIVE PANEL (operator directives, 2026-07-18 pm)
+Supersedes the human-word slider family AS THE PRIMARY SURFACE (sliders kept as
+legacy drawer, E6). Physics/harness/archive unchanged; consolidated build spec:
+- E1/E2 (DISPATCHED, read-only): measure constrained covariance of arrangement
+  observables at operating point, diagonalize, k = eigenvalues above measured
+  floor = the object's native knobs. Report -> papers/findings/EIGEN-modes.md.
+  Gate: the radial build waits on k.
+- RADIAL SURFACE (primary, supersedes eigenpanel E3 sliders): ONE steering
+  surface, center=equilibrium(zero force), direction=lean, distance=hardness,
+  release=spring-to-achieved (engine relaxation, no tween). Axes=eigenmodes:
+  k=2->XY pad, k=1->lean strip, k=3+->pad(top2)+strip(s) or pair-selector
+  (builder picks simpler; auditor checks EP-2). Two-marks radially (puck=force,
+  machine dot=achieved projection, read-only telemetry). Self-sizes to k; dead
+  modes absent. Reuse the shipped two-marks internals.
+- FORCE PATH E4: mode-slider tilts along its eigenvector THROUGH existing
+  sanctioned steer entries (linear combo of existing lane tilts; basis rotation
+  ON TOP, NO new engine entry). EP-4 static check binds.
+- OUTBOARD (native gestures, never mixed): TEMP = vertical throttle (set-and-
+  stays, no center/spring/mark; label native "TEMP"/epsilon); TEMPO = throttle
+  by transport (honest NOT-YET until built); CRATE/CLAMPS = switches (T4, NOT-
+  YET); GAUGE = path-wheel (T3) + SLIDE/LOOP meters adjacent (locked+honest-
+  reason when degenerate, meters still live); meters cluster read-only.
+- FULLY-NATIVE amendment (zero human fingerprints):
+  (1) WALLS leash/comma = corpus's OWN drift envelope: LEASH(slide) default at
+      p99 (pre-reg percentile) of slide displacement in TRAINING MATERIAL during
+      fit; COMMA(loop) same on loop residue. Measured at train time, persisted
+      per world, operator-overridable live, default tick labelled "corpus
+      envelope". Loop envelope on the FAIR (D2-subtracted) readout -> D2 landed
+      (D1-D4 RESIDUAL-NULL; loop carries NO ordering bias so raw==fair, mark not
+      needed but note). On current degenerate-gauge worlds the wall renders
+      provisional/locked honestly until a retrain populates the stat. => a small
+      training-stat addition, done as a follow-on to make-B-informative (both
+      freeze-path; one retrain gets both).
+  (2) FLOORS = clarification only, NO build: floor itself is measured (shuffled-
+      null per quantity per world); the ONE standing rule "cutoff at the measured
+      floor" is used identically everywhere (M, k, drill, G2, diagnostics) -> no
+      per-case DoF to game. One disclosure sentence in papers; optional full
+      spectrum-vs-floor curve noted for papers only.
+  (3) LABELS = math-native: each mode's NAME = eigenvalue-ordered index + a
+      SPECTRAL BADGE (mini bar-chart of the eigenvector over the observable set)
+      + composition string ("0.62 fill + 0.31 run - 0.19 recency") on hover.
+      Axis labels = badges, not words. EP-5 amended: badge/composition IS the
+      name; earned English word ("~density-ish") only in an OPTIONAL tooltip,
+      OFF by default, still gated on earned correlation. No English on surface.
+- HARNESS EP-1..6 (EP-5 as amended); gesture-law: no mixed geometries (LEAN
+  radial / LEVEL throttle / SWITCH wall / PATH wheel). Opus audit.
+- ARCHIVE: synth-grammar sections (paper1 Theorem D + gesture table; paper2
+  reveal rows depending on it) -> papers/archive/ with the ruling header. Papers
+  KEEP the Gibbs object, T1-T5 as physics types, Theorems A/B/C', FDT/arming,
+  sym-antisym split. Only "human grammar maps naturally" is archived.
+- SEQUENCING: E1/E2 -> radial+outboard build (Sonnet render, Opus audit EP-1..6)
+  -> legacy drawer + archive move same train -> deploy (no retrain; durable
+  sessions). make-B-informative runs parallel; panel auto-recomputes modes on
+  the richer object when it lands. Wall-envelope stat rides the B retrain.
+
+## 24. CHROMATIC LAW (operator amendment, 2026-07-18) — display layer only
+Color renders the object's spectrum; nothing hand-picked. Folds into the radial
+build (#23). Physics/force-path/EP-1..6 unchanged. Ship all three:
+- C-1 RANK->HUE: modes by eigenvalue -> spectral position (mode1 largest=red,
+  descending rank->violet). Axis identity = its mode's hue.
+- C-2 EIGENVALUE->SATURATION: vividness = |eigenvalue| vs measured floor;
+  near-floor washes out, below-floor invisible/absent (CH-2). Recompute w/ modes.
+- C-3 COMPOSITION->RGB MIX. PRE-REGISTERED PRIMARY TABLE (fixed once, never
+  per-world): density=R(255,0,0); continuity/run=G(0,255,0); novelty/recency=
+  B(0,0,255); region0=cyan(0,255,255); region1=magenta(255,0,255); region2=
+  yellow(255,255,0); further region_k cycle the secondary triad. Mode badge
+  color = RGB mix of |eigenvector loadings| (normalized weights); SIGN = +/-
+  tick per component in the hover bar-chart, NOT in hue.
+- PAD TEXTURE: color(u) = loading-weighted RGB blend of the two axis-modes'
+  colors by the point's coords, saturation x C-2 x radial distance (center
+  neutral, rim full chroma). Continuous field, no hand-painted gradient.
+  Machine dot = achieved-projection color (its drift IS telemetry); user puck
+  neutral white/outline.
+- FIELD roles: hue=role identity, saturation=live settled weight (UNIFY with
+  the brightness law, don't double-encode).
+- METERS: SLIDE warm/cool sequential (unsigned); LOOP diverging-through-zero
+  (flips side on sign flip); TEMP throttle blue->red.
+RULES: display-only (no color feeds control/F); palette pre-registered ONCE
+(this table); CH-1 (colors derive ONLY from rank/eigenvalue/loadings/achieved
+projections/meter values — injected hand-set color FAILS); CH-2 (fade tracks
+floor); accessibility (hue NEVER alone — rank index number + badge bar-chart
+always present; colorblind-safe by redundancy not palette distortion). Auditor
+verifies CH-1/CH-2 + EP-1..6 unchanged.

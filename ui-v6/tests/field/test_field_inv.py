@@ -22,7 +22,7 @@ from tests.field.conftest import FakeWheelEvent, fed_model
 # every name that can write settled/brightness state in the field module.
 BRIGHTNESS_WRITERS = {
     "_ingest", "apply_roleactivity", "apply_nowplaying", "apply_profiles",
-    "apply_unitpool", "telemetry_writer", "decay",
+    "apply_unitpool", "telemetry_writer",
 }
 INPUT_HANDLERS = {
     "wheelEvent", "mousePressEvent", "mouseMoveEvent", "mouseReleaseEvent",

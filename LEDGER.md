@@ -1017,3 +1017,45 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-af1e399e698909be7/cloud/tests/test_web_scalar_lanes.py (2026-07-18T09:30:02+00:00)
 - `Edit` .claude/worktrees/agent-af1e399e698909be7/cloud/tests/test_web_scalar_lanes.py (2026-07-18T09:30:41+00:00)
 - `Edit` .claude/worktrees/agent-af1e399e698909be7/cloud/tests/test_web_scalar_lanes.py (2026-07-18T09:31:08+00:00)
+
+### at `629a5ac`
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/ets/functional/anchors.py (2026-07-18T10:00:11+00:00)
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/cloud/common/protocol.py (2026-07-18T10:00:56+00:00)
+- `Edit` .claude/worktrees/agent-aa9a7bf254a3f165b/ui-v6/ets/instrument/field.py (2026-07-18T10:01:23+00:00)
+- `Edit` .claude/worktrees/agent-aa9a7bf254a3f165b/ui-v6/ets/instrument/live.py (2026-07-18T10:01:39+00:00)
+- `Edit` .claude/worktrees/agent-aa9a7bf254a3f165b/ui-v6/tests/field/test_field_inv.py (2026-07-18T10:01:47+00:00)
+- `Edit` .claude/worktrees/agent-aa9a7bf254a3f165b/ui-v6/ets/instrument/live.py (2026-07-18T10:02:18+00:00)
+- `Write` .claude/worktrees/agent-aa9a7bf254a3f165b/ui-v6/tests/field/test_field_p6_no_decay.py (2026-07-18T10:02:54+00:00)
+- `Write` .claude/worktrees/agent-aa9a7bf254a3f165b/ui-v6/tests/pi/test_pi_p6_hold_last_real.py (2026-07-18T10:03:17+00:00)
+- `Write` .claude/worktrees/agent-ad4f2a43bb62670a9/tests/functional/test_informative_B.py (2026-07-18T10:08:57+00:00)
+- `Write` .claude/worktrees/agent-ad4f2a43bb62670a9/cloud/tests/test_receipt_strengthening.py (2026-07-18T10:10:31+00:00)
+- `Write` .claude/worktrees/agent-ad4f2a43bb62670a9/cloud/tests/test_informative_B_arming.py (2026-07-18T10:11:03+00:00)
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/cloud/tests/test_receipt_strengthening.py (2026-07-18T10:11:56+00:00)
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/cloud/tests/test_informative_B_arming.py (2026-07-18T10:12:03+00:00)
+- `Write` papers/findings/ASYM-diagnosis-D1-D4-2026-07-18.md (2026-07-18T10:12:48+00:00)
+
+### at `bfd77cc`
+- `Write` .claude/worktrees/agent-ad4f2a43bb62670a9/cloud/tests/test_freeze_only_byte_identity.py (2026-07-18T10:14:25+00:00)
+
+### at `b017e42`
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/tests/harness/test_stage1_acceptance.py (2026-07-18T10:19:10+00:00)
+
+### at `d8f950e`
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/architecture-v6/tests/harness/test_stage1_acceptance.py (2026-07-18T10:23:32+00:00)
+
+### at `8a22628`
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/ui-v6/tests/harness/test_stage1_acceptance.py (2026-07-18T10:24:18+00:00)
+
+### at `15fa073`
+- `Edit` .claude/worktrees/agent-ad4f2a43bb62670a9/release-manifest.json (2026-07-18T10:25:54+00:00)
+- `Write` .claude/worktrees/agent-a515847f2e1b619d4/papers/archive/paper1-theorem-D-synth-grammar-ARCHIVED.md (2026-07-18T10:26:11+00:00)
+- `Edit` .claude/worktrees/agent-a515847f2e1b619d4/papers/paper1-typed-control-calculus.md (2026-07-18T10:26:23+00:00)
+- `Write` .claude/worktrees/agent-a515847f2e1b619d4/papers/archive/paper2-synth-grammar-reveal-ARCHIVED.md (2026-07-18T10:26:44+00:00)
+- `Edit` .claude/worktrees/agent-a515847f2e1b619d4/papers/paper2-ets-instrument.md (2026-07-18T10:26:53+00:00)
+- `Write` .claude/worktrees/agent-a515847f2e1b619d4/papers/archive/README.md (2026-07-18T10:27:10+00:00)
+
+### at `96ef72f`
+- `Edit` .claude/worktrees/agent-a98594cb747f69156/cloud/companion/engine_bridge.py (2026-07-18T10:38:26+00:00)
+- `Edit` .claude/worktrees/agent-a98594cb747f69156/cloud/companion/engine_bridge.py (2026-07-18T10:38:30+00:00)
+- `Edit` .claude/worktrees/agent-a98594cb747f69156/cloud/companion/engine_bridge.py (2026-07-18T10:38:37+00:00)
+- `Edit` .claude/worktrees/agent-a98594cb747f69156/cloud/companion/engine_bridge.py (2026-07-18T10:38:58+00:00)

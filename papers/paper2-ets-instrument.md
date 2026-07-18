@@ -112,29 +112,15 @@ the machine mark is the visible form of the unforced equilibrium.
 
 ### 6. The reveal: the panel is a theorem
 
-Everything above is Part 1 instantiated, discovered in this order rather
-than designed from it:
+[ARCHIVED 2026-07-18 — see papers/archive/. Theorem D's naturality claim
+(human grammar maps naturally onto the control types) is a HUMAN-CHOSEN
+BASIS, superseded by the eigenpanel (the object's own eigenbasis). The
+physics — T1-T5 as types, Theorems A/B/C', FDT/arming, the sym-antisym split
+— STANDS and remains in this paper.]
 
-| ETS object | Part 1 object |
-|---|---|
-| field tap / scalar tilt lanes | T1 conjugate pairs (force, observable) |
-| CHAOS / temperature | T2 thermodynamic (scales eps; directionless) |
-| KEY LOCK + SLIDE/LOOP pair | T3 frame control; its response's Hodge split — slide = symmetric part, loop = the system's ONLY antisymmetric response |
-| committed past, crate, panel measure, field-at-unit | T4 clamps |
-| TEMPO (schedule byte-identity) | T5 clock (commutes with argmin) |
-| sigma_phi calibration | Theorem A: sensitivity = constrained conjugate fluctuation, measured |
-| disarm-and-label | Theorem A corollary: degenerate FDT, not policy |
-| co-movement | Theorem B: off-diagonal covariance; Maxwell-symmetric on tilt lanes |
-| target/achieved gap; release convergence | Theorem C': emergent response; unforced relaxation |
-| two-marks-on-one-track; field as compressed pair | Theorem D(iii): canonical renderings of conjugacy at two densities |
-| the synth-grammar reconciliation succeeding | Theorem D(i–ii): signature unification is unique; the words carry the referents |
-
-The classical-synth reconciliation worked, repeatedly and without forcing,
-because it could not have failed: the human grammar and the thermodynamic
-types carry the same five response signatures, and signature matching has a
-unique fixed point. The interface was discovered, not designed — and every
-fabrication the project caught was, in these terms, a violated conjugacy: a
-mark not backed by its observable, a force not entering through its type.
+(Full original text, incl. the ETS-object / Part-1-object identification
+table and the closing "reconciliation" prose, preserved verbatim at
+papers/archive/paper2-synth-grammar-reveal-ARCHIVED.md.)
 
 ### 7. Predictions and checks this identification licenses
 
