@@ -927,3 +927,7 @@
 {"head": "afc1333", "path": "papers/PREREG-temperature-sweep.md", "tool": "Write", "ts": "2026-07-18T17:50:18+00:00"}
 {"head": "afc1333", "path": "cloud/companion/eigen_experimental.py", "tool": "Edit", "ts": "2026-07-18T17:51:48+00:00"}
 {"head": "afc1333", "path": "papers/findings/COV-vs-FD-divergence-2026-07-18.md", "tool": "Write", "ts": "2026-07-18T17:54:31+00:00"}
+{"head": "640e2b3", "path": "cloud/companion/eigen_experimental.py", "tool": "Edit", "ts": "2026-07-18T18:02:48+00:00"}
+{"head": "640e2b3", "path": "cloud/companion/eigen_experimental.py", "tool": "Edit", "ts": "2026-07-18T18:02:56+00:00"}
+{"head": "640e2b3", "path": "cloud/companion/eigen_experimental.py", "tool": "Edit", "ts": "2026-07-18T18:03:15+00:00"}
+{"head": "2e8b2ef", "path": "cloud/companion/app.py", "tool": "Edit", "ts": "2026-07-18T18:06:51+00:00"}
