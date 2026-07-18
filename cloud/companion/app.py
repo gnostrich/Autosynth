@@ -1231,19 +1231,35 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {**out, "files": session.session_files()})
             return
 
-        # --- instrument control: region-tilt is the ONLY engine-bound gesture ---
+        # --- instrument control: the typed settlement inputs (widened WEB-FIELD-D) --
+        # One settlement endpoint (/api/steer), a RICHER force vector: the region lane
+        # PLUS the typed scalar conjugate-control lanes of paper2 §2, EACH entering the
+        # engine through its ONE lane-vector datum (its bridge setter), exactly as the
+        # desktop panel's _push routes each lane. No second channel, no new endpoint;
+        # the bridge assembles them into the single LaneVector the engine's one
+        # _tilt_for(u) consumes. A DISARMED/degenerate lane is simply ABSENT from the
+        # payload (the FE emits no force for it) — and the engine's layer0 applies no
+        # tilt on it either, so honesty is enforced on both sides.
         if path == "/api/steer":
             p = self.hub.playable_for(session)
             if p is None:
                 self._json(409, {"ok": False, "error": "no playable world"})
                 return
             region = []
+            data = {}
             if body:
                 try:
-                    region = json.loads(body.decode()).get("region", [])
+                    data = json.loads(body.decode())
+                    region = data.get("region", [])
                 except Exception:
-                    region = []
-            p.set_region(region)         # the SINGLE settlement input
+                    data, region = {}, []
+            p.set_region(region)                                   # region lane (T1 vec)
+            # typed scalar lanes — each through its ONE setter (its ONE datum):
+            if "continuity" in data:  p.set_continuity(data["continuity"])   # VARY  (T1)
+            if "novelty" in data:     p.set_novelty(data["novelty"])         # SPREAD(T1)
+            if "density" in data:     p.set_density(data["density"])         # DENSITY(T1)
+            if "gauge" in data:       p.set_gauge(data["gauge"])             # KEY LOCK(T3)
+            if "temperature" in data: p.set_temperature(data["temperature"]) # CHAOS (T2)
             self._json(200, {"ok": True})
             return
         if path == "/api/play":

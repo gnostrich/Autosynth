@@ -345,6 +345,43 @@
     transition: width .12s linear; }
   .lane .rd.num{ font-variant-numeric: tabular-nums; }
 
+  /* ---------- SCALAR FORCE LANES (paper2 §2 conjugate controls) ----------
+     These are the INTERACTIVE two-marks-on-one-track lanes (Theorem D(iii)):
+     a draggable HANDLE (the user's target force) and a read-only MACHINE MARK
+     (the achieved conjugate observable, from telemetry). The GAP between them is
+     left as the visible offset (settlement resisting) — never eased or tweened
+     (Theorem C'). This is a DISTINCT surface from the read-only Lane Console
+     meters above; its handle drives the engine through the widened /api/steer
+     force vector (each lane its ONE datum). No range input, no slider chrome. */
+  .slanes{ display:flex; flex-direction:column; gap: var(--sp-4); }
+  .slane{ display:grid; grid-template-columns: 92px 1fr 52px; align-items:center; gap: var(--sp-3); }
+  .slane .slbl .name{ font-size: var(--fs-micro); letter-spacing:.15em; text-transform:uppercase; color: var(--ink); font-weight:650; }
+  .slane .slbl .desc{ font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--muted); font-weight:600; margin-top:2px; }
+  .slane .sval{ text-align:right; font-size:15px; font-weight:600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  /* the track: a real drag surface (ew-resize, NOT grab) with two marks on it. */
+  .slane .strk{ position:relative; height:16px; cursor: ew-resize; touch-action:none; }
+  .slane .strk .base{ position:absolute; left:0; right:0; top:7px; height:2px; border-radius:1px; background: var(--line-soft); }
+  .slane .strk .smark{ position:absolute; top:2px; width:2px; height:12px; margin-left:-1px;
+    background: var(--ink-2); border-radius:1px; }          /* MACHINE MARK (telemetry) */
+  .slane .strk .shandle{ position:absolute; top:0; width:12px; height:16px; margin-left:-6px;
+    border-radius:3px; background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+    box-shadow:0 0 8px -2px var(--accent-glow); }           /* HANDLE (user target) */
+  /* disarmed / degenerate: greyed AND inert — the lane cannot lean on this corpus. */
+  .slane.inert{ opacity:.5; }
+  .slane.inert .strk{ cursor:default; pointer-events:none; }
+  .slane.inert .strk .shandle{ background: var(--faint); box-shadow:none; }
+  .slane.inert .slbl .desc{ color: var(--faint); }
+  /* honest not-yet: TEMPO (T5 clock) is not wired — disabled + labeled, no force. */
+  .slane.notwired{ opacity:.42; }
+  .slane.notwired .strk{ cursor: not-allowed; pointer-events:none; }
+  /* CHAOS (T2): a directionless magnitude lane — no machine mark drawn. */
+  .slane.chaos .strk .smark{ display:none; }
+  /* at-ceiling honest note (real-or-absent; from live telemetry, not a flag). */
+  .slane .snote{ grid-column: 2 / 4; font-size:10px; letter-spacing:.04em; color: var(--faint);
+    margin-top:-4px; display:none; }
+  .slane.ceiling .snote{ display:block; color: var(--tape); }
+  .slane .snote.inert-note{ display:block; }
+
   .meters{ display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); padding-top: var(--sp-3); border-top:1px solid var(--line-soft); }
   .meter .mh{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }
   .meter .mv{ font-size:13px; font-weight:600; color: var(--ink); }
@@ -878,6 +915,15 @@
           </div>
         </section>
 
+        <!-- SCALAR FORCE LANES (paper2 §2 conjugate controls; two marks on one track) -->
+        <section class="console panel" style="margin-bottom:var(--sp-5)">
+          <div class="sec-h" style="margin-bottom:2px">
+            <span class="lbl">Scalar Lanes</span><span class="rule"></span>
+            <span class="hint">drag to lean · handle = your target, mark = what the engine achieved</span>
+          </div>
+          <div class="slanes" id="slanes"><!-- scalar force lanes injected --></div>
+        </section>
+
         <!-- BOTTOM: LIBRARY + TAPE -->
         <div class="bottom">
           <!-- SOURCE LIBRARY (from ingested files, display-only) -->
@@ -1154,6 +1200,9 @@
         world.lastError = w.last_error || null;
         updateWarming();
         enableInstrument();
+        // arm the scalar force lanes from the world's MEASURED σ_φ (steerable /
+        // disarmed / degenerate) — a lane that cannot lean renders greyed AND inert.
+        applyScalarArming(w);
         // STATIC per-world field telemetry (profiles + unit pools + honest names):
         // the TRACK and UNIT grains of the ladder. Absent -> flat role fallback.
         fieldApplyStatic(w);
@@ -1361,6 +1410,7 @@
     instHint.textContent = world.M + " roles · " + world.sr + " Hz";
     $("tapeEnd").textContent = fmtClock(TAPE_WINDOW);
     buildLanesOnce();
+    buildScalarLanesOnce();       // the interactive two-marks conjugate-control lanes
     buildMetersOnce();
     fieldInit();
     tutShowIfFirst();             // one-time tutorial: only NOW does a world exist
@@ -1931,12 +1981,15 @@
   }
 
   /* -------- THE ONE ENGINE-CONTROL PATH: POST /api/steer -------- */
-  function sendSteer(regionVec){
-    // The ONLY request in this app that steers the engine. Region tilt only.
+  function sendSteer(payload){
+    // The ONE request that steers the engine. Its payload is the widened force
+    // vector: the region lane PLUS the typed scalar conjugate lanes (paper2 §2),
+    // each entering the engine through its ONE datum (bridge setter). Still a
+    // single /api/steer input — no second endpoint.
     return fetch("/api/steer", {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({ region: regionVec })
+      body:JSON.stringify(payload)
     }).catch(noop);
   }
   function sendSteerNow(){
@@ -1949,7 +2002,11 @@
     if(world.regionArmed && state === "playing"){
       fieldPending = true; fieldSetStatus("settling…", true);
     }
-    sendSteer(region.slice());
+    var payload = { region: region.slice() };
+    // fold in the ARMED scalar lanes' forces (disarmed/degenerate/tempo emit nothing).
+    var sc = scalarBuilt ? scalarPayload(scalarLaneStates()) : {};
+    for(var k in sc) payload[k] = sc[k];
+    sendSteer(payload);
   }
 
   // gesture -> INPUT only; never brightness. Ctrl/pinch = zoom (drill only where real
@@ -2262,6 +2319,241 @@
     });
   }
 
+  /* ================= SCALAR FORCE LANES (paper2 §2 conjugate controls) =======
+     The INTERACTIVE two-marks-on-one-track family (Theorem D(iii)): each armed
+     lane is ONE track carrying (a) a draggable HANDLE (the user's target force)
+     and (b) a read-only MACHINE MARK (the achieved conjugate observable, read
+     from telemetry d.lanes). The gap between them is the visible offset —
+     settlement resisting — never eased/tweened. On RELEASE the handle FOLLOWS the
+     machine mark as telemetry arrives (the unforced equilibrium reclaiming the
+     lane; Theorem C'), a DIRECT assignment with no timer/ease. Force reaches the
+     engine ONLY through the widened /api/steer force vector (each lane its ONE
+     datum, mirroring the desktop _push). Arming is gated on the world's MEASURED
+     σ_φ (steerable = identifiable AND σ>0): a disarmed OR degenerate lane renders
+     greyed AND inert (emits no force). CHAOS (T2) is directionless magnitude with
+     no machine mark; TEMPO (T5) is honestly not-wired (disabled, no force). */
+
+  /* ===== SCALAR LANE PURE LOGIC (test-extractable: force / payload / follow / ceiling) =====
+     DOM-free arithmetic mirrored from the engine's lane ranges (ets.panel.lanes):
+     direction leans span ±3 (SCALAR_U_SCALE); T_s spans [1e-3, 4] (CHAOS). No
+     hidden constant reaches the engine — λ = u/σ_φ is derived engine-side. */
+  var SCALAR_U_SCALE = 3.0;                 // direction-lane half-range (lanes.spec ±3)
+  var SCALAR_T_LO = 0.001, SCALAR_T_HI = 4.0;   // CHAOS temperature range (lanes.spec)
+  var SCALAR_CEIL_EPS = 0.01;               // machine-mark "not moving" band
+  var SCALAR_DEFLECT_MIN = 0.12;            // sustained handle deflection to test ceiling
+  var SCALAR_CEIL_WINDOW = 8;               // telemetry frames of mark history kept
+  // each armed DIRECTION lane's engine datum (the ONE setter key /api/steer routes to).
+  var SCALAR_LANE_SETTER = { continuity:"continuity", novelty:"novelty",
+                             density:"density", gauge:"gauge" };
+  // which telemetry observable is a lane's single MACHINE MARK. gauge (KEY LOCK, T3)
+  // has NO single mark — its conjugate is the slide/loop PAIR (metered separately,
+  // never summed) — so it is absent here on purpose.
+  var SCALAR_MARK_OBS = { continuity:"continuity", novelty:"novelty", density:"density" };
+
+  function scalarForce(handle, grab, held){
+    // Pure handle-space deflection from the grab point → the lane lean u. Reads NO
+    // observable (no meter-in-force feedback): while released the lean is exactly 0
+    // (unforced equilibrium), so a lane only leans while actively held.
+    if(!held) return 0;
+    var u = (handle - grab) * 2 * SCALAR_U_SCALE;   // Δ∈[-1,1] → u∈[-3,3]
+    return Math.max(-SCALAR_U_SCALE, Math.min(SCALAR_U_SCALE, u));
+  }
+  function scalarTemp(handle){
+    // CHAOS magnitude → T_s. Directionless (T2): an absolute sharpness, not a lean.
+    var h = Math.max(0, Math.min(1, handle));
+    return SCALAR_T_LO + h * (SCALAR_T_HI - SCALAR_T_LO);
+  }
+  function scalarFollow(handle, mark, held){
+    // RELEASE mechanic (Theorem C'): a released handle IS the machine mark (follows
+    // telemetry), a held handle keeps the user's target. No ease/tween/lerp/timer.
+    return held ? handle : mark;
+  }
+  function scalarMark(lanes, obsKey){
+    // The MACHINE MARK is a real telemetry read (real-or-absent) — never the handle.
+    var v = lanes && lanes[obsKey];
+    return (typeof v === "number") ? Math.max(0, Math.min(1, v)) : null;
+  }
+  function scalarAtCeiling(markHist, held, handle, grab){
+    // Honest "at ceiling" (real-or-absent): only while a lane is HELD with a
+    // sustained deflection AND its observable is PINNED (recent mark range ≈ 0).
+    // Derived purely from the telemetry mark history — never a per-lane flag.
+    if(!held) return false;
+    if(Math.abs(handle - grab) < SCALAR_DEFLECT_MIN) return false;
+    if(!markHist || markHist.length < 3) return false;
+    var mn = markHist[0], mx = markHist[0];
+    for(var i=1;i<markHist.length;i++){ var v = markHist[i]; if(v<mn)mn=v; if(v>mx)mx=v; }
+    return (mx - mn) < SCALAR_CEIL_EPS;
+  }
+  function scalarPayload(lanes){
+    // The scalar half of the /api/steer force vector: each ARMED direction lane's
+    // force through its ONE datum, plus CHAOS temperature. A DISARMED/degenerate
+    // lane (armed:false) or TEMPO (not in SCALAR_LANE_SETTER) emits NOTHING.
+    var out = {};
+    for(var key in SCALAR_LANE_SETTER){
+      var L = lanes[key];
+      if(L && L.armed) out[key] = scalarForce(L.handle, L.grab, L.held);
+    }
+    var T = lanes.temperature;
+    if(T && T.armed) out.temperature = scalarTemp(T.handle);
+    return out;
+  }
+  /* ===== END SCALAR LANE PURE LOGIC ===== */
+
+  // arming id map: FE lane key → engine lane id (world_info uses "cont", not "continuity").
+  var SCALAR_ARM_ID = { continuity:"cont", novelty:"novelty",
+                        density:"density", gauge:"gauge" };
+  var SCALAR_LANES = [
+    { key:"continuity",  name:"VARY",     desc:"continuity", mark:true  },
+    { key:"novelty",     name:"SPREAD",   desc:"novelty",    mark:true  },
+    { key:"density",     name:"DENSITY",  desc:"density",    mark:true  },
+    { key:"gauge",       name:"KEY LOCK", desc:"gauge",      mark:false, frame:true },
+    { key:"temperature", name:"CHAOS",    desc:"temperature",mark:false, chaos:true },
+    { key:"tempo",       name:"TEMPO",    desc:"clock (not wired)", mark:false, tempo:true }
+  ];
+  var scalarLanes = {}, scalarEls = {}, scalarBuilt = false, scalarWrap = $("slanes");
+
+  function scalarLaneStates(){ return scalarLanes; }   // for scalarPayload (reads state)
+
+  function buildScalarLanesOnce(){
+    if(scalarBuilt) return; scalarBuilt = true;
+    SCALAR_LANES.forEach(function(spec){
+      // CHAOS default handle sits at T_s=1 (the neutral sharpness); direction lanes
+      // start centered until the first telemetry mark parks the handle on it.
+      var h0 = spec.chaos ? (1.0 - SCALAR_T_LO) / (SCALAR_T_HI - SCALAR_T_LO) : 0.5;
+      scalarLanes[spec.key] = { armed:false, handle:h0, grab:h0, held:false,
+        mark:null, markHist:[], atCeiling:false,
+        chaos:!!spec.chaos, frame:!!spec.frame, tempo:!!spec.tempo };
+      var row = document.createElement("div");
+      row.className = "slane" + (spec.chaos ? " chaos" : "") + (spec.tempo ? " notwired" : "");
+      row.setAttribute("data-lane", spec.key);
+      row.innerHTML =
+        '<div class="slbl"><div class="name">'+spec.name+'</div><div class="desc">'+spec.desc+'</div></div>'+
+        '<div class="strk"><div class="base"></div><div class="smark"></div><div class="shandle"></div></div>'+
+        '<div class="sval num">&mdash;</div>'+
+        '<div class="snote"></div>';
+      scalarWrap.appendChild(row);
+      var strk = row.querySelector(".strk");
+      scalarEls[spec.key] = { row: row, strk: strk, mark: row.querySelector(".smark"),
+        handle: row.querySelector(".shandle"), val: row.querySelector(".sval"),
+        note: row.querySelector(".snote") };
+      if(!spec.tempo){
+        strk.addEventListener("pointerdown", scalarOnDown);
+        strk.addEventListener("pointermove", scalarOnMove);
+        strk.addEventListener("pointerup", scalarOnUp);
+        strk.addEventListener("pointercancel", scalarOnUp);
+      }
+      scalarDraw(spec.key);
+    });
+  }
+
+  function scalarLaneOf(ev){
+    var row = ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest(".slane") : null;
+    return row ? row.getAttribute("data-lane") : null;
+  }
+  function scalarPosFromEvent(ev){
+    var strk = ev.currentTarget, rect = strk.getBoundingClientRect();
+    if(!rect.width) return 0.5;
+    return Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+  }
+  // INPUT HANDLERS (registered in test_web_field INPUT_HANDLERS): they reach the
+  // engine ONLY through the sanctioned scalar force path (sendSteerNow → sendSteer),
+  // never a brightness/telemetry store.
+  function scalarOnDown(ev){
+    var key = scalarLaneOf(ev); if(!key) return;
+    var L = scalarLanes[key]; if(!L || !L.armed) return;
+    L.held = true;
+    L.handle = scalarPosFromEvent(ev);
+    L.grab = L.handle;                       // grab point = the current (unforced) rest
+    try{ ev.currentTarget.setPointerCapture(ev.pointerId); }catch(_){}
+    ev.preventDefault();
+    sendSteerNow(); scalarDraw(key);
+  }
+  function scalarOnMove(ev){
+    var key = scalarLaneOf(ev); if(!key) return;
+    var L = scalarLanes[key]; if(!L || !L.armed || !L.held) return;
+    L.handle = scalarPosFromEvent(ev);
+    ev.preventDefault();
+    sendSteerNow(); scalarDraw(key);
+  }
+  function scalarOnUp(ev){
+    var key = scalarLaneOf(ev); if(!key) return;
+    var L = scalarLanes[key]; if(!L || !L.held) return;
+    L.held = false;                          // released → lean returns to 0 (unforced);
+    L.atCeiling = false;                     // the handle now FOLLOWS the mark on
+    sendSteerNow(); scalarDraw(key);         // each telemetry frame (updateScalarLanes)
+  }
+
+  function scalarDraw(key){
+    var L = scalarLanes[key], el = scalarEls[key]; if(!el) return;
+    el.handle.style.left = (Math.max(0, Math.min(1, L.handle)) * 100) + "%";
+    if(L.chaos){
+      el.val.textContent = scalarTemp(L.handle).toFixed(2);   // T_s magnitude
+    } else if(L.tempo){
+      el.val.innerHTML = "&mdash;";
+    } else if(typeof L.mark === "number"){
+      el.mark.style.left = (Math.max(0, Math.min(1, L.mark)) * 100) + "%";
+      el.mark.style.visibility = "visible";
+      el.val.textContent = L.mark.toFixed(2);                 // achieved observable
+    } else {
+      el.mark.style.visibility = "hidden";
+      el.val.innerHTML = "&mdash;";                           // honest-absent
+    }
+    el.row.classList.toggle("ceiling", !!L.atCeiling);
+    if(L.atCeiling && !el.row.classList.contains("inert")){
+      el.note.textContent = "at ceiling — no room to lean on this corpus";
+    } else if(!el.row.classList.contains("inert") && !L.tempo){
+      el.note.textContent = "";
+    }
+  }
+
+  function updateScalarLanes(d){
+    if(!scalarBuilt) return;
+    var lanes = (d && d.lanes) || {};
+    for(var key in SCALAR_MARK_OBS){          // continuity / novelty / density
+      var L = scalarLanes[key]; if(!L) continue;
+      var mk = scalarMark(lanes, SCALAR_MARK_OBS[key]);       // REAL telemetry read
+      L.mark = mk;
+      if(mk !== null){
+        L.markHist.push(mk);
+        if(L.markHist.length > SCALAR_CEIL_WINDOW) L.markHist.shift();
+        L.handle = scalarFollow(L.handle, mk, L.held);        // release → follow (no ease)
+      }
+      L.atCeiling = scalarAtCeiling(L.markHist, L.held, L.handle, L.grab);
+      scalarDraw(key);
+    }
+  }
+
+  function applyScalarArming(w){
+    if(!scalarBuilt) return;
+    // STEERABLE = identifiable AND σ_φ>0 (the honest arming); a lane in disarmed OR
+    // degenerate is greyed AND inert. steerable is the engine's own measurement
+    // (world_info) — never a hand-set list. CHAOS carries no φ (never disarmed);
+    // TEMPO is not wired (T5 clock; render disabled, never a fake time-stretch).
+    var steer = (w && w.steerable) || null;
+    var dis = (w && w.disarmed) || [];
+    var deg = (w && w.degenerate) || [];
+    SCALAR_LANES.forEach(function(spec){
+      var L = scalarLanes[spec.key], el = scalarEls[spec.key]; if(!L || !el) return;
+      if(spec.tempo){ L.armed = false; return; }              // honest not-wired
+      if(spec.chaos){ L.armed = true; return; }               // T2: no φ, always live
+      var id = SCALAR_ARM_ID[spec.key];
+      L.armed = steer ? (steer.indexOf(id) >= 0)
+                      : (dis.indexOf(id) < 0 && deg.indexOf(id) < 0);
+      el.row.classList.toggle("inert", !L.armed);
+      if(!L.armed){
+        L.held = false; L.atCeiling = false;
+        el.note.className = "snote inert-note";
+        el.note.textContent = (deg.indexOf(id) >= 0)
+          ? "degenerate — frozen on this corpus (no scale to lean)"
+          : "disarmed — uncalibrated on this corpus";
+      } else {
+        el.note.className = "snote";
+        el.note.textContent = "";
+      }
+      scalarDraw(spec.key);
+    });
+  }
+
   /* ================= METERS (driven by telemetry) ================= */
   var meterDefs = [], metersBuilt = false;
   function buildMetersOnce(){
@@ -2379,6 +2671,7 @@
       updateMeters(roles);
     }
     updateLanes(d);               // read-only live φ statistics (real, per bar)
+    updateScalarLanes(d);         // scalar lanes' MACHINE MARK + release-follow (real)
     updateGauge(d);               // read-only slide[g]/loop[g] gauge-drift pair
     if(typeof d.t === "number") updateTape(d.t);
     // WARMING (OPEN_ENDS #21d): the first frame with a produced bar clears the
