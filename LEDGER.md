@@ -1295,3 +1295,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/engine_bridge.py (2026-07-18T19:58:23+00:00)
 - `Edit` cloud/companion/engine_bridge.py (2026-07-18T19:58:39+00:00)
 - `Write` cloud/tests/test_sweep_cache.py (2026-07-18T19:59:18+00:00)
+
+### at `7baa60d`
+- `Write` papers/PREREG-sampler-covariance-xy.md (2026-07-19T06:50:53+00:00)

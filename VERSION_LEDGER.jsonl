@@ -963,3 +963,4 @@
 {"head": "5c29f30", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T19:58:23+00:00"}
 {"head": "5c29f30", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-18T19:58:39+00:00"}
 {"head": "5c29f30", "path": "cloud/tests/test_sweep_cache.py", "tool": "Write", "ts": "2026-07-18T19:59:18+00:00"}
+{"head": "7baa60d", "path": "papers/PREREG-sampler-covariance-xy.md", "tool": "Write", "ts": "2026-07-19T06:50:53+00:00"}
