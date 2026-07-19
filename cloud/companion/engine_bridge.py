@@ -1069,13 +1069,18 @@ class StreamPlayer:
             self._wobble = a
 
     def set_channel_bias(self, vec) -> None:
-        """Set the per-channel amplify vector (PREREG-channel-bias-squares). Each
-        component ∈ [0,1] amplifies one channel (a source track, ordered by
-        ``self._channel_tids``): its slots get clamped to real track material via
-        the I-7 ClampSet in ``produce_one_bar``. A None / empty / all-zero vector
-        clears the bias ⇒ no clamps ⇒ byte-identical audio. This stores ONE datum
-        the writer consumes as a boundary condition; it is not a tilt lane and
-        never reaches F / settlement / render as a decision."""
+        """Set the per-channel amplify vector (PREREG-channel-bias-squares-REV1-soft).
+        Each component ∈ [0,1] applies a SOFT lean toward one channel (a source
+        track, ordered by ``self._channel_tids``) at the FIBER-CHOICE measure: it
+        becomes a ``channel_logbias`` addend on the pooled-channel candidate logits
+        in ``fiber_choice_logits`` (the writer's which-unit-fills-this-slot draw),
+        carried on the ONE ``TiltTerms`` and consumed in ``produce_one_bar`` via
+        ``_tilt_for(u, channel_logbias=...)``. It is a bias the settlement works
+        AROUND, not a clamp — nothing is pinned (measured pull plateaus below 1.0,
+        stays generative). ``channel_logbias`` is excluded from ``is_untilted``, so
+        F / the O-block role solve / settlement / render are mathematically
+        unchanged; only the fiber choice leans. A None / empty / all-zero vector
+        clears the bias ⇒ no addend ⇒ byte-identical audio."""
         if vec is None:
             with self._lock:
                 self._channel_bias = None
