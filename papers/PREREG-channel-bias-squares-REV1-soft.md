@@ -1,8 +1,11 @@
 # PREREG revision R1 — channel-bias squares: SOFT mechanism (supersedes the clamp)
 
-**Status:** operator-directed mechanism correction (2026-07-19), mid-build. This is a
-versioned revision of `PREREG-channel-bias-squares.md`; the original prereg is left
-intact as the record. Phase-1 gate result included.
+**Status:** **RATIFIED** by operator (2026-07-19) — CLAUDE.md §4 sign-off for the
+soft fiber-measure engine edit; cleared for merge + deploy. ets-auditor verdict
+PASS-WITH-NOTES (both notes cleared: docstring honesty fix committed; this ratification).
+Operator-directed mechanism correction (2026-07-19). This is a versioned revision of
+`PREREG-channel-bias-squares.md`; the original prereg is left intact as the record.
+Phase-1 gate result included.
 
 ## Why the original (clamp) mechanism was rejected — the wall
 The committed prereg imposes the per-channel bias via the sanctioned **I-7 clamp**
