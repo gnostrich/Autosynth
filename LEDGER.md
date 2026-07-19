@@ -1316,3 +1316,26 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `0d5d1ec`
 - `Write` papers/PREREG-channel-bias-squares.md (2026-07-19T08:49:21+00:00)
+
+### at `16e8f06`
+- `Write` cloud/companion/channel_bias.py (2026-07-19T08:56:41+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T08:56:50+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T08:57:02+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T08:57:10+00:00)
+- `Write` cloud/tools/channel_bias_pull_verify.py (2026-07-19T09:00:13+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:28+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:36+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:51+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:55+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:58+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:05:03+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:05:23+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-19T09:05:30+00:00)
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-19T09:05:39+00:00)
+- `Write` cloud/companion/channel_bias.py (2026-07-19T09:05:59+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:06:09+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:06:19+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:06:31+00:00)
+- `Write` cloud/tools/channel_bias_pull_verify.py (2026-07-19T09:07:17+00:00)
+- `Write` cloud/tests/test_channel_bias.py (2026-07-19T09:09:10+00:00)
+- `Write` papers/PREREG-channel-bias-squares-REV1-soft.md (2026-07-19T09:11:26+00:00)

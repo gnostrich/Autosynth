@@ -124,6 +124,18 @@ class TiltTerms:
                                        # ⇒ ones ⇒ byte-identical current draw). Ordered
                                        # stiffest-first (a[0] scales the largest-curvature
                                        # direction); the writer aligns it to eigh order.
+    channel_logbias: Optional[Mapping] = None
+                                       # SOFT per-channel (source-track) lean
+                                       # (PREREG-channel-bias-squares): {track_id ->
+                                       # additive log-weight} folded into the FIBER
+                                       # choice measure (the distribution over pooled
+                                       # channels at each beat, fiber_choice_logits).
+                                       # NOT a φ lane, no σ scale, NO effect on the
+                                       # settled O mode — it up-weights a channel's
+                                       # candidate units in the SOFT Gibbs draw, so the
+                                       # settlement perceives the lean and accommodates
+                                       # it (nothing pinned; the writer stays generative).
+                                       # None/empty ⇒ no addend ⇒ byte-identical draw.
 
     def __post_init__(self):
         object.__setattr__(self, "lam_region",
@@ -146,6 +158,11 @@ class TiltTerms:
             # CLAMP at the boundary (the coherence guard's safe band): no writer
             # path ever sees an `a` outside [A_SHAPE_LO, A_SHAPE_HI].
             object.__setattr__(self, "a", np.clip(a, A_SHAPE_LO, A_SHAPE_HI))
+        if self.channel_logbias is not None:
+            cb = {int(k): float(v) for k, v in dict(self.channel_logbias).items()}
+            if not all(np.isfinite(v) for v in cb.values()):
+                raise ValueError("channel_logbias weights must be finite")
+            object.__setattr__(self, "channel_logbias", (cb or None))
 
     @property
     def is_untilted(self) -> bool:
@@ -160,13 +177,17 @@ class TiltTerms:
 
 
 def untilted(n_anchors: int, T_s: float = 1.0,
-             a: Optional[np.ndarray] = None) -> TiltTerms:
+             a: Optional[np.ndarray] = None,
+             channel_logbias: Optional[Mapping] = None) -> TiltTerms:
     """The identity tilt at temperature T_s (u = 0). This is the untilted
     writer the σ_φ calibration instrument runs. `a` (default None) is the
-    optional second-moment anisotropy; None keeps the draw byte-identical."""
+    optional second-moment anisotropy; None keeps the draw byte-identical.
+    `channel_logbias` (default None) is the optional SOFT per-channel fiber
+    lean (PREREG-channel-bias-squares) — None/empty keeps the draw byte-
+    identical; it never touches the settled O mode (fiber block only)."""
     return TiltTerms(lam_region=np.zeros(int(n_anchors)), lam_density=0.0,
                      lam_cont=0.0, lam_gauge=0.0, lam_novelty=0.0,
-                     T_s=float(T_s), a=a)
+                     T_s=float(T_s), a=a, channel_logbias=channel_logbias)
 
 
 class WorldNotCalibrated(RuntimeError):
@@ -194,7 +215,8 @@ def _lam(u: float, sigma: float, lane: str, identifiable: bool,
 
 
 def layer0(u, sigma: Optional[SigmaPhi],
-           a: Optional[np.ndarray] = None) -> TiltTerms:
+           a: Optional[np.ndarray] = None,
+           channel_logbias: Optional[Mapping] = None) -> TiltTerms:
     """The Layer-0 map: lane vector u (+ T_s) → TiltTerms via λ_i = u_i/σ_φi.
 
     `u` is an ets.panel.lanes.LaneVector-typed object (duck-typed here so the
@@ -219,7 +241,8 @@ def layer0(u, sigma: Optional[SigmaPhi],
                 "nonzero lane lean received but this world carries no σ_φ "
                 "calibration (ets/calibration/sigma_phi.json). Run the "
                 "calibration instrument at world-freeze; λ will not be invented.")
-        return untilted(r.shape[0], T_s=float(u.T_s), a=a)
+        return untilted(r.shape[0], T_s=float(u.T_s), a=a,
+                        channel_logbias=channel_logbias)
 
     sr = np.asarray(sigma.region, float).reshape(-1)
     if sr.shape[0] != r.shape[0]:
@@ -247,6 +270,7 @@ def layer0(u, sigma: Optional[SigmaPhi],
         degenerate=tuple(degenerate),
         disarmed=tuple(disarmed),
         a=a,
+        channel_logbias=channel_logbias,
     )
     return terms
 
@@ -276,20 +300,30 @@ def o_block_gradient(tilt: TiltTerms, M: int, n_slots: int) -> np.ndarray:
 
 
 def fiber_choice_logits(energies: np.ndarray, is_continuation: np.ndarray,
-                        reuse: np.ndarray, tilt: TiltTerms) -> np.ndarray:
+                        reuse: np.ndarray, tilt: TiltTerms,
+                        channel_bias: Optional[np.ndarray] = None) -> np.ndarray:
     """Per-choice log-weights of the Layer-0 measure over a fiber choice set.
 
     `energies` are the F-side energies of each candidate placement (computed by
     the writer from f.py's own T1p/T4 term math — see realize.FiberThreader);
     `is_continuation` marks the choices that continue a source run (Δφ_cont=1);
-    `reuse` is each candidate's recency weight (Δφ_novelty contribution).
+    `reuse` is each candidate's recency weight (Δφ_novelty contribution);
+    `channel_bias` (optional, per-choice) is the SOFT per-channel lean β(c) —
+    the additive log-weight of the candidate's source track under
+    `tilt.channel_logbias` (PREREG-channel-bias-squares). None ⇒ zero addend.
 
-        log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c)
+        log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c) + β(c)
 
+    The channel lean is inside the SAME measure — it does not pin any choice; a
+    channel with no candidate in this (role,band) set gets no term, so the pull is
+    contingent on the settled O and the channel's coverage (soft, generative).
     φ_region/φ_density are fixed by the already-settled O at this point and
     contribute an equal constant to every choice (dropped); φ_gauge does not
     read the fiber."""
     e = np.asarray(energies, float)
-    return (-e / tilt.T_s
-            + tilt.lam_cont * np.asarray(is_continuation, float)
-            + tilt.lam_novelty * np.asarray(reuse, float))
+    logits = (-e / tilt.T_s
+              + tilt.lam_cont * np.asarray(is_continuation, float)
+              + tilt.lam_novelty * np.asarray(reuse, float))
+    if channel_bias is not None:
+        logits = logits + np.asarray(channel_bias, float)
+    return logits

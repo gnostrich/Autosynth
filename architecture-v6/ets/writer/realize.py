@@ -287,7 +287,16 @@ class FiberThreader:
             logits = -energies                     # T→0 deterministic reduction
         else:
             reuse = np.array([self._reuse(c, bar) for c in choices])
-            logits = fiber_logits(energies, cont, reuse, self.tilt)
+            # SOFT per-channel lean (PREREG-channel-bias-squares): the additive
+            # log-weight of each candidate's SOURCE TRACK under tilt.channel_logbias,
+            # applied inside the SAME Layer-0 fiber measure. None/empty ⇒ no addend
+            # (byte-identical); the array length matches `choices`, so the rng draw
+            # size below is unchanged — a zero bias never perturbs the stream.
+            cb = getattr(self.tilt, "channel_logbias", None)
+            cbias = None if not cb else np.array(
+                [float(cb.get(int(c[0]), 0.0)) for c in choices])
+            logits = fiber_logits(energies, cont, reuse, self.tilt,
+                                  channel_bias=cbias)
 
         if self.rng is None:
             j = int(np.argmax(logits))             # first-max: fixed enumeration order

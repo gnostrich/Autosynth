@@ -1,0 +1,163 @@
+{
+  "world": "demo.etsworld",
+  "n_channels": 4,
+  "s_phase": 8,
+  "bars_per_condition": 64,
+  "amplifies": [
+    0.0,
+    0.3,
+    0.6,
+    1.0
+  ],
+  "strength_LAMBDA_T1p": 8.758101446990384,
+  "mechanism": "SOFT per-channel fiber-measure lean (channel_logbias); no clamp, nothing pinned, generative.",
+  "per_channel": {
+    "0": {
+      "track_id": 0,
+      "unit_frac": [
+        0.30078125,
+        0.737060546875,
+        0.915771484375,
+        0.9453125
+      ],
+      "mass_frac": [
+        0.300045756819829,
+        0.7368618234541552,
+        0.9123763068658939,
+        0.9433619219017879
+      ],
+      "slot_frac": [
+        0.203125,
+        0.474609375,
+        0.732421875,
+        0.912109375
+      ],
+      "unit_monotone": true,
+      "mass_monotone": true,
+      "slot_monotone": true,
+      "unit_gain": 0.64453125,
+      "mass_gain": 0.643316165081959,
+      "slot_gain": 0.708984375,
+      "confusion_amp1": {
+        "1": 0.010986328125,
+        "0": 0.9453125,
+        "2": 0.043701171875
+      }
+    },
+    "1": {
+      "track_id": 1,
+      "unit_frac": [
+        0.226318359375,
+        0.7333984375,
+        0.897705078125,
+        0.954345703125
+      ],
+      "mass_frac": [
+        0.22711161702822605,
+        0.7353188598796151,
+        0.8974089960000154,
+        0.9558564751462858
+      ],
+      "slot_frac": [
+        0.583984375,
+        0.875,
+        1.0,
+        1.0
+      ],
+      "unit_monotone": true,
+      "mass_monotone": true,
+      "slot_monotone": true,
+      "unit_gain": 0.72802734375,
+      "mass_gain": 0.7287448581180598,
+      "slot_gain": 0.416015625,
+      "confusion_amp1": {
+        "1": 0.954345703125,
+        "0": 0.02099609375,
+        "2": 0.024658203125
+      }
+    },
+    "2": {
+      "track_id": 2,
+      "unit_frac": [
+        0.26806640625,
+        0.7841796875,
+        0.952392578125,
+        0.970703125
+      ],
+      "mass_frac": [
+        0.26907046142606916,
+        0.7848663355176382,
+        0.9494952496092904,
+        0.968572245555526
+      ],
+      "slot_frac": [
+        0.12890625,
+        0.41796875,
+        0.861328125,
+        0.919921875
+      ],
+      "unit_monotone": true,
+      "mass_monotone": true,
+      "slot_monotone": true,
+      "unit_gain": 0.70263671875,
+      "mass_gain": 0.6995017841294568,
+      "slot_gain": 0.791015625,
+      "confusion_amp1": {
+        "1": 0.010009765625,
+        "0": 0.019287109375,
+        "2": 0.970703125
+      }
+    },
+    "3": {
+      "track_id": 3,
+      "unit_frac": [
+        0.204833984375,
+        0.677490234375,
+        0.891357421875,
+        0.9208984375
+      ],
+      "mass_frac": [
+        0.20377216472586457,
+        0.6724083868073376,
+        0.8940308460572266,
+        0.920310751628515
+      ],
+      "slot_frac": [
+        0.083984375,
+        0.4765625,
+        0.78515625,
+        0.900390625
+      ],
+      "unit_monotone": true,
+      "mass_monotone": true,
+      "slot_monotone": true,
+      "unit_gain": 0.716064453125,
+      "mass_gain": 0.7165385869026504,
+      "slot_gain": 0.81640625,
+      "confusion_amp1": {
+        "1": 0.012451171875,
+        "0": 0.027099609375,
+        "2": 0.03955078125,
+        "3": 0.9208984375
+      }
+    }
+  },
+  "byte_identity": {
+    "zero_bias_rows_and_O_bit_identical": true,
+    "n_bars": 8
+  },
+  "distinctness": {
+    "confusion_diagonal_dominant": true,
+    "amp1_unit_frac": [
+      0.9453125,
+      0.954345703125,
+      0.970703125,
+      0.9208984375
+    ]
+  },
+  "material_threshold": 0.1,
+  "n_channels_material": 4,
+  "n_channels_monotone": 4,
+  "H1": true,
+  "verdict": "H1_HOLDS"
+}
