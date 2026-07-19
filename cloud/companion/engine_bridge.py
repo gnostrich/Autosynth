@@ -1069,18 +1069,21 @@ class StreamPlayer:
             self._wobble = a
 
     def set_channel_bias(self, vec) -> None:
-        """Set the per-channel amplify vector (PREREG-channel-bias-squares-REV1-soft).
-        Each component ∈ [0,1] applies a SOFT lean toward one channel (a source
-        track, ordered by ``self._channel_tids``) at the FIBER-CHOICE measure: it
-        becomes a ``channel_logbias`` addend on the pooled-channel candidate logits
-        in ``fiber_choice_logits`` (the writer's which-unit-fills-this-slot draw),
-        carried on the ONE ``TiltTerms`` and consumed in ``produce_one_bar`` via
-        ``_tilt_for(u, channel_logbias=...)``. It is a bias the settlement works
-        AROUND, not a clamp — nothing is pinned (measured pull plateaus below 1.0,
-        stays generative). ``channel_logbias`` is excluded from ``is_untilted``, so
-        F / the O-block role solve / settlement / render are mathematically
-        unchanged; only the fiber choice leans. A None / empty / all-zero vector
-        clears the bias ⇒ no addend ⇒ byte-identical audio."""
+        """Set the per-channel amplify vector (PREREG-channel-bias-squares-REV2-
+        bidirectional; extends REV1-soft). Each component ∈ [-1, 1] applies a SOFT
+        lean on one channel (a source track, ordered by ``self._channel_tids``) at
+        the FIBER-CHOICE measure: it becomes a ``channel_logbias`` addend on the
+        pooled-channel candidate logits in ``fiber_choice_logits`` (the writer's
+        which-unit-fills-this-slot draw), carried on the ONE ``TiltTerms`` and
+        consumed in ``produce_one_bar`` via ``_tilt_for(u, channel_logbias=...)``.
+        POSITIVE up-weights (amplify) that channel; NEGATIVE soft-damps / down-
+        weights it — same softmax addend, sign flipped; by gauge invariance only
+        the RELATIVE β between channels matters. It is a bias the settlement works
+        AROUND, not a clamp — nothing is pinned, and damp does not hard-mute (stays
+        generative). ``channel_logbias`` is excluded from ``is_untilted``, so F /
+        the O-block role solve / settlement / render are mathematically unchanged;
+        only the fiber choice leans. A None / empty / all-zero vector clears the
+        bias ⇒ no addend ⇒ byte-identical audio."""
         if vec is None:
             with self._lock:
                 self._channel_bias = None
@@ -1091,8 +1094,8 @@ class StreamPlayer:
                 self._channel_bias = None
             return
         v = np.where(np.isfinite(v), v, 0.0)
-        v = np.clip(v, 0.0, 1.0)
-        if not np.any(v > 0.0):
+        v = np.clip(v, -1.0, 1.0)
+        if not np.any(v != 0.0):        # all-zero (any sign) ⇒ no addend ⇒ byte-identical
             with self._lock:
                 self._channel_bias = None
             return

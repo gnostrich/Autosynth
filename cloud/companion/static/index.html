@@ -43,6 +43,8 @@
     --accent-glow: rgba(79,224,174,.55);
     --tape: #E8A24C;            /* sodium/tape amber (quiet accent) */
     --tape-glow: rgba(232,162,76,.5);
+    --damp: #E6884C;            /* amber — channel DAMP (down-weight), distinct from --accent amplify */
+    --damp-glow: rgba(230,136,76,.5);
     --danger: #E86A6A;
     --shadow: 0 18px 40px -18px rgba(0,0,0,.7), 0 2px 0 rgba(255,255,255,.015) inset;
     --pad-shadow: 0 22px 50px -22px rgba(0,0,0,.8);
@@ -272,15 +274,22 @@
     overflow:hidden; cursor:ns-resize; background: var(--panel-inset);
     min-height:96px; display:flex; flex-direction:column; justify-content:flex-end;
     touch-action:none; user-select:none; -webkit-user-select:none; }
-  .chan-sq .fill{ position:absolute; left:0; right:0; bottom:0; height:0%;
-    background: linear-gradient(0deg, rgba(74,107,255,.55), rgba(232,90,160,.45));
-    transition: height .08s ease-out; pointer-events:none; }
+  /* BIPOLAR water-level meter (REV2): fill height encodes sign — 50% = neutral,
+     >50% = amplify (accent), <50% = damp (amber). The fill COLOR is set per-sign
+     from JS (renderChannelSquare) so it is never ambiguous. */
+  .chan-sq .fill{ position:absolute; left:0; right:0; bottom:0; height:50%;
+    background: linear-gradient(0deg, var(--accent-deep), var(--accent));
+    transition: height .08s ease-out, background .12s ease-out; pointer-events:none; }
+  /* neutral center hairline (a=0): the sign reference the water level reads against. */
+  .chan-sq .cs-mid{ position:absolute; left:0; right:0; bottom:50%; height:0;
+    border-top:1px dashed var(--faint); opacity:.7; pointer-events:none; z-index:2; }
   .chan-sq .cs-body{ position:relative; z-index:1; padding:11px 12px; display:flex;
     flex-direction:column; gap:3px; }
   .chan-sq .cs-name{ font-family: var(--font-serif); font-size:13px; color: var(--ink-2); }
   .chan-sq .cs-val{ font-family: var(--font-mono); font-size:11px; color: var(--faint);
     letter-spacing:.06em; }
   .chan-sq.active-bias{ border-color: var(--accent); }
+  .chan-sq.active-damp{ border-color: var(--damp); }
   .chan-sq.disarmed{ opacity:.5; cursor:not-allowed; }
   .chan-sq.disarmed .fill{ display:none; }
   .pad-title{ font-family: var(--font-serif); font-size:15px; color: var(--ink-2); font-weight:400; }
@@ -1042,9 +1051,11 @@
                 <span class="pad-meta" id="padMeta">no world loaded</span>
               </div>
               <div class="radial-wrap" id="radialWrap"><div class="empty">no world loaded</div></div>
-              <!-- CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares, SOFT): one square
-                   per channel (source track); hover-scroll / drag amplifies (soft lean
-                   toward that track's material) or damps. Sends the channel_bias vector
+              <!-- CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares REV2, SOFT +
+                   BIDIRECTIONAL): one square per channel (source track); hover-scroll /
+                   drag UP amplifies (soft lean toward that track's material), DOWN damps
+                   (soft down-weight below the neutral center line). Both are soft — the
+                   settlement reallocates, nothing is pinned. Sends the channel_bias vector
                    via /api/steer; the XY pad's F-tilt is at rest in this mode. -->
               <div class="channel-squares" id="channelSquares" hidden><div class="empty">no world loaded</div></div>
               <div class="pad-foot">
@@ -1690,11 +1701,12 @@
     // space lean projects through each surviving mode's eigenvector onto the
     // EXISTING continuity/novelty/density/region datums (no new setter, no new
     // fetch: still the one /api/steer call below).
-    // CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares, SOFT): in `squares` mode
-    // the payload carries the per-channel amplify vector (soft fiber lean); the pad's
+    // CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares REV2, SOFT + BIDIRECTIONAL):
+    // in `squares` mode the payload carries the per-channel amplify vector in [-1,1]
+    // (positive = amplify, negative = soft damp; the soft fiber lean); the pad's
     // F-tilt and covariance shape are at rest. In any OTHER mode we send an explicit
-    // EMPTY channel_bias so no stale lean lingers (empty => bridge None => byte-
-    // identical). One datum, the same single /api/steer call.
+    // EMPTY channel_bias so no stale lean lingers (empty OR all-zero => bridge None
+    // => byte-identical). One datum, the same single /api/steer call.
     payload.channel_bias = (padMode === "squares") ? channelAmplifies.slice() : [];
     if(padMode === "squares"){
       sendSteer(payload);     // squares steers ONLY the channel lean; pad force at rest
@@ -1774,26 +1786,40 @@
     if(sqBtn) sqBtn.addEventListener("click", function(){ setPadMode("squares"); });
   })();
 
-  /* ===== CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares, SOFT) ===========
+  /* ===== CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares REV2, SOFT) =======
      One square per channel (= a source track). Hover-scroll (wheel) or vertical
-     drag sets that channel's amplify in [0,1] — the SOFT per-channel lean the
+     drag sets that channel's amplify in [-1, 1] — the SOFT per-channel lean the
      engine applies through channel_bias -> set_channel_bias -> the fiber measure.
-     Amplify up = lean toward the track; down (below 0) is clamped to 0 (no negative
-     lean is defined — "damp" is simply removing the amplify). The vector is sent on
-     the SAME /api/steer call (sendSteerNow, squares branch). */
-  var channelAmplifies = [];       // per-channel amplify, index = channel index
+     BIDIRECTIONAL (REV2): UP amplifies (up-weight, toward the track); DOWN damps
+     (soft down-weight below the neutral center). By gauge invariance only the
+     RELATIVE β between channels matters, so amplifying one ≡ damping the rest;
+     both handles are exposed so one gesture can lift one AND cut another. Damp is
+     SOFT — the settlement reallocates, nothing is pinned or hard-muted. The vector
+     is sent on the SAME /api/steer call (sendSteerNow, squares branch). */
+  var channelAmplifies = [];       // per-channel amplify in [-1,1], index = channel index
   var channelSqEls = [];
   var CHAN_STEP = 0.08;            // wheel/drag increment
-  function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
+  function clampBias(v){ return v < -1 ? -1 : (v > 1 ? 1 : v); }
   function renderChannelSquare(i){
     var el = channelSqEls[i]; if(!el) return;
     var a = channelAmplifies[i] || 0;
-    var fill = el.querySelector(".fill"); if(fill) fill.style.height = (a*100).toFixed(1)+"%";
-    var val = el.querySelector(".cs-val"); if(val) val.textContent = a > 0 ? ("amplify "+a.toFixed(2)) : "—";
+    // bipolar water level: a=-1 -> 0% (max damp), a=0 -> 50% (neutral), a=+1 -> 100%.
+    var fill = el.querySelector(".fill");
+    if(fill){
+      fill.style.height = ((0.5 + 0.5*a)*100).toFixed(1)+"%";
+      fill.style.background = a < 0
+        ? "linear-gradient(0deg, var(--damp), var(--damp-glow))"
+        : "linear-gradient(0deg, var(--accent-deep), var(--accent))";
+    }
+    var val = el.querySelector(".cs-val");
+    if(val) val.textContent = a > 0 ? ("amplify "+a.toFixed(2))
+                             : (a < 0 ? ("damp "+Math.abs(a).toFixed(2)) : "—");
     el.classList.toggle("active-bias", a > 0);
+    el.classList.toggle("active-damp", a < 0);
+    el.setAttribute("aria-valuenow", a.toFixed(2));
   }
   function setChannelAmplify(i, a){
-    a = clamp01(a);
+    a = clampBias(a);
     if(channelAmplifies[i] === a) return;
     channelAmplifies[i] = a;
     renderChannelSquare(i);
@@ -1811,10 +1837,11 @@
       var el = document.createElement("div");
       el.className = "chan-sq";
       el.setAttribute("role","slider");
-      el.setAttribute("aria-label", (ch.name||("channel "+i))+" amplify");
-      el.setAttribute("aria-valuemin","0"); el.setAttribute("aria-valuemax","1");
+      el.setAttribute("aria-label", (ch.name||("channel "+i))+" amplify / damp");
+      el.setAttribute("aria-valuemin","-1"); el.setAttribute("aria-valuemax","1");
+      el.setAttribute("aria-valuenow","0");
       el.tabIndex = 0;
-      el.innerHTML = '<div class="fill"></div><div class="cs-body">'
+      el.innerHTML = '<div class="fill"></div><div class="cs-mid"></div><div class="cs-body">'
         + '<div class="cs-name">'+(ch.name || ("channel "+i))+'</div>'
         + '<div class="cs-val">—</div></div>';
       // hover-scroll (laptop): wheel up = amplify, down = damp.

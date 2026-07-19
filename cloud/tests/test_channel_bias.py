@@ -42,6 +42,14 @@ w0, e0 = _engine()
 tids = channel_tids(w0)
 zero_is_none = channel_logbias(np.zeros(len(tids)), tids) is None
 
+# REV2 (bidirectional): a NEGATIVE bias must build a lean with NEGATIVE weights
+# (soft damp / down-weight), not None; a positive bias stays positive.
+neg = channel_logbias([-1.0] + [0.0] * (len(tids) - 1), tids)
+pos = channel_logbias([1.0] + [0.0] * (len(tids) - 1), tids)
+neg_is_negative = (neg is not None and tids[0] in neg and neg[tids[0]] < 0.0
+                   and all(v < 0.0 for v in neg.values()))
+pos_is_positive = (pos is not None and tids[0] in pos and pos[tids[0]] > 0.0)
+
 # byte-identity: unbiased writer vs writer fed the all-zero lean, bar for bar
 wa, ea = _engine(); wb, eb = _engine()
 ua = default_lane_vector(wa.M); ub = default_lane_vector(wb.M)
@@ -68,7 +76,9 @@ base = _frac(None)
 bias = _frac(channel_logbias([1.0] + [0.0]*(len(tids)-1), tids))
 
 print(json.dumps({"zero_is_none": zero_is_none, "identical": identical,
-                  "base": base, "bias": bias, "n_channels": len(tids)}))
+                  "base": base, "bias": bias, "n_channels": len(tids),
+                  "neg_is_negative": neg_is_negative,
+                  "pos_is_positive": pos_is_positive}))
 """ % (str(_ROOT), str(_ROOT))
 
 
@@ -89,3 +99,17 @@ def test_zero_bias_is_byte_identical_and_nonzero_bias_pulls():
     assert d["bias"] >= d["base"] + 0.10, (
         f"a full bias on channel 0 must materially pull provenance toward its track "
         f"(baseline {d['base']:.3f} -> biased {d['bias']:.3f})")
+
+
+def test_negative_bias_builds_a_down_weight_lean_and_zero_stays_none():
+    """REV2 bidirectional: a negative amplify builds a non-None lean whose weights
+    are NEGATIVE (soft down-weight / damp), a positive amplify builds positive
+    weights, and an all-zero vector STILL builds no lean (None) — so byte-identity
+    at neutral is preserved for the widened [-1, 1] range."""
+    d = _dump()
+    assert d["zero_is_none"], "all-zero bias must still build no lean (None) under REV2"
+    assert d["neg_is_negative"], (
+        "a negative amplify must build a lean with NEGATIVE log-weights (soft damp), "
+        "not None and not positive")
+    assert d["pos_is_positive"], "a positive amplify must build a lean with positive log-weights"
+    assert d["identical"], "all-zero channel bias must still be byte-identical under REV2"

@@ -1355,3 +1355,23 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `c553b57`
 - `Edit` papers/PREREG-channel-bias-squares-REV1-soft.md (2026-07-19T09:45:29+00:00)
+
+### at `27e4d56`
+- `Edit` cloud/companion/channel_bias.py (2026-07-19T10:27:57+00:00)
+- `Edit` cloud/companion/channel_bias.py (2026-07-19T10:28:08+00:00)
+- `Edit` cloud/companion/channel_bias.py (2026-07-19T10:28:13+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T10:28:25+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T10:28:29+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T10:28:35+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T10:28:47+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T10:28:55+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T10:29:12+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T10:29:19+00:00)
+- `Edit` cloud/tools/channel_bias_pull_verify.py (2026-07-19T10:29:27+00:00)
+- `Edit` cloud/tools/channel_bias_pull_verify.py (2026-07-19T10:29:42+00:00)
+- `Edit` cloud/tools/channel_bias_pull_verify.py (2026-07-19T10:30:27+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-19T10:30:36+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-19T10:30:40+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-19T10:30:50+00:00)
+- `Write` papers/PREREG-channel-bias-squares-REV2-bidirectional.md (2026-07-19T10:32:01+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T10:32:21+00:00)

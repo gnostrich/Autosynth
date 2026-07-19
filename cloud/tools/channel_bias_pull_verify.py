@@ -1,11 +1,17 @@
-"""PREREG-channel-bias-squares — Phase 1 SOFT pull/separability gate (standalone).
+"""PREREG-channel-bias-squares — SOFT pull/separability gate (standalone).
+
+REV2 (bidirectional, 2026-07-19): measures BOTH directions of the soft per-channel
+lean — AMPLIFY (positive addend, provenance pulls TOWARD the channel) and DAMP
+(negative addend, provenance drops BELOW its neutral baseline). Same softmax
+addend, sign flipped (gauge invariance: only relative β matters).
 
 Measures whether a SOFT per-channel lean (an additive log-weight on a track's
 candidate units inside the Layer-0 fiber choice measure — the distribution over
-pooled channels at each beat) pulls the realized output toward that track, on a
-REAL committed world. Drives the SAME lean builder (``channel_logbias``) and the
-SAME ``_tilt_for`` / ``write_bar`` the live bridge uses — no parallel path, no
-render needed (the metric is provenance of the produced rows, r.rows).
+pooled channels at each beat) pulls the realized output toward (amplify) or away
+from (damp) that track, on a REAL committed world. Drives the SAME lean builder
+(``channel_logbias``) and the SAME ``_tilt_for`` / ``write_bar`` the live bridge
+uses — no parallel path, no render needed (the metric is provenance of the
+produced rows, r.rows).
 
 This is the operator mechanism correction: NOT a hard I-7 clamp (which pins slots
 and trivially "pulls"), but a soft prior the Gibbs settlement reads and works
@@ -66,7 +72,7 @@ def _measure(world_path, seed, n_bars, ch, amp):
     tids = channel_tids(world)
     tid_T = tids[ch]
     bias = _bias_vec(len(tids), ch, amp)
-    clog = channel_logbias(bias, tids) if amp > 0.0 else None
+    clog = channel_logbias(bias, tids) if amp != 0.0 else None
 
     from ets.panel.lanes import default_lane_vector
     u = default_lane_vector(world.M)                 # u=0: isolate the channel lean
@@ -146,30 +152,44 @@ def main():
     tids = channel_tids(world)
     n_ch = len(tids)
     amplifies = [0.0, 0.3, 0.6, 1.0]
+    damps = [0.0, -0.3, -0.6, -1.0]         # REV2: mirror curve into the negative
     strength = default_strength()
     print(f"world={os.path.basename(args.world)}  channels={n_ch}  s_phase={s_phase}  "
           f"bars/condition={args.bars}  strength(LAMBDA.T1p)={strength:.3f}", flush=True)
 
     curves = {}
+    damp_curves = {}
     for ch in range(n_ch):
         row = []
         for amp in amplifies:
             m = _measure(args.world, args.seed, args.bars, ch, amp)
             row.append(m)
-            print(f"  ch{ch} (track {m['track_id']}) amp={amp:>3}  "
+            print(f"  ch{ch} (track {m['track_id']}) amp={amp:>4}  "
                   f"unit={m['unit_frac']:.3f} mass={m['mass_frac']:.3f} "
                   f"slot={m['slot_frac']:.3f}", flush=True)
         curves[ch] = row
+        drow = [row[0]]                     # amp=0.0 baseline shared with amplify curve
+        for amp in damps[1:]:
+            m = _measure(args.world, args.seed, args.bars, ch, amp)
+            drow.append(m)
+            print(f"  ch{ch} (track {m['track_id']}) amp={amp:>4}  "
+                  f"unit={m['unit_frac']:.3f} mass={m['mass_frac']:.3f} "
+                  f"slot={m['slot_frac']:.3f}  (damp)", flush=True)
+        damp_curves[ch] = drow
 
     byte = _byte_identity(args.world, args.seed)
 
     def _monotone(vals):
         return all(vals[i + 1] >= vals[i] - 1e-9 for i in range(len(vals) - 1))
+    def _antitone(vals):                    # non-increasing (the damp mirror)
+        return all(vals[i + 1] <= vals[i] + 1e-9 for i in range(len(vals) - 1))
     per_ch = {}
     for ch in range(n_ch):
         unit = [curves[ch][i]["unit_frac"] for i in range(len(amplifies))]
         mass = [curves[ch][i]["mass_frac"] for i in range(len(amplifies))]
         slot = [curves[ch][i]["slot_frac"] for i in range(len(amplifies))]
+        d_unit = [damp_curves[ch][i]["unit_frac"] for i in range(len(damps))]
+        d_mass = [damp_curves[ch][i]["mass_frac"] for i in range(len(damps))]
         per_ch[ch] = {
             "track_id": curves[ch][0]["track_id"],
             "unit_frac": unit, "mass_frac": mass, "slot_frac": slot,
@@ -178,6 +198,10 @@ def main():
             "unit_gain": unit[-1] - unit[0], "mass_gain": mass[-1] - mass[0],
             "slot_gain": slot[-1] - slot[0],
             "confusion_amp1": curves[ch][-1]["confusion"],
+            # REV2 damp curve (amp 0 -> -1): provenance should DROP below neutral.
+            "damp_unit_frac": d_unit, "damp_mass_frac": d_mass,
+            "damp_monotone": _antitone(d_unit),       # non-increasing as damp deepens
+            "damp_gain": d_unit[-1] - d_unit[0],       # negative = dropped below baseline
         }
     top = len(amplifies) - 1
     diag_dominant = all(
@@ -198,11 +222,25 @@ def main():
               and diag_dominant
               and byte["zero_bias_rows_and_O_bit_identical"])
 
+    # H1(damp) mirror gate: damping a channel LOWERS its provenance below neutral
+    # (damp_gain < 0), monotonically, on MOST channels. A per-channel disarm is
+    # allowed (a channel with no competing candidate cannot fall). Same majority
+    # rule as the amplify gate. Soft: damp approaches but does not guarantee 0.
+    DAMP_MATERIAL = 0.05     # min DROP (|damp_gain|) to call the down-weight material
+    d_gains = [per_ch[ch]["damp_gain"] for ch in range(n_ch)]
+    d_monos = [per_ch[ch]["damp_monotone"] for ch in range(n_ch)]
+    n_damp_material = sum(1 for g in d_gains if g <= -DAMP_MATERIAL)
+    n_damp_mono = sum(1 for m in d_monos if m)
+    damp_gate = bool(n_damp_material >= max(1, (n_ch + 1) // 2)
+                     and n_damp_mono >= max(1, (n_ch + 1) // 2)
+                     and byte["zero_bias_rows_and_O_bit_identical"])
+
     verdict = {
         "world": os.path.basename(args.world),
         "n_channels": n_ch, "s_phase": s_phase, "bars_per_condition": args.bars,
-        "amplifies": amplifies, "strength_LAMBDA_T1p": strength,
-        "mechanism": "SOFT per-channel fiber-measure lean (channel_logbias); "
+        "amplifies": amplifies, "damps": damps, "strength_LAMBDA_T1p": strength,
+        "mechanism": "SOFT per-channel fiber-measure lean (channel_logbias), "
+                     "BIDIRECTIONAL (REV2): +amplify / -damp, same softmax addend; "
                      "no clamp, nothing pinned, generative.",
         "per_channel": per_ch,
         "byte_identity": byte,
@@ -212,15 +250,23 @@ def main():
         "material_threshold": MATERIAL,
         "n_channels_material": n_material, "n_channels_monotone": n_mono,
         "H1": h1, "verdict": ("H1_HOLDS" if h1 else "H0_NULL"),
+        # REV2 damp gate
+        "damp_material_threshold": DAMP_MATERIAL,
+        "n_channels_damp_material": n_damp_material,
+        "n_channels_damp_monotone": n_damp_mono,
+        "damp_gate": damp_gate, "damp_verdict": ("DAMP_HOLDS" if damp_gate else "DAMP_NULL"),
     }
     with open(args.out, "w") as f:
         json.dump(verdict, f, indent=2)
-    print("\n=== VERDICT (soft channel bias) ===")
-    print(f"  channels pulling materially (unit_gain>={MATERIAL}): {n_material}/{n_ch}")
-    print(f"  channels monotone: {n_mono}/{n_ch}   diag_dominant={diag_dominant}")
+    print("\n=== VERDICT (soft channel bias, REV2 bidirectional) ===")
+    print(f"  AMPLIFY: channels pulling materially (unit_gain>={MATERIAL}): {n_material}/{n_ch}")
+    print(f"           channels monotone: {n_mono}/{n_ch}   diag_dominant={diag_dominant}")
+    print(f"  DAMP:    channels dropping materially (damp_gain<=-{DAMP_MATERIAL}): {n_damp_material}/{n_ch}")
+    print(f"           channels monotone-down: {n_damp_mono}/{n_ch}")
     print(f"  byte-identical@zero-bias (rows+O): {byte['zero_bias_rows_and_O_bit_identical']}")
-    print(f"  -> {verdict['verdict']}   ({time.time()-t0:.1f}s)  -> {args.out}")
-    return 0 if h1 else 2
+    print(f"  -> AMPLIFY {verdict['verdict']} | DAMP {verdict['damp_verdict']}   "
+          f"({time.time()-t0:.1f}s)  -> {args.out}")
+    return 0 if (h1 and damp_gate) else 2
 
 
 if __name__ == "__main__":
