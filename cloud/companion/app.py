@@ -1108,6 +1108,13 @@ class _Handler(BaseHTTPRequestHandler):
             # /ets/profiles + /ets/unitpool; folded into /api/world so the FE gets
             # them with the world. No new route, no new authority.
             if p is not None:
+                # CHANNEL ROSTER (PREREG-channel-bias-squares): channel index ->
+                # track_id + name, for the SQUARES pad mode. Read-only; touches no
+                # engine state. Absent gracefully if the bridge predates the feature.
+                try:
+                    info["channels"] = p.channel_info()
+                except Exception as exc:
+                    log.warning("channel_info unavailable: %s", exc)
                 try:
                     info.update(p.static_field())
                 except Exception as exc:
@@ -1419,6 +1426,13 @@ class _Handler(BaseHTTPRequestHandler):
             # Rides the SAME single tilt the writer consumes (bridge.set_wobble ->
             # _tilt_for(u, a=...)); ABSENT payload => None => byte-identical draw.
             if "wobble" in data:      p.set_wobble(data["wobble"])           # SHAPE  (2nd moment)
+            # CHANNEL-BIAS (PREREG-channel-bias-squares, SOFT): the per-channel amplify
+            # vector for the SQUARES pad mode. Rides the SAME single tilt the writer
+            # consumes (bridge.set_channel_bias -> _tilt_for(u, channel_logbias=...) ->
+            # fiber measure). ABSENT / all-zero => None => byte-identical draw. The XY
+            # pad emits no channel_bias; the squares pad emits no region force — one
+            # active pad mode at a time, each through its own datum.
+            if "channel_bias" in data: p.set_channel_bias(data["channel_bias"])
             self._json(200, {"ok": True})
             return
         if path == "/api/play":

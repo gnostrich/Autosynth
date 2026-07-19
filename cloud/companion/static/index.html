@@ -263,6 +263,26 @@
     font-family: var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
     padding:4px 12px; transition: background .12s, color .12s; }
   .pad-mode .pm-btn.active{ background: var(--accent); color:#06110d; }
+  /* CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares) — a rectangular field of
+     channel squares; identical layout on laptop and mobile. Each square fills from
+     the bottom with its amplify level; hover-scroll (wheel) or vertical drag adjusts. */
+  .channel-squares{ flex:1 1 auto; display:grid; gap:10px; align-content:stretch;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); min-height:220px; }
+  .chan-sq{ position:relative; border:1px solid var(--line); border-radius:12px;
+    overflow:hidden; cursor:ns-resize; background: var(--panel-inset);
+    min-height:96px; display:flex; flex-direction:column; justify-content:flex-end;
+    touch-action:none; user-select:none; -webkit-user-select:none; }
+  .chan-sq .fill{ position:absolute; left:0; right:0; bottom:0; height:0%;
+    background: linear-gradient(0deg, rgba(74,107,255,.55), rgba(232,90,160,.45));
+    transition: height .08s ease-out; pointer-events:none; }
+  .chan-sq .cs-body{ position:relative; z-index:1; padding:11px 12px; display:flex;
+    flex-direction:column; gap:3px; }
+  .chan-sq .cs-name{ font-family: var(--font-serif); font-size:13px; color: var(--ink-2); }
+  .chan-sq .cs-val{ font-family: var(--font-mono); font-size:11px; color: var(--faint);
+    letter-spacing:.06em; }
+  .chan-sq.active-bias{ border-color: var(--accent); }
+  .chan-sq.disarmed{ opacity:.5; cursor:not-allowed; }
+  .chan-sq.disarmed .fill{ display:none; }
   .pad-title{ font-family: var(--font-serif); font-size:15px; color: var(--ink-2); font-weight:400; }
   .pad-meta{ font-family: var(--font-mono); font-size:10px; color: var(--faint); letter-spacing:.08em; }
   .pad-foot{ display:flex; align-items:center; justify-content:space-between; margin-top: var(--sp-3); gap: var(--sp-3); }
@@ -1017,10 +1037,16 @@
                 <span class="pad-mode" id="padModeToggle" role="group" aria-label="pad mode">
                   <button type="button" class="pm-btn active" data-mode="aim" id="padModeAim" aria-pressed="true">aim</button>
                   <button type="button" class="pm-btn" data-mode="shape" id="padModeShape" aria-pressed="false">shape</button>
+                  <button type="button" class="pm-btn" data-mode="squares" id="padModeSquares" aria-pressed="false">squares</button>
                 </span>
                 <span class="pad-meta" id="padMeta">no world loaded</span>
               </div>
               <div class="radial-wrap" id="radialWrap"><div class="empty">no world loaded</div></div>
+              <!-- CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares, SOFT): one square
+                   per channel (source track); hover-scroll / drag amplifies (soft lean
+                   toward that track's material) or damps. Sends the channel_bias vector
+                   via /api/steer; the XY pad's F-tilt is at rest in this mode. -->
+              <div class="channel-squares" id="channelSquares" hidden><div class="empty">no world loaded</div></div>
               <div class="pad-foot">
                 <div class="legend2">
                   <span class="item"><span class="sw puck"></span>your force</span>
@@ -1174,7 +1200,7 @@
   // flash for a visitor before the first /api/world poll answers; the
   // server's owner gate is authoritative either way.
   var world = { ready:false, M:0, sr:48000, keyed:false, canTrain:false,
-                warmed:false, lastError:null };   // engine-state flags (#21c/d)
+                warmed:false, lastError:null, channels:[] };   // engine-state flags (#21c/d)
   var state = "idle";        // idle | playing | paused
   var region = [];           // last computed region vector (length M)
   var es = null;             // telemetry EventSource
@@ -1407,6 +1433,11 @@
         // no longer consumed here (the field is gone); only names + the
         // now-playing highlight (applyNowPlaying, telemetry-driven) remain.
         applyTrainTracks(w);
+        // CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares): the channel roster
+        // (index -> track_id + name) for the squares pad mode. Read-only; the squares
+        // surface is (re)built from it. Absent on older payloads -> empty (no squares).
+        world.channels = (w.channels && w.channels.channels) ? w.channels.channels : [];
+        buildChannelSquares();
         // Honest steer state: a disarmed region means taps settle no differently.
         // "roles" is retired from every visible surface (archived concept —
         // the pad's own eigen-modes are the whole instrument now); the mode
@@ -1659,6 +1690,16 @@
     // space lean projects through each surviving mode's eigenvector onto the
     // EXISTING continuity/novelty/density/region datums (no new setter, no new
     // fetch: still the one /api/steer call below).
+    // CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares, SOFT): in `squares` mode
+    // the payload carries the per-channel amplify vector (soft fiber lean); the pad's
+    // F-tilt and covariance shape are at rest. In any OTHER mode we send an explicit
+    // EMPTY channel_bias so no stale lean lingers (empty => bridge None => byte-
+    // identical). One datum, the same single /api/steer call.
+    payload.channel_bias = (padMode === "squares") ? channelAmplifies.slice() : [];
+    if(padMode === "squares"){
+      sendSteer(payload);     // squares steers ONLY the channel lean; pad force at rest
+      return;
+    }
     if(padMode === "shape"){
       // COVARIANCE-SHAPE (PREREG-sampler-covariance-xy): the puck maps to the
       // per-Hessian-eigendirection anisotropy `a` (how the draw WANDERS), sent as
@@ -1704,23 +1745,107 @@
     for(var k = 0; k < M; k++) a[k] = Math.max(0.25, Math.min(4, a[k]));
     return a;
   }
+  var PAD_MODES = { aim:1, shape:1, squares:1 };
   function setPadMode(mode){
-    mode = (mode === "shape") ? "shape" : "aim";
+    if(!PAD_MODES[mode]) mode = "aim";
     if(mode === padMode) return;
     padMode = mode;
-    var aimBtn = $("padModeAim"), shapeBtn = $("padModeShape");
-    if(aimBtn){ aimBtn.classList.toggle("active", mode === "aim"); aimBtn.setAttribute("aria-pressed", String(mode === "aim")); }
-    if(shapeBtn){ shapeBtn.classList.toggle("active", mode === "shape"); shapeBtn.setAttribute("aria-pressed", String(mode === "shape")); }
-    // switching AWAY from shape clears any anisotropy so the draw reverts to
-    // a=ones (byte-identical); switching INTO shape drops the F-tilt. One
-    // publish keeps the engine's single control object consistent with the UI.
+    [["padModeAim","aim"],["padModeShape","shape"],["padModeSquares","squares"]]
+      .forEach(function(pair){
+        var b = $(pair[0]); if(!b) return;
+        b.classList.toggle("active", mode === pair[1]);
+        b.setAttribute("aria-pressed", String(mode === pair[1]));
+      });
+    // Show the surface for the active mode; the XY radial pad and the squares field
+    // are mutually exclusive VIEWS of the same steering surface (both preserved —
+    // re-selecting a mode restores it verbatim).
+    var rw = $("radialWrap"), cs = $("channelSquares");
+    if(rw) rw.hidden = (mode === "squares");
+    if(cs) cs.hidden = (mode !== "squares");
+    // switching AWAY from shape/squares clears anisotropy / channel lean (byte-
+    // identical); switching INTO a mode drops the others' force. One publish keeps
+    // the engine's single control object consistent with the UI.
     sendSteerNow();
   }
   (function wirePadMode(){
-    var aimBtn = $("padModeAim"), shapeBtn = $("padModeShape");
+    var aimBtn = $("padModeAim"), shapeBtn = $("padModeShape"), sqBtn = $("padModeSquares");
     if(aimBtn) aimBtn.addEventListener("click", function(){ setPadMode("aim"); });
     if(shapeBtn) shapeBtn.addEventListener("click", function(){ setPadMode("shape"); });
+    if(sqBtn) sqBtn.addEventListener("click", function(){ setPadMode("squares"); });
   })();
+
+  /* ===== CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares, SOFT) ===========
+     One square per channel (= a source track). Hover-scroll (wheel) or vertical
+     drag sets that channel's amplify in [0,1] — the SOFT per-channel lean the
+     engine applies through channel_bias -> set_channel_bias -> the fiber measure.
+     Amplify up = lean toward the track; down (below 0) is clamped to 0 (no negative
+     lean is defined — "damp" is simply removing the amplify). The vector is sent on
+     the SAME /api/steer call (sendSteerNow, squares branch). */
+  var channelAmplifies = [];       // per-channel amplify, index = channel index
+  var channelSqEls = [];
+  var CHAN_STEP = 0.08;            // wheel/drag increment
+  function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
+  function renderChannelSquare(i){
+    var el = channelSqEls[i]; if(!el) return;
+    var a = channelAmplifies[i] || 0;
+    var fill = el.querySelector(".fill"); if(fill) fill.style.height = (a*100).toFixed(1)+"%";
+    var val = el.querySelector(".cs-val"); if(val) val.textContent = a > 0 ? ("amplify "+a.toFixed(2)) : "—";
+    el.classList.toggle("active-bias", a > 0);
+  }
+  function setChannelAmplify(i, a){
+    a = clamp01(a);
+    if(channelAmplifies[i] === a) return;
+    channelAmplifies[i] = a;
+    renderChannelSquare(i);
+    if(padMode === "squares") sendSteerNow();
+  }
+  function buildChannelSquares(){
+    var host = $("channelSquares"); if(!host) return;
+    var chans = world.channels || [];
+    channelSqEls = [];
+    // preserve existing amplifies where the roster length matches; else reset.
+    if(channelAmplifies.length !== chans.length) channelAmplifies = new Array(chans.length).fill(0);
+    if(!chans.length){ host.innerHTML = '<div class="empty">no channels in this world</div>'; return; }
+    host.innerHTML = "";
+    chans.forEach(function(ch, i){
+      var el = document.createElement("div");
+      el.className = "chan-sq";
+      el.setAttribute("role","slider");
+      el.setAttribute("aria-label", (ch.name||("channel "+i))+" amplify");
+      el.setAttribute("aria-valuemin","0"); el.setAttribute("aria-valuemax","1");
+      el.tabIndex = 0;
+      el.innerHTML = '<div class="fill"></div><div class="cs-body">'
+        + '<div class="cs-name">'+(ch.name || ("channel "+i))+'</div>'
+        + '<div class="cs-val">—</div></div>';
+      // hover-scroll (laptop): wheel up = amplify, down = damp.
+      el.addEventListener("wheel", function(ev){
+        ev.preventDefault();
+        setChannelAmplify(i, (channelAmplifies[i]||0) + (ev.deltaY < 0 ? CHAN_STEP : -CHAN_STEP));
+      }, { passive:false });
+      // vertical drag (mobile + laptop): drag up = amplify, down = damp.
+      var dragging = false, lastY = 0;
+      el.addEventListener("pointerdown", function(ev){
+        dragging = true; lastY = ev.clientY; el.setPointerCapture(ev.pointerId);
+      });
+      el.addEventListener("pointermove", function(ev){
+        if(!dragging) return;
+        var dy = lastY - ev.clientY; lastY = ev.clientY;
+        var rect = el.getBoundingClientRect();
+        setChannelAmplify(i, (channelAmplifies[i]||0) + dy / Math.max(40, rect.height));
+      });
+      function endDrag(ev){ if(dragging){ dragging = false; try{ el.releasePointerCapture(ev.pointerId); }catch(e){} } }
+      el.addEventListener("pointerup", endDrag);
+      el.addEventListener("pointercancel", endDrag);
+      // keyboard (a11y): up/down arrows.
+      el.addEventListener("keydown", function(ev){
+        if(ev.key === "ArrowUp"){ ev.preventDefault(); setChannelAmplify(i, (channelAmplifies[i]||0)+CHAN_STEP); }
+        else if(ev.key === "ArrowDown"){ ev.preventDefault(); setChannelAmplify(i, (channelAmplifies[i]||0)-CHAN_STEP); }
+      });
+      host.appendChild(el);
+      channelSqEls[i] = el;
+      renderChannelSquare(i);
+    });
+  }
 
   /* ================= LANES (READ-ONLY live arrangement statistics) =========
      Each lane is a real, intrinsically-bounded [0,1] reduction of the engine's
