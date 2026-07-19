@@ -428,6 +428,13 @@ class StreamPlayer:
         self._u_density = 0.0        # DENSITY→ φ_density  (T1)
         self._u_gauge = 0.0          # KEY LOCK→ gauge frame (T3; degenerate on v0)
         self._T_s = 1.0              # CHAOS  → temperature (T2, directionless)
+        # COVARIANCE-SHAPE (PREREG-sampler-covariance-xy): the OPTIONAL per-
+        # eigendirection second-moment anisotropy `a` (length M, stiffest-first).
+        # Default None ⇒ ones ⇒ byte-identical draw. It is NOT a φ lane (no σ, no
+        # effect on the settled mode); it rides the ONE TiltTerms the writer
+        # consumes via _tilt_for(u, a=...), the same single tilt-construction
+        # point as every other setter — never a second control channel.
+        self._wobble: Optional[np.ndarray] = None
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -1024,6 +1031,33 @@ class StreamPlayer:
         with self._lock:
             self._T_s = v
 
+    def set_wobble(self, vec) -> None:        # SHAPE (covariance-shape XY; PREREG)
+        """Set the OPTIONAL second-moment anisotropy `a` — how the draw's SPREAD
+        is shaped per Hessian eigendirection (stiffest-first), NOT where the mean
+        goes. Mirrors the other setters: it stores one datum that `produce_one_bar`
+        folds into the SINGLE TiltTerms the writer consumes (no new channel). A
+        None/empty vector clears it (=> ones => byte-identical draw). The vector is
+        length-M and clamped to the writer's safe band [A_SHAPE_LO, A_SHAPE_HI]; the
+        engine re-clamps at the TiltTerms boundary, so this is defence-in-depth,
+        never the only guard."""
+        from ets.writer.tilt import A_SHAPE_LO, A_SHAPE_HI
+        if vec is None:
+            with self._lock:
+                self._wobble = None
+            return
+        a = np.asarray(vec, dtype=np.float64).reshape(-1)
+        if a.size == 0:
+            with self._lock:
+                self._wobble = None
+            return
+        if a.size < self.M:
+            a = np.concatenate([a, np.ones(self.M - a.size, np.float64)])
+        a = a[:self.M]
+        a = np.where(np.isfinite(a), a, 1.0)
+        a = np.clip(a, float(A_SHAPE_LO), float(A_SHAPE_HI))
+        with self._lock:
+            self._wobble = a
+
     @staticmethod
     def _sigma_scalar(sig, lane: str) -> float:
         """The scalar σ_φ magnitude of one lane (region → its max per-anchor σ), for
@@ -1060,7 +1094,9 @@ class StreamPlayer:
         from ets.render import render as render_schedule
         self._ensure_bank()
         u = self._current_lane()
-        tilt = self.engine._tilt_for(u)                      # ONE lane->tilt point
+        with self._lock:                                     # second-moment shape (PREREG):
+            a = None if self._wobble is None else np.asarray(self._wobble).copy()
+        tilt = self.engine._tilt_for(u, a=a)                 # ONE lane->tilt point (a rides it)
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
         audio, _prov = render_schedule(sched, self._bank)

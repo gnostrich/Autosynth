@@ -120,6 +120,17 @@ class StreamWriter:
         T = float(tilt.T_s)
         O = O_star.copy()
         M, S = O.shape
+        # SECOND-MOMENT SHAPE (PREREG-sampler-covariance-xy): an optional
+        # per-eigendirection anisotropy rescales the draw's variance along each
+        # Hessian eigendirection. `tilt.a` is ordered STIFFEST-FIRST (a[0] scales
+        # the largest-curvature direction) — a deterministic, world-independent
+        # convention so the pad axes are stable. eigh returns w ASCENDING, so the
+        # stiffest column is w's LAST; `order = argsort(-w)` lists eigh columns
+        # stiffest→softest and `a_col[order] = a` aligns the stiffest-first vector
+        # to the eigh column order. a=None ⇒ the branch is skipped entirely: the
+        # exact current draw (same z, same rng alignment, same clamp handling, same
+        # max(·,1e-12)) — byte-identical.
+        a = None if tilt.a is None else np.asarray(tilt.a, float).reshape(-1)
         for s in range(S):
             z = self._rng.standard_normal(M)         # drawn unconditionally: keeps
             if clamp_mask[s] or T <= 0.0:            # rng alignment independent of
@@ -129,7 +140,12 @@ class StreamWriter:
             w, V = np.linalg.eigh(H)
             tol = M * np.finfo(float).eps * float(np.max(np.abs(w)))
             var = np.where(w > tol, T / np.maximum(w, tol), 0.0)
-            xi = V @ (np.sqrt(var) * z)
+            if a is None:
+                xi = V @ (np.sqrt(var) * z)
+            else:
+                a_col = np.empty(M)                  # align stiffest-first a to eigh cols
+                a_col[np.argsort(-w)] = a
+                xi = V @ (np.sqrt(var * a_col) * z)
             O[:, s] = np.maximum(O_star[:, s] + xi, 1e-12)
         return O
 

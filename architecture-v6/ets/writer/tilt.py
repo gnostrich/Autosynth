@@ -95,6 +95,16 @@ class SigmaPhi:
                    meta=dict(m.get("meta", {})))
 
 
+# SECOND-MOMENT SHAPE (covariance-shape XY, PREREG-sampler-covariance-xy). The
+# per-eigendirection anisotropy `a` (below) rescales the ALREADY-EXISTING Laplace
+# draw's variance along each Hessian eigendirection; it never touches F, the
+# settled mode, or the λ tilt. It is clamped to this safe band at the single
+# control boundary (TiltTerms.__post_init__) so no path can drive an unclamped
+# over-/under-dispersion into the writer. a=None ⇒ exactly the current draw.
+A_SHAPE_LO: float = 0.25
+A_SHAPE_HI: float = 4.0
+
+
 @dataclass(frozen=True)
 class TiltTerms:
     """The h-transform tilt, in F's units — the ONE control object the writer
@@ -109,6 +119,11 @@ class TiltTerms:
     degenerate: Tuple[str, ...] = ()   # lanes whose φ was σ=0-degenerate (exact identity)
     disarmed: Tuple[str, ...] = ()     # lanes the instrument could not identify
                                        # (λ undefined; NO tilt applied; honest state)
+    a: Optional[np.ndarray] = None     # (M,) per-Hessian-eigendirection variance scale
+                                       # for the Laplace draw (SECOND moment only; None
+                                       # ⇒ ones ⇒ byte-identical current draw). Ordered
+                                       # stiffest-first (a[0] scales the largest-curvature
+                                       # direction); the writer aligns it to eigh order.
 
     def __post_init__(self):
         object.__setattr__(self, "lam_region",
@@ -120,20 +135,38 @@ class TiltTerms:
                                 self.lam_gauge, self.lam_novelty]])
         if not np.all(np.isfinite(vals)):
             raise ValueError("tilt λ must be finite")
+        if self.a is not None:
+            a = np.asarray(self.a, float).reshape(-1)
+            if a.shape[0] != self.lam_region.shape[0]:
+                raise ValueError(
+                    f"anisotropy `a` has length {a.shape[0]} but the tilt has "
+                    f"{self.lam_region.shape[0]} eigendirections (one per anchor)")
+            if not np.all(np.isfinite(a)):
+                raise ValueError("anisotropy `a` must be finite")
+            # CLAMP at the boundary (the coherence guard's safe band): no writer
+            # path ever sees an `a` outside [A_SHAPE_LO, A_SHAPE_HI].
+            object.__setattr__(self, "a", np.clip(a, A_SHAPE_LO, A_SHAPE_HI))
 
     @property
     def is_untilted(self) -> bool:
+        # `a` is deliberately EXCLUDED: it modulates only the draw's second
+        # moment (spread), never the settled mode F descends to. A tilt carrying
+        # only an anisotropy still settles to the untilted mode (settle.py reads
+        # this property to skip the O-block tilt potential — correct, since `a`
+        # adds no O-block potential).
         return (not np.any(self.lam_region) and self.lam_density == 0.0
                 and self.lam_cont == 0.0 and self.lam_gauge == 0.0
                 and self.lam_novelty == 0.0)
 
 
-def untilted(n_anchors: int, T_s: float = 1.0) -> TiltTerms:
+def untilted(n_anchors: int, T_s: float = 1.0,
+             a: Optional[np.ndarray] = None) -> TiltTerms:
     """The identity tilt at temperature T_s (u = 0). This is the untilted
-    writer the σ_φ calibration instrument runs."""
+    writer the σ_φ calibration instrument runs. `a` (default None) is the
+    optional second-moment anisotropy; None keeps the draw byte-identical."""
     return TiltTerms(lam_region=np.zeros(int(n_anchors)), lam_density=0.0,
                      lam_cont=0.0, lam_gauge=0.0, lam_novelty=0.0,
-                     T_s=float(T_s))
+                     T_s=float(T_s), a=a)
 
 
 class WorldNotCalibrated(RuntimeError):
@@ -160,14 +193,22 @@ def _lam(u: float, sigma: float, lane: str, identifiable: bool,
     return float(u) / float(sigma)
 
 
-def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
+def layer0(u, sigma: Optional[SigmaPhi],
+           a: Optional[np.ndarray] = None) -> TiltTerms:
     """The Layer-0 map: lane vector u (+ T_s) → TiltTerms via λ_i = u_i/σ_φi.
 
     `u` is an ets.panel.lanes.LaneVector-typed object (duck-typed here so the
     writer package does not import the panel package: the wire decodes to it,
     the engine hands it over). `sigma` is the registered calibration; None is
     accepted ONLY for an all-zero lean (the untilted writer needs no scale) —
-    a nonzero lean on an uncalibrated world raises WorldNotCalibrated."""
+    a nonzero lean on an uncalibrated world raises WorldNotCalibrated.
+
+    `a` (default None) is the optional per-eigendirection second-moment
+    anisotropy (PREREG-sampler-covariance-xy). It is NOT a φ lane and carries no
+    σ scale — it rescales the draw's spread, not the settled mode — so it is
+    copied verbatim onto the ONE TiltTerms the writer consumes (clamped there),
+    keeping this the single tilt-construction point (C-3) with no new lane and no
+    second channel. None ⇒ ones ⇒ byte-identical draw."""
     r = np.asarray(u.u_region, float).reshape(-1)
     leans_zero = (not np.any(r) and float(u.u_density) == 0.0
                   and float(u.u_continuity) == 0.0 and float(u.u_gauge) == 0.0
@@ -178,7 +219,7 @@ def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
                 "nonzero lane lean received but this world carries no σ_φ "
                 "calibration (ets/calibration/sigma_phi.json). Run the "
                 "calibration instrument at world-freeze; λ will not be invented.")
-        return untilted(r.shape[0], T_s=float(u.T_s))
+        return untilted(r.shape[0], T_s=float(u.T_s), a=a)
 
     sr = np.asarray(sigma.region, float).reshape(-1)
     if sr.shape[0] != r.shape[0]:
@@ -205,6 +246,7 @@ def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
         T_s=float(u.T_s),
         degenerate=tuple(degenerate),
         disarmed=tuple(disarmed),
+        a=a,
     )
     return terms
 

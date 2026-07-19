@@ -453,11 +453,15 @@ class Engine:
         self._lambda = dict(ff.LAMBDA)          # logged into receipts (H-8 key)
 
     # -- the ONE lane→tilt conversion point (C-3) --------------------------
-    def _tilt_for(self, u: Optional[LaneVector]) -> TiltTerms:
+    def _tilt_for(self, u: Optional[LaneVector], a=None) -> TiltTerms:
+        # `a` (default None) is the optional second-moment anisotropy
+        # (PREREG-sampler-covariance-xy): NOT a lane, no σ scale, no effect on the
+        # settled mode — it rides the ONE TiltTerms the writer consumes so the
+        # covariance-shape pad adds no new control channel. None ⇒ byte-identical.
         if u is None:
             u = default_lane_vector(self.world.M)
         u.resize_region(self.world.M)
-        tilt = layer0(u, self.sigma)
+        tilt = layer0(u, self.sigma, a=a)
         if tilt.degenerate:
             log.warning("degenerate lanes (σ_φ=0 ⇒ identity tilt, exact): %s",
                         ", ".join(tilt.degenerate))

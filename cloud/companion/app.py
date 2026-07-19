@@ -1414,6 +1414,11 @@ class _Handler(BaseHTTPRequestHandler):
             if "density" in data:     p.set_density(data["density"])         # DENSITY(T1)
             if "gauge" in data:       p.set_gauge(data["gauge"])             # KEY LOCK(T3)
             if "temperature" in data: p.set_temperature(data["temperature"]) # CHAOS (T2)
+            # SHAPE (covariance-shape XY; PREREG-sampler-covariance-xy): the OPTIONAL
+            # second-moment anisotropy `a` — how the draw WANDERS, not where it goes.
+            # Rides the SAME single tilt the writer consumes (bridge.set_wobble ->
+            # _tilt_for(u, a=...)); ABSENT payload => None => byte-identical draw.
+            if "wobble" in data:      p.set_wobble(data["wobble"])           # SHAPE  (2nd moment)
             self._json(200, {"ok": True})
             return
         if path == "/api/play":

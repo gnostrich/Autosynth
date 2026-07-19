@@ -256,7 +256,13 @@
 
   /* ---------- COMPONENT 1 — the pad hero (translucent black-glass chromatic field) */
   .pad-hero{ padding: var(--sp-5); display:flex; flex-direction:column; }
-  .pad-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom: var(--sp-3); }
+  .pad-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom: var(--sp-3); gap: var(--sp-3); }
+  /* PAD MODE toggle (aim | shape) — a two-state pill, aim active by default. */
+  .pad-mode{ display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
+  .pad-mode .pm-btn{ background:transparent; border:0; color: var(--faint); cursor:pointer;
+    font-family: var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    padding:4px 12px; transition: background .12s, color .12s; }
+  .pad-mode .pm-btn.active{ background: var(--accent); color:#06110d; }
   .pad-title{ font-family: var(--font-serif); font-size:15px; color: var(--ink-2); font-weight:400; }
   .pad-meta{ font-family: var(--font-mono); font-size:10px; color: var(--faint); letter-spacing:.08em; }
   .pad-foot{ display:flex; align-items:center; justify-content:space-between; margin-top: var(--sp-3); gap: var(--sp-3); }
@@ -1003,6 +1009,15 @@
             <section class="glass pad-hero" id="padHero">
               <div class="pad-head">
                 <span class="pad-title">steering surface</span>
+                <!-- PAD MODE (PREREG-sampler-covariance-xy): AIM = the current F-tilt
+                     eigenmode pad (where the sound GOES), DEFAULT + unchanged. SHAPE =
+                     the covariance-shape pad (how the sound WANDERS along the object's
+                     stiffest fluctuation directions — the draw's second moment, NOT the
+                     target). Honest label: shape steers movement, not destination. -->
+                <span class="pad-mode" id="padModeToggle" role="group" aria-label="pad mode">
+                  <button type="button" class="pm-btn active" data-mode="aim" id="padModeAim" aria-pressed="true">aim</button>
+                  <button type="button" class="pm-btn" data-mode="shape" id="padModeShape" aria-pressed="false">shape</button>
+                </span>
                 <span class="pad-meta" id="padMeta">no world loaded</span>
               </div>
               <div class="radial-wrap" id="radialWrap"><div class="empty">no world loaded</div></div>
@@ -1644,7 +1659,17 @@
     // space lean projects through each surviving mode's eigenvector onto the
     // EXISTING continuity/novelty/density/region datums (no new setter, no new
     // fetch: still the one /api/steer call below).
-    if(radialK > 0){
+    if(padMode === "shape"){
+      // COVARIANCE-SHAPE (PREREG-sampler-covariance-xy): the puck maps to the
+      // per-Hessian-eigendirection anisotropy `a` (how the draw WANDERS), sent as
+      // `wobble` INSTEAD of the F-tilt force. It steers the second moment only —
+      // never the settled target — so the aim-mode radialForceVector is skipped
+      // here (not deleted; re-selecting "aim" restores it verbatim). Sent only
+      // while the puck is held (T-3: force zeroed on release), else cleared to
+      // None so the draw reverts to a=ones (byte-identical).
+      payload.wobble = radialPadState.held
+        ? padToWobble(radialPadState.x, radialPadState.y, world.M || 0) : null;
+    } else if(radialK > 0){
       var rf = radialForceVector(radialModes, radialModeValues(radialK, radialPadState, radialStripStates), world.M || 0);
       payload.continuity = (payload.continuity || 0) + rf.continuity;
       payload.novelty    = (payload.novelty    || 0) + rf.novelty;
@@ -1653,6 +1678,49 @@
     }
     sendSteer(payload);
   }
+
+  /* PAD MODE (PREREG-sampler-covariance-xy) — "aim" (F-tilt, default, unchanged)
+     vs "shape" (covariance anisotropy). The current pad is a toggle away, never
+     deleted (preservation requirement). */
+  var padMode = "aim";
+  var PAD_WOBBLE_RATIO = 4.0;   // == the writer's clamp band ceiling (a in [0.25,4])
+  function padToWobble(x, y, M){
+    // (x,y) in [-1,1] -> per-eigendirection variance scale `a`, STIFFEST-FIRST
+    // (a[0] scales the largest-curvature direction, a[1] the next, matching the
+    // writer's descending-|w| order). Up-scale dir0 by x, dir1 by y; the
+    // complement is DOWN-scaled (volume-preserving: sum(log a)=0) so the reshape
+    // redistributes spread rather than only inflating it — this keeps the draw as
+    // close to the coherent isotropic baseline as an audible anisotropy allows.
+    // Every entry is clamped to [0.25,4]; the engine re-clamps at the TiltTerms
+    // boundary, so this is never the only guard.
+    M = M || 0;
+    var a = new Array(M);
+    for(var i = 0; i < M; i++) a[i] = 1;
+    var r = PAD_WOBBLE_RATIO;
+    if(M >= 1) a[0] = Math.pow(r, x);
+    if(M >= 2) a[1] = Math.pow(r, y);
+    var comp = (M > 2) ? -(x + y) / (M - 2) : 0;
+    for(var j = 2; j < M; j++) a[j] = Math.pow(r, comp);
+    for(var k = 0; k < M; k++) a[k] = Math.max(0.25, Math.min(4, a[k]));
+    return a;
+  }
+  function setPadMode(mode){
+    mode = (mode === "shape") ? "shape" : "aim";
+    if(mode === padMode) return;
+    padMode = mode;
+    var aimBtn = $("padModeAim"), shapeBtn = $("padModeShape");
+    if(aimBtn){ aimBtn.classList.toggle("active", mode === "aim"); aimBtn.setAttribute("aria-pressed", String(mode === "aim")); }
+    if(shapeBtn){ shapeBtn.classList.toggle("active", mode === "shape"); shapeBtn.setAttribute("aria-pressed", String(mode === "shape")); }
+    // switching AWAY from shape clears any anisotropy so the draw reverts to
+    // a=ones (byte-identical); switching INTO shape drops the F-tilt. One
+    // publish keeps the engine's single control object consistent with the UI.
+    sendSteerNow();
+  }
+  (function wirePadMode(){
+    var aimBtn = $("padModeAim"), shapeBtn = $("padModeShape");
+    if(aimBtn) aimBtn.addEventListener("click", function(){ setPadMode("aim"); });
+    if(shapeBtn) shapeBtn.addEventListener("click", function(){ setPadMode("shape"); });
+  })();
 
   /* ================= LANES (READ-ONLY live arrangement statistics) =========
      Each lane is a real, intrinsically-bounded [0,1] reduction of the engine's
