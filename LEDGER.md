@@ -1434,3 +1434,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` cloud/tests/test_track_unit_pool.py (2026-07-19T13:51:04+00:00)
 - `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:52:17+00:00)
 - `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:52:26+00:00)
+
+### at `eb557b9`
+- `Edit` release-manifest.json (2026-07-19T15:16:10+00:00)
+- `Edit` release-manifest.json (2026-07-19T15:16:28+00:00)
