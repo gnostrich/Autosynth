@@ -287,14 +287,24 @@ class FiberThreader:
             logits = -energies                     # T→0 deterministic reduction
         else:
             reuse = np.array([self._reuse(c, bar) for c in choices])
-            # SOFT per-channel lean (PREREG-channel-bias-squares): the additive
-            # log-weight of each candidate's SOURCE TRACK under tilt.channel_logbias,
-            # applied inside the SAME Layer-0 fiber measure. None/empty ⇒ no addend
-            # (byte-identical); the array length matches `choices`, so the rng draw
-            # size below is unchanged — a zero bias never perturbs the stream.
-            cb = getattr(self.tilt, "channel_logbias", None)
-            cbias = None if not cb else np.array(
-                [float(cb.get(int(c[0]), 0.0)) for c in choices])
+            # SOFT multi-grain field lean (PREREG-field-bias-REV3): each candidate's
+            # addend is the SUM of its grains under tilt.channel_logbias — the source
+            # TRACK (roll-up) plus the UNIT (the operator's ultimate "channel") — both
+            # of which VARY across this choice set (c[0]=track_id, c[1]=unit_id). The
+            # role (k) is FIXED across the set and so is NOT a fiber grain (a role
+            # addend would be a softmax constant; role steers via the O-block region
+            # lane — REV3 role wall). Applied inside the SAME Layer-0 fiber measure.
+            # None/empty at every grain ⇒ no addend (byte-identical); the array length
+            # matches `choices`, so the rng draw size below is unchanged — a zero field
+            # never perturbs the stream.
+            fb = getattr(self.tilt, "channel_logbias", None)
+            cbias = None
+            if fb:
+                tw = fb.get("track") or {}
+                uw = fb.get("unit") or {}
+                if tw or uw:
+                    cbias = np.array([tw.get(int(c[0]), 0.0) + uw.get(int(c[1]), 0.0)
+                                      for c in choices])
             logits = fiber_logits(energies, cont, reuse, self.tilt,
                                   channel_bias=cbias)
 

@@ -1,0 +1,51 @@
+{
+  "world": "demo.etsworld",
+  "target_unit": {
+    "track_id": 0,
+    "unit_id": 20
+  },
+  "unit_pool_size": 24,
+  "strength_LAMBDA_T1p": 8.758101446990384,
+  "seeds": 4,
+  "bars_per_condition": 96,
+  "amplifies": [
+    -1.0,
+    -0.6,
+    -0.3,
+    0.0,
+    0.3,
+    0.6,
+    1.0
+  ],
+  "unit_share_curve": [
+    0.00016276041666666666,
+    0.00048828125,
+    0.0005289713541666666,
+    0.0006510416666666666,
+    0.0006103515625,
+    0.0011800130208333333,
+    0.001953125
+  ],
+  "baseline_share": 0.0006510416666666666,
+  "amp1_share": 0.001953125,
+  "damp1_share": 0.00016276041666666666,
+  "pull_gain": 0.0013020833333333335,
+  "damp_drop": -0.00048828125,
+  "spearman_rho": 0.9642857142857143,
+  "rho_min": 0.7,
+  "mechanism": "SOFT multi-grain fiber lean (channel_logbias tagged {track,unit}); per-candidate addend = beta_track[tid]+beta_unit[uid]; no clamp, nothing pinned, generative. UNIT = the operator's ultimate 'channel'.",
+  "byte_identity": {
+    "zero_field_rows_and_O_bit_identical": true,
+    "n_bars": 8
+  },
+  "role_wall": {
+    "const_addend_bit_identical_to_baseline": true,
+    "n_bars": 16,
+    "note": "role is inert at the fiber measure (constant per choice set); role steers via the O-block REGION lane, not a fiber addend \u2014 see PREREG-field-bias-REV3 role wall."
+  },
+  "UNIT_PULL": true,
+  "unit_pull_verdict": "UNIT_PULL_HOLDS",
+  "UNIT_DAMP": true,
+  "unit_damp_verdict": "UNIT_DAMP_HOLDS",
+  "ROLE_WALL_CONFIRMED": true
+}

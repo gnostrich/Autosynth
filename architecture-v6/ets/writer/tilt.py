@@ -104,6 +104,15 @@ class SigmaPhi:
 A_SHAPE_LO: float = 0.25
 A_SHAPE_HI: float = 4.0
 
+# FIELD-BIAS GRAINS (PREREG-field-bias-REV3). The per-candidate soft fiber lean
+# resolves ADDITIVELY over exactly the candidate attributes that VARY within a
+# fiber choice set: the source track (roll-up) and the unit (the operator's
+# ultimate "channel"). Role is deliberately NOT a fiber grain — within a choice
+# set every candidate shares the settled role, so a role addend is a softmax
+# constant that cancels; role steers through the O-block region lane instead
+# (see PREREG-field-bias-REV3 role wall). Order is fixed for a stable carrier.
+FIELD_GRAINS: Tuple[str, ...] = ("track", "unit")
+
 
 @dataclass(frozen=True)
 class TiltTerms:
@@ -125,17 +134,23 @@ class TiltTerms:
                                        # stiffest-first (a[0] scales the largest-curvature
                                        # direction); the writer aligns it to eigh order.
     channel_logbias: Optional[Mapping] = None
-                                       # SOFT per-channel (source-track) lean
-                                       # (PREREG-channel-bias-squares): {track_id ->
-                                       # additive log-weight} folded into the FIBER
-                                       # choice measure (the distribution over pooled
-                                       # channels at each beat, fiber_choice_logits).
-                                       # NOT a φ lane, no σ scale, NO effect on the
-                                       # settled O mode — it up-weights a channel's
-                                       # candidate units in the SOFT Gibbs draw, so the
-                                       # settlement perceives the lean and accommodates
-                                       # it (nothing pinned; the writer stays generative).
-                                       # None/empty ⇒ no addend ⇒ byte-identical draw.
+                                       # SOFT multi-grain FIELD-bias lean (PREREG-
+                                       # field-bias-REV3, extends channel-bias-squares
+                                       # REV2). The ONE datum {"track": {tid->β},
+                                       # "unit": {uid->β}} folded into the FIBER choice
+                                       # measure (fiber_choice_logits); the writer
+                                       # resolves each candidate's addend ADDITIVELY,
+                                       # β_track[tid] + β_unit[uid] (track = the roll-up,
+                                       # unit = the operator's ultimate "channel"). A
+                                       # bare {tid->β} map (the ratified REV2 track
+                                       # projection) is lifted to {"track": ...} at the
+                                       # single construction boundary below. NOT a φ
+                                       # lane, no σ scale, NO effect on the settled O
+                                       # mode — it up-weights candidate units in the
+                                       # SOFT Gibbs draw, so the settlement perceives
+                                       # the lean and accommodates it (nothing pinned;
+                                       # the writer stays generative). None/empty at
+                                       # EVERY grain ⇒ no addend ⇒ byte-identical draw.
 
     def __post_init__(self):
         object.__setattr__(self, "lam_region",
@@ -159,10 +174,31 @@ class TiltTerms:
             # path ever sees an `a` outside [A_SHAPE_LO, A_SHAPE_HI].
             object.__setattr__(self, "a", np.clip(a, A_SHAPE_LO, A_SHAPE_HI))
         if self.channel_logbias is not None:
-            cb = {int(k): float(v) for k, v in dict(self.channel_logbias).items()}
-            if not all(np.isfinite(v) for v in cb.values()):
-                raise ValueError("channel_logbias weights must be finite")
-            object.__setattr__(self, "channel_logbias", (cb or None))
+            # Canonical carrier is the tagged multi-grain field bias
+            # {grain -> {key: β}} over the grains that VARY within a fiber choice
+            # set (FIELD_GRAINS = track, unit). A bare int-keyed map is the ratified
+            # REV2 track projection (what channel_logbias() and the frozen track gate
+            # emit) — lifted to {"track": ...} here at this single construction
+            # boundary (one canonical form downstream; realize reads only the tagged
+            # form). Zero-valued weights are dropped, so an all-zero field ⇒ None ⇒
+            # byte-identical (the hard invariant).
+            raw = dict(self.channel_logbias)
+            if raw and all(isinstance(g, str) for g in raw):
+                tagged = raw
+            else:
+                tagged = {"track": raw}
+            norm: dict = {}
+            for g in FIELD_GRAINS:
+                m = tagged.get(g)
+                if not m:
+                    continue
+                mm = {int(k): float(v) for k, v in dict(m).items()}
+                if not all(np.isfinite(v) for v in mm.values()):
+                    raise ValueError("channel_logbias weights must be finite")
+                mm = {k: v for k, v in mm.items() if v != 0.0}
+                if mm:
+                    norm[g] = mm
+            object.__setattr__(self, "channel_logbias", (norm or None))
 
     @property
     def is_untilted(self) -> bool:
@@ -308,15 +344,16 @@ def fiber_choice_logits(energies: np.ndarray, is_continuation: np.ndarray,
     the writer from f.py's own T1p/T4 term math — see realize.FiberThreader);
     `is_continuation` marks the choices that continue a source run (Δφ_cont=1);
     `reuse` is each candidate's recency weight (Δφ_novelty contribution);
-    `channel_bias` (optional, per-choice) is the SOFT per-channel lean β(c) —
-    the additive log-weight of the candidate's source track under
-    `tilt.channel_logbias` (PREREG-channel-bias-squares). None ⇒ zero addend.
+    `channel_bias` (optional, per-choice) is the SOFT field lean β(c) — the
+    candidate's ADDITIVE log-weight resolved from `tilt.channel_logbias` across the
+    field grains, β(c) = β_track[c.track_id] + β_unit[c.unit_id] (PREREG-field-bias-
+    REV3; track = roll-up, unit = the ultimate "channel", summed). None ⇒ zero addend.
 
         log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c) + β(c)
 
-    The channel lean is inside the SAME measure — it does not pin any choice; a
-    channel with no candidate in this (role,band) set gets no term, so the pull is
-    contingent on the settled O and the channel's coverage (soft, generative).
+    The field lean is inside the SAME measure — it does not pin any choice; a unit
+    (or track) with no candidate in this (role,band) set gets no term, so the pull is
+    contingent on the settled O and the grain's coverage (soft, generative).
     φ_region/φ_density are fixed by the already-settled O at this point and
     contribute an equal constant to every choice (dropped); φ_gauge does not
     read the fiber."""

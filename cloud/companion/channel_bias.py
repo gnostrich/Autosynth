@@ -35,6 +35,28 @@ DEGENERACY IS THE OPEN QUESTION (measured, Phase-1 gate). A soft lean can COLLAP
 if the channels overlap in the pooled candidate set or F's energies dominate. The
 verifier measures the provenance pull curve; if it is mushy, that is the honest H0
 (keep the XY pad; disarm the squares) — we do NOT fall back to the hard clamp.
+
+REV3 — MULTI-GRAIN FIELD BIAS (operator-directed 2026-07-19). The same soft
+bidirectional lean now resolves at TWO drill grains, ADDITIVELY, on the ONE
+TiltTerms (single carrier, I-1): addend(candidate) = β_track[candidate.track_id] +
+β_unit[candidate.unit_id]. The UNIT grain is the operator's ultimate "channel" (a
+beat-normalized sound unit); the TRACK grain is its ROLL-UP (biasing a track leans
+all its units). A candidate biased at both grains gets the SUM. The carrier is a
+single tagged datum {"track": {tid->β}, "unit": {uid->β}} (``field_logbias``); the
+writer still receives ONE per-candidate addend array. The track grain is bit-for-
+bit unchanged from REV2 (``channel_logbias``), so its ratified gate keeps holding.
+
+ROLE IS NOT A FIBER GRAIN (REV3 wall, first-principles, MEASURED). A per-candidate
+addend can only steer an attribute that VARIES within a fiber choice set. Within one
+choice (realize.FiberThreader._choose(k, b)) every candidate shares the settled role
+k (the choice set is exactly "role-k units in band b"), and k itself is chosen by the
+O-block (place_slot: k = argmax(col·B[:,b])), which the fiber never revisits. So a
+role addend is a softmax CONSTANT — it cancels in the Gumbel-argmax and leaves the
+draw byte-identical even at nonzero bias (inert). Role provenance is an O-BLOCK
+property; its natural steering channel is the REGION lane (φ_region is per-anchor =
+per-role, an O-block tilt through λ_region), which already exists as a first-class
+control. Forcing role into the fiber addend would be a silent no-op; it is surfaced,
+not built (see PREREG-field-bias-REV3-unit-grain.md).
 """
 from __future__ import annotations
 from typing import Dict, List, Optional
@@ -62,7 +84,12 @@ def channel_logbias(bias, tids: List[int], strength: Optional[float] = None
     per-channel amplify vector ∈ [-1, 1] (positive = amplify / up-weight,
     negative = soft damp / down-weight; REV2 bidirectional). Returns ``None``
     when nothing is biased (all-zero / empty ⇒ the writer's default fiber draw ⇒
-    byte-identical)."""
+    byte-identical).
+
+    This is the TRACK grain of the field bias (REV3): biasing a track leans ALL
+    of its candidate units — the ROLL-UP. It is UNCHANGED from REV2 (bit-for-bit)
+    so the ratified track-grain gate keeps holding; REV3 only ADDS the finer
+    UNIT grain (see ``grain_logbias`` / ``field_logbias``)."""
     b = np.asarray(bias, dtype=np.float64).reshape(-1)
     if b.size == 0 or not np.any(b != 0.0):
         return None
@@ -76,3 +103,58 @@ def channel_logbias(bias, tids: List[int], strength: Optional[float] = None
             # a<0 down-weights (soft damp) that channel's fiber candidates.
             out[int(tids[ch])] = float(strength) * a
     return out or None
+
+
+def grain_logbias(amp, strength: Optional[float] = None
+                  ) -> Optional[Dict[int, float]]:
+    """Build a {key -> additive log-weight} soft-lean map from a keyed amplify
+    map {key -> amplify∈[-1,1]}, β = strength·amplify (same derived F-scale as the
+    track grain — ``default_strength`` = LAMBDA['T1p'], read live). This is the
+    generic per-grain builder (REV3): the UNIT grain keys on ``unit_id``, the same
+    soft bidirectional mechanism the track grain uses on ``track_id``. Returns
+    ``None`` when nothing is biased (all-zero / empty ⇒ byte-identical).
+
+    ``key`` is whatever addresses the grain's candidates (a ``unit_id`` for the
+    UNIT grain = the operator's ultimate "channel"). The sign carries the
+    direction (amplify vs soft damp), exactly as ``channel_logbias`` does."""
+    if not amp:
+        return None
+    if strength is None:
+        strength = default_strength()
+    out: Dict[int, float] = {}
+    for key, a in dict(amp).items():
+        a = float(a)
+        if a != 0.0:
+            out[int(key)] = float(strength) * a
+    return out or None
+
+
+def field_logbias(track=None, unit=None) -> Optional[Dict[str, Dict[int, float]]]:
+    """Assemble the ONE multi-grain field-bias datum the writer consumes on its
+    single ``TiltTerms.channel_logbias`` (REV3, single carrier / I-1):
+
+        {"track": {track_id -> β}, "unit": {unit_id -> β}}
+
+    from the already-built per-grain WEIGHT maps (``track`` from
+    ``channel_logbias``, ``unit`` from ``grain_logbias``). At the fiber choice the
+    writer resolves each candidate's addend ADDITIVELY across the grains present —
+    ``β_track[candidate.track_id] + β_unit[candidate.unit_id]`` — so a candidate
+    biased at BOTH grains gets the SUM (the track roll-up plus the unit-specific
+    lean on top). Empty at EVERY grain ⇒ ``None`` ⇒ no addend ⇒ byte-identical.
+
+    Grains carried are exactly those whose key VARIES within a fiber choice set
+    (track_id, unit_id): a per-candidate addend can only steer an attribute that
+    distinguishes candidates. The role of a choice set is FIXED (it IS the choice
+    set's identity, set by the settled O-block), so role is not a fiber grain — it
+    steers through the O-block region lane instead (PREREG-field-bias-REV3, the
+    role wall)."""
+    grains: Dict[str, Dict[int, float]] = {}
+    if track:
+        m = {int(k): float(v) for k, v in dict(track).items() if float(v) != 0.0}
+        if m:
+            grains["track"] = m
+    if unit:
+        m = {int(k): float(v) for k, v in dict(unit).items() if float(v) != 0.0}
+        if m:
+            grains["unit"] = m
+    return grains or None

@@ -137,16 +137,20 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
                 assert shown == [pane_id], \
                     f"clicking #{tab_id} should show exactly [{pane_id}], got {shown}"
 
-            # (5) the FIELD is GONE; the radial eigen-mode pad hero is present instead
-            # (OPEN_ENDS item 2). The field's canvas/legend/drill/tutorial surface must
-            # not exist anywhere in the served markup.
+            # (5) the FIELD is the single Play steering surface (PREREG-field-bias-REV3
+            # Phase B); it REPLACED the XY pad via a socket swap. The pad-hero panel
+            # stays as the field's container, but the XY radial pad mount, the flat
+            # channel-squares grid, and the aim/shape/squares mode toggle are gone.
             page.click("#tabPlay")
-            assert page.query_selector("#padHero") is not None, "pad hero missing"
-            assert page.query_selector("#radialWrap") is not None, "radial pad mount missing"
-            for gone_id in ("steerSurface", "fieldCanvas", "fieldLegend", "fieldExpand",
-                            "fieldTut", "fieldStatus", "padRow", "xyPad", "puck", "drillBack"):
+            assert page.query_selector("#padHero") is not None, "pad hero (field container) missing"
+            assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
+            assert page.query_selector("#fieldLegend") is not None, "field legend missing"
+            assert page.query_selector("#fieldStatus") is not None, "field status missing"
+            for gone_id in ("radialWrap", "channelSquares", "padModeToggle",
+                            "steerSurface", "fieldExpand", "fieldTut",
+                            "padRow", "xyPad", "puck", "drillBack"):
                 assert page.query_selector("#" + gone_id) is None, \
-                    f"removed field/legacy element still present: #{gone_id}"
+                    f"removed pad/legacy element still present: #{gone_id}"
 
             # (7) REBRAND: the wordmark is "autosynth", the inline logo mark is present,
             # and the old ETS header/subtext is gone (no "Equilibrium Tape Synth", no
@@ -263,12 +267,10 @@ def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
             assert "ready" not in cls.split(), f"instrument must be un-ready: {cls!r}"
 
             # the pad-hero element still EXISTS and is laid out (honest empty surface,
-            # not a removed one) — it just carries the "no world loaded" placeholder.
+            # not a removed one) — it now holds the FIELD canvas, which draws its own
+            # "no settled telemetry yet" empty state on the canvas.
             assert page.query_selector("#padHero") is not None, "pad hero missing"
-            assert page.query_selector("#radialWrap") is not None, "radial pad mount missing"
-            wrap_text = page.eval_on_selector("#radialWrap", "el => el.textContent")
-            assert "no world loaded" in wrap_text.lower(), \
-                f"radial pad must show an honest empty state, got {wrap_text!r}"
+            assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
 
             shot = tmp_path / "fe_public_empty_state.png"
             page.screenshot(path=str(shot), full_page=True)

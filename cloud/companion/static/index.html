@@ -209,13 +209,12 @@
 
   /* ---------- INSTRUMENT wrapper + lock overlay ---------- */
   .instrument{ position: relative; }
-  /* Honest steer state: a corpus whose region lane measured σ=0 disarms region
-     steering — the pad settles no differently. Dim it + tag it so the operator
-     isn't misled into thinking a dead pad steers. */
-  .instrument.region-disarmed #padHero .radial-wrap{ opacity:.55; }
-  .instrument.region-disarmed #padHero::after{ content:"region steering disarmed on this corpus";
-    display:block; margin-top:8px; font-size: var(--fs-micro); letter-spacing:.1em;
-    text-transform:uppercase; color: var(--tape); font-weight:650; }
+  /* The region-disarmed dimming/tag that dressed the XY pad is GONE with the pad:
+     the field steers the SOFT fiber lean (set_channel_bias / set_unit_bias), which
+     does NOT route through the region lane, so a region-σ=0 corpus does not disarm
+     it — dimming the field there would be a dishonest readout. The field's own
+     honest disarm (profile_armed unit pools + the participation-ratio floor) is
+     enforced per-square in the field logic, not by a blanket surface tag. */
 
   /* ============================================================================
      BLACK-GLASS SKIN (design item 4) — translucent panels over the living prism.
@@ -259,51 +258,30 @@
   /* ---------- COMPONENT 1 — the pad hero (translucent black-glass chromatic field) */
   .pad-hero{ padding: var(--sp-5); display:flex; flex-direction:column; }
   .pad-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom: var(--sp-3); gap: var(--sp-3); }
-  /* PAD MODE toggle (aim | shape) — a two-state pill, aim active by default. */
-  .pad-mode{ display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
-  .pad-mode .pm-btn{ background:transparent; border:0; color: var(--faint); cursor:pointer;
-    font-family: var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
-    padding:4px 12px; transition: background .12s, color .12s; }
-  .pad-mode .pm-btn.active{ background: var(--accent); color:#06110d; }
-  /* CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares) — a rectangular field of
-     channel squares; identical layout on laptop and mobile. Each square fills from
-     the bottom with its amplify level; hover-scroll (wheel) or vertical drag adjusts. */
-  .channel-squares{ flex:1 1 auto; display:grid; gap:10px; align-content:stretch;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); min-height:220px; }
-  .chan-sq{ position:relative; border:1px solid var(--line); border-radius:12px;
-    overflow:hidden; cursor:ns-resize; background: var(--panel-inset);
-    min-height:96px; display:flex; flex-direction:column; justify-content:flex-end;
-    touch-action:none; user-select:none; -webkit-user-select:none; }
-  /* BIPOLAR water-level meter (REV2): fill height encodes sign — 50% = neutral,
-     >50% = amplify (accent), <50% = damp (amber). The fill COLOR is set per-sign
-     from JS (renderChannelSquare) so it is never ambiguous. */
-  .chan-sq .fill{ position:absolute; left:0; right:0; bottom:0; height:50%;
-    background: linear-gradient(0deg, var(--accent-deep), var(--accent));
-    transition: height .08s ease-out, background .12s ease-out; pointer-events:none; }
-  /* neutral center hairline (a=0): the sign reference the water level reads against. */
-  .chan-sq .cs-mid{ position:absolute; left:0; right:0; bottom:50%; height:0;
-    border-top:1px dashed var(--faint); opacity:.7; pointer-events:none; z-index:2; }
-  .chan-sq .cs-body{ position:relative; z-index:1; padding:11px 12px; display:flex;
-    flex-direction:column; gap:3px; }
-  .chan-sq .cs-name{ font-family: var(--font-serif); font-size:13px; color: var(--ink-2); }
-  .chan-sq .cs-val{ font-family: var(--font-mono); font-size:11px; color: var(--faint);
-    letter-spacing:.06em; }
-  .chan-sq.active-bias{ border-color: var(--accent); }
-  .chan-sq.active-damp{ border-color: var(--damp); }
-  .chan-sq.disarmed{ opacity:.5; cursor:not-allowed; }
-  .chan-sq.disarmed .fill{ display:none; }
   .pad-title{ font-family: var(--font-serif); font-size:15px; color: var(--ink-2); font-weight:400; }
   .pad-meta{ font-family: var(--font-mono); font-size:10px; color: var(--faint); letter-spacing:.08em; }
-  .pad-foot{ display:flex; align-items:center; justify-content:space-between; margin-top: var(--sp-3); gap: var(--sp-3); }
-  .legend2{ display:flex; gap:16px; }
-  .legend2 .item{ display:flex; align-items:center; gap:7px; font-family: var(--font-mono); font-size:9.5px; letter-spacing:.04em; color: var(--muted); }
-  .legend2 .sw{ width:12px; height:12px; border-radius:50%; flex:0 0 auto; }
-  .legend2 .sw.puck{ background:transparent; border:1.6px solid var(--accent); box-shadow:0 0 8px var(--accent-glow); }
-  .legend2 .sw.mach{ background: var(--tape); box-shadow:0 0 8px var(--tape-glow); }
-  /* the radial pad ITSELF is the translucent glassy-rainbow object (see the
-     .radial-pad / .chroma rules further down, near the pre-existing radial CSS) */
-  #radialWrap{ min-height:220px; }
-  @media (min-width:900px){ #radialWrap{ flex:1 1 auto; display:flex; align-items:stretch; justify-content:stretch; } }
+  /* ---------- THE FIELD (canvas steering surface — replaces the XY pad) --------
+     PREREG-field-bias-REV3 Phase B. The field IS the single Play steering surface
+     (it replaced the XY radial pad + the flat channel squares). Drill TRACK -> UNITS
+     (role is internal to training, never a surfaced/labeled grain); hover-scroll,
+     vertical drag or arrow keys bias a square in [-1,1] (up = amplify, down = damp):
+     a TRACK square drives the track roll-up (set_channel_bias, ratified REV2 path),
+     a UNIT square drives the unit grain (set_unit_bias, REV3 Phase A). Square FILL =
+     LIVE settled telemetry (the engine's answer, per-track nowplaying / roleact); the
+     bias RING is a SEPARATE bipolar indicator (accent = amplify, damp hue = damp,
+     neutral centre) — glow and push are never conflated. */
+  .field-wrap{ position:relative; flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
+  .field-legend{ display:flex; flex-wrap:wrap; gap: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-2); font-size: var(--fs-micro); }
+  .field-legend .leg{ display:inline-flex; align-items:center; gap:6px; color: var(--muted); max-width:220px; }
+  .field-legend .leg-sw{ width:11px; height:11px; border-radius:3px; flex:0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); }
+  .field-legend .leg-nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family: var(--font-mono); }
+  .field-canvas{ display:block; width:100%; flex:1 1 auto; min-height:260px;
+    border-radius: var(--r-md); background: var(--panel-inset); border:1px solid var(--line);
+    box-shadow: inset 0 2px 30px -10px rgba(0,0,0,.6); touch-action:none; cursor:crosshair; }
+  .field-status{ position:absolute; right:12px; bottom:10px; pointer-events:none;
+    font-size: var(--fs-micro); letter-spacing:.06em; color: var(--muted); }
+  .field-status.settling{ color: var(--accent); }
 
   /* ---------- knobs band (component 2: extra modes + TEMP/GAUGE) ------------- */
   .knobs{ padding: var(--sp-4) var(--sp-5); display:flex; flex-direction:column; gap: var(--sp-4); }
@@ -1037,33 +1015,30 @@
           <div class="pad-col">
             <section class="glass pad-hero" id="padHero">
               <div class="pad-head">
-                <span class="pad-title">steering surface</span>
-                <!-- PAD MODE (PREREG-sampler-covariance-xy): AIM = the current F-tilt
-                     eigenmode pad (where the sound GOES), DEFAULT + unchanged. SHAPE =
-                     the covariance-shape pad (how the sound WANDERS along the object's
-                     stiffest fluctuation directions — the draw's second moment, NOT the
-                     target). Honest label: shape steers movement, not destination. -->
-                <span class="pad-mode" id="padModeToggle" role="group" aria-label="pad mode">
-                  <button type="button" class="pm-btn active" data-mode="aim" id="padModeAim" aria-pressed="true">aim</button>
-                  <button type="button" class="pm-btn" data-mode="shape" id="padModeShape" aria-pressed="false">shape</button>
-                  <button type="button" class="pm-btn" data-mode="squares" id="padModeSquares" aria-pressed="false">squares</button>
-                </span>
-                <span class="pad-meta" id="padMeta">no world loaded</span>
+                <span class="pad-title">the field</span>
+                <!-- The FILL of every square is LIVE settled telemetry (fieldApplySettled,
+                     from d.roles/nowplaying) — the engine's answer, never your input
+                     echoed back. Scroll/drag biases it; the engine re-settles. -->
+                <span class="hint">scroll or drag &#8597; = bias · Ctrl+scroll / pinch = drill · fill = settled telemetry</span>
+                <!-- HONEST DISARM READOUT (Theorem A arming corollary; measured off the
+                     world's anchor band-profile B, /api/world profile_armed). Hidden
+                     until shown on a refused drill; a real-state caption (registered with
+                     the WEB-FAB guard, backed by fieldRefuseUnitGrain), never decor.
+                     There is NO track-lean disarm caption: the track grain biases through
+                     the ratified REV2 fiber lean, which never routes through B. -->
+                <span class="hint" id="fieldUnitGrainMsg" hidden>unit grain disarmed &mdash; the anchor-band matrix carries no information on this world</span>
               </div>
-              <div class="radial-wrap" id="radialWrap"><div class="empty">no world loaded</div></div>
-              <!-- CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares REV2, SOFT +
-                   BIDIRECTIONAL): one square per channel (source track); hover-scroll /
-                   drag UP amplifies (soft lean toward that track's material), DOWN damps
-                   (soft down-weight below the neutral center line). Both are soft — the
-                   settlement reallocates, nothing is pinned. Sends the channel_bias vector
-                   via /api/steer; the XY pad's F-tilt is at rest in this mode. -->
-              <div class="channel-squares" id="channelSquares" hidden><div class="empty">no world loaded</div></div>
-              <div class="pad-foot">
-                <div class="legend2">
-                  <span class="item"><span class="sw puck"></span>your force</span>
-                  <span class="item"><span class="sw mach"></span>achieved</span>
-                </div>
-                <label class="wordtoggle"><input type="checkbox" id="radialWordToggle"> earned words</label>
+              <!-- THE FIELD (replaces the XY radial pad + the flat channel squares +
+                   the aim/shape/squares toggle — a socket swap of the pad element). One
+                   canvas surface: root = TRACK squares; drilling a track opens THAT
+                   track's UNITS (role hidden). A TRACK square biases the track roll-up
+                   (channel_bias -> set_channel_bias); a UNIT square biases the unit grain
+                   (unit_bias -> set_unit_bias). Empty field ⇒ no bias ⇒ byte-identical. -->
+              <div class="field-wrap">
+                <div class="field-legend" id="fieldLegend" aria-label="Track legend — colour and name of each source track"></div>
+                <canvas id="fieldCanvas" class="field-canvas" role="application"
+                  aria-label="The field — every square glows by its live settled weight (the engine's answer, never your input echoed back). Scroll or drag to bias a track or unit; Ctrl+scroll or pinch to drill a track into its units."></canvas>
+                <div class="field-status" id="fieldStatus" aria-live="polite"></div>
               </div>
             </section>
           </div>
@@ -1444,11 +1419,13 @@
         // no longer consumed here (the field is gone); only names + the
         // now-playing highlight (applyNowPlaying, telemetry-driven) remain.
         applyTrainTracks(w);
-        // CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares): the channel roster
-        // (index -> track_id + name) for the squares pad mode. Read-only; the squares
-        // surface is (re)built from it. Absent on older payloads -> empty (no squares).
+        // FIELD (PREREG-field-bias-REV3 Phase B): the channel roster (index ->
+        // track_id + name) maps a biased TRACK square to its channel_bias slot; the
+        // STATIC field section (profiles + unit_pools + track_names + profile_armed)
+        // feeds the drill (track -> units) and the honest disarm. Absent on older
+        // payloads -> empty (the field draws its honest "no telemetry yet" state).
         world.channels = (w.channels && w.channels.channels) ? w.channels.channels : [];
-        buildChannelSquares();
+        fieldApplyStatic(w);
         // Honest steer state: a disarmed region means taps settle no differently.
         // "roles" is retired from every visible surface (archived concept —
         // the pad's own eigen-modes are the whole instrument now); the mode
@@ -1665,23 +1642,25 @@
     buildLanesOnce();
     buildScalarLanesOnce();       // the interactive two-marks conjugate-control lanes
     buildMetersOnce();
+    fieldInit();                  // register the field canvas gesture listeners (once)
     sendSteerNow();               // publish an initial (neutral) region/mode force
     btnPlay.disabled = false; btnPause.disabled = true; btnStop.disabled = true;
   }
 
   /* ================= STEER (the single engine-input call site) =============
-     FIELD REMOVED (OPEN_ENDS item 2): Play's ONLY steering surface is now the
-     radial eigen-mode pad (+ outboard knobs). `region` is a length-M ZERO-INIT
-     vector — the field's composite bias source is gone, but a region-vector
-     SOURCE must remain because the radial's own mode-force folds its region
-     component into it below (E4: modes route through the SAME region/scalar
-     datums, never a new one) — so `region` stays the base the fold-in adds to,
-     just permanently at rest (0) instead of drawn from field bias. */
+     Play's ONLY steering SURFACE is the FIELD (PREREG-field-bias-REV3 Phase B); it
+     replaced the XY pad. `region` stays a length-M ZERO-INIT base because the KNOBS
+     band (extra eigen-mode strips + TEMP/GAUGE) still folds its force onto the same
+     region/scalar datums (E4). The field itself steers the SOFT fiber lean instead:
+     a biased TRACK square -> channel_bias (roll-up), a biased UNIT square ->
+     unit_bias (unit grain) — each on its own setter, summed at the fiber measure.
+     Empty field ⇒ both grains empty ⇒ bridge None ⇒ byte-identical audio. */
   function sendSteer(payload){
     // The ONE request that steers the engine. Its payload is the widened force
     // vector: the region lane PLUS the typed scalar conjugate lanes (paper2 §2),
-    // each entering the engine through its ONE datum (bridge setter). Still a
-    // single /api/steer input — no second endpoint.
+    // PLUS the field's two soft-lean grains (channel_bias + unit_bias) — each
+    // entering the engine through its ONE datum (bridge setter). Still a single
+    // /api/steer input — no second endpoint.
     return fetch("/api/steer", {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
@@ -1690,189 +1669,578 @@
   }
   function sendSteerNow(){
     if(!world.ready) return;
-    // the radial's own zero-init region vector (length M) that the mode-force
-    // folds into below — the field's composite bias source is gone (item 2).
+    // the zero-init region base (length M) the KNOBS mode-force folds into below.
     region = new Array(world.M || 0).fill(0);
     var payload = { region: region.slice() };
     // fold in the ARMED scalar lanes' forces (disarmed/degenerate emit nothing).
     var sc = scalarBuilt ? scalarPayload(scalarLaneStates()) : {};
     for(var k in sc) payload[k] = sc[k];
-    // RADIAL (E4): a basis rotation ON TOP of the same lanes — the puck's mode-
-    // space lean projects through each surviving mode's eigenvector onto the
-    // EXISTING continuity/novelty/density/region datums (no new setter, no new
-    // fetch: still the one /api/steer call below).
-    // CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares REV2, SOFT + BIDIRECTIONAL):
-    // in `squares` mode the payload carries the per-channel amplify vector in [-1,1]
-    // (positive = amplify, negative = soft damp; the soft fiber lean); the pad's
-    // F-tilt and covariance shape are at rest. In any OTHER mode we send an explicit
-    // EMPTY channel_bias so no stale lean lingers (empty OR all-zero => bridge None
-    // => byte-identical). One datum, the same single /api/steer call.
-    payload.channel_bias = (padMode === "squares") ? channelAmplifies.slice() : [];
-    if(padMode === "squares"){
-      sendSteer(payload);     // squares steers ONLY the channel lean; pad force at rest
-      return;
-    }
-    if(padMode === "shape"){
-      // COVARIANCE-SHAPE (PREREG-sampler-covariance-xy): the puck maps to the
-      // per-Hessian-eigendirection anisotropy `a` (how the draw WANDERS), sent as
-      // `wobble` INSTEAD of the F-tilt force. It steers the second moment only —
-      // never the settled target — so the aim-mode radialForceVector is skipped
-      // here (not deleted; re-selecting "aim" restores it verbatim). Sent only
-      // while the puck is held (T-3: force zeroed on release), else cleared to
-      // None so the draw reverts to a=ones (byte-identical).
-      payload.wobble = radialPadState.held
-        ? padToWobble(radialPadState.x, radialPadState.y, world.M || 0) : null;
-    } else if(radialK > 0){
+    // KNOBS (E4): the surviving extra-mode strips + TEMP/GAUGE fold their force onto
+    // the EXISTING continuity/novelty/density/region datums (no new setter). The XY
+    // pad is gone, so radialPadState stays at rest (contributes 0) — only the knob
+    // strips lean here; on a world with no extra modes this is a no-op.
+    if(radialK > 0){
       var rf = radialForceVector(radialModes, radialModeValues(radialK, radialPadState, radialStripStates), world.M || 0);
       payload.continuity = (payload.continuity || 0) + rf.continuity;
       payload.novelty    = (payload.novelty    || 0) + rf.novelty;
       payload.density    = (payload.density    || 0) + rf.density;
       for(var i = 0; i < payload.region.length && i < rf.region.length; i++){ payload.region[i] += rf.region[i]; }
     }
+    // FIELD BIAS (PREREG-field-bias-REV3 Phase B): the two drill grains, each on its
+    // OWN datum/setter (single carrier per grain, I-1). TRACK squares -> channel_bias
+    // (the ratified REV2 roll-up path); UNIT squares -> unit_bias (REV3 Phase A). BOTH
+    // are sent on EVERY publish so a neutralized square (or leaving the field) disarms
+    // EXPLICITLY — no stale lean lingers. Empty at both grains ⇒ bridge None for each
+    // ⇒ no fiber addend ⇒ byte-identical audio (the hard invariant).
+    var fb = fieldBiasPayload(fieldState());
+    payload.channel_bias = fb.channel_bias;   // track roll-up grain (vector; all-zero ⇒ None)
+    payload.unit_bias    = fb.unit_bias;      // unit grain ({uid->amplify}; empty ⇒ None)
     sendSteer(payload);
   }
 
-  /* PAD MODE (PREREG-sampler-covariance-xy) — "aim" (F-tilt, default, unchanged)
-     vs "shape" (covariance anisotropy). The current pad is a toggle away, never
-     deleted (preservation requirement). */
-  var padMode = "aim";
-  var PAD_WOBBLE_RATIO = 4.0;   // == the writer's clamp band ceiling (a in [0.25,4])
-  function padToWobble(x, y, M){
-    // (x,y) in [-1,1] -> per-eigendirection variance scale `a`, STIFFEST-FIRST
-    // (a[0] scales the largest-curvature direction, a[1] the next, matching the
-    // writer's descending-|w| order). Up-scale dir0 by x, dir1 by y; the
-    // complement is DOWN-scaled (volume-preserving: sum(log a)=0) so the reshape
-    // redistributes spread rather than only inflating it — this keeps the draw as
-    // close to the coherent isotropic baseline as an audible anisotropy allows.
-    // Every entry is clamped to [0.25,4]; the engine re-clamps at the TiltTerms
-    // boundary, so this is never the only guard.
-    M = M || 0;
-    var a = new Array(M);
-    for(var i = 0; i < M; i++) a[i] = 1;
-    var r = PAD_WOBBLE_RATIO;
-    if(M >= 1) a[0] = Math.pow(r, x);
-    if(M >= 2) a[1] = Math.pow(r, y);
-    var comp = (M > 2) ? -(x + y) / (M - 2) : 0;
-    for(var j = 2; j < M; j++) a[j] = Math.pow(r, comp);
-    for(var k = 0; k < M; k++) a[k] = Math.max(0.25, Math.min(4, a[k]));
-    return a;
-  }
-  var PAD_MODES = { aim:1, shape:1, squares:1 };
-  function setPadMode(mode){
-    if(!PAD_MODES[mode]) mode = "aim";
-    if(mode === padMode) return;
-    padMode = mode;
-    [["padModeAim","aim"],["padModeShape","shape"],["padModeSquares","squares"]]
-      .forEach(function(pair){
-        var b = $(pair[0]); if(!b) return;
-        b.classList.toggle("active", mode === pair[1]);
-        b.setAttribute("aria-pressed", String(mode === pair[1]));
-      });
-    // Show the surface for the active mode; the XY radial pad and the squares field
-    // are mutually exclusive VIEWS of the same steering surface (both preserved —
-    // re-selecting a mode restores it verbatim).
-    var rw = $("radialWrap"), cs = $("channelSquares");
-    if(rw) rw.hidden = (mode === "squares");
-    if(cs) cs.hidden = (mode !== "squares");
-    // switching AWAY from shape/squares clears anisotropy / channel lean (byte-
-    // identical); switching INTO a mode drops the others' force. One publish keeps
-    // the engine's single control object consistent with the UI.
-    sendSteerNow();
-  }
-  (function wirePadMode(){
-    var aimBtn = $("padModeAim"), shapeBtn = $("padModeShape"), sqBtn = $("padModeSquares");
-    if(aimBtn) aimBtn.addEventListener("click", function(){ setPadMode("aim"); });
-    if(shapeBtn) shapeBtn.addEventListener("click", function(){ setPadMode("shape"); });
-    if(sqBtn) sqBtn.addEventListener("click", function(){ setPadMode("squares"); });
-  })();
+  /* ========================= THE FIELD (Play steering surface) ==============
+     PREREG-field-bias-REV3 Phase B. The field REPLACED the XY pad: one canvas whose
+     squares GLOW by live settled telemetry and whose scroll/drag/arrow gestures bias
+     a square in [-1,1] (up = amplify, down = damp). Drill is TRACK -> UNITS (role is
+     internal to training — never a surfaced or labeled steering grain). A TRACK square
+     drives the track roll-up (channel_bias -> set_channel_bias, the ratified REV2
+     path); a UNIT square drives the unit grain (unit_bias -> set_unit_bias, REV3 Phase
+     A). FILL (glow) and the bias RING are kept honestly distinct. Restored from history
+     (commit 16a8f53^) and adapted: role removed from the drill/bias, region-send
+     replaced by the two soft-lean grains. */
+  /* ---------- pure logic (no DOM / no telemetry writes) — FIELD PURE LOGIC ---- */
+  var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
+  var FIELD_HEADER = 22;          // top strip reserved for the breadcrumb (grid below)
+  var FIELD_BIAS_LIMIT = 1.0;     // soft-saturation stop (matches amplify's [-1,1])
+  var FIELD_BIAS_STEP  = 0.125;   // bias accumulated per wheel/drag step
+  var FIELD_TOUCH_BIAS_PX = 30;   // one-finger vertical drag: px per one bias step
+  var FIELD_TAP_SLOP_PX   = 10;   // movement under this = a TAP (tooltip only, no drill)
+  var FIELD_WHEEL_BIAS_PX = 40;   // plain-wheel px per ONE bias step
+  var FIELD_ZOOM_STEP_DELTA = 120;   // Ctrl+wheel / pinch px per ONE drill layer
+  var FIELD_ZOOM_COOLDOWN_MS = 350;  // absorb storm events this long after a drill step
+  var FIELD_WHEEL_LINE_PX = 40;      // WheelEvent DOM_DELTA_LINE -> px equivalent
+  var FIELD_WHEEL_PAGE_PX = 800;     // WheelEvent DOM_DELTA_PAGE -> px equivalent
 
-  /* ===== CHANNEL-BIAS SQUARES (PREREG-channel-bias-squares REV2, SOFT) =======
-     One square per channel (= a source track). Hover-scroll (wheel) or vertical
-     drag sets that channel's amplify in [-1, 1] — the SOFT per-channel lean the
-     engine applies through channel_bias -> set_channel_bias -> the fiber measure.
-     BIDIRECTIONAL (REV2): UP amplifies (up-weight, toward the track); DOWN damps
-     (soft down-weight below the neutral center). By gauge invariance only the
-     RELATIVE β between channels matters, so amplifying one ≡ damping the rest;
-     both handles are exposed so one gesture can lift one AND cut another. Damp is
-     SOFT — the settlement reallocates, nothing is pinned or hard-muted. The vector
-     is sent on the SAME /api/steer call (sendSteerNow, squares branch). */
-  var channelAmplifies = [];       // per-channel amplify in [-1,1], index = channel index
-  var channelSqEls = [];
-  var CHAN_STEP = 0.08;            // wheel/drag increment
-  function clampBias(v){ return v < -1 ? -1 : (v > 1 ? 1 : v); }
-  function renderChannelSquare(i){
-    var el = channelSqEls[i]; if(!el) return;
-    var a = channelAmplifies[i] || 0;
-    // bipolar water level: a=-1 -> 0% (max damp), a=0 -> 50% (neutral), a=+1 -> 100%.
-    var fill = el.querySelector(".fill");
-    if(fill){
-      fill.style.height = ((0.5 + 0.5*a)*100).toFixed(1)+"%";
-      fill.style.background = a < 0
-        ? "linear-gradient(0deg, var(--damp), var(--damp-glow))"
-        : "linear-gradient(0deg, var(--accent-deep), var(--accent))";
-    }
-    var val = el.querySelector(".cs-val");
-    if(val) val.textContent = a > 0 ? ("amplify "+a.toFixed(2))
-                             : (a < 0 ? ("damp "+Math.abs(a).toFixed(2)) : "—");
-    el.classList.toggle("active-bias", a > 0);
-    el.classList.toggle("active-damp", a < 0);
-    el.setAttribute("aria-valuenow", a.toFixed(2));
+  function fieldWheelPx(deltaY, deltaMode){
+    deltaY = +deltaY || 0;
+    if(deltaMode === 1) return deltaY * FIELD_WHEEL_LINE_PX;
+    if(deltaMode === 2) return deltaY * FIELD_WHEEL_PAGE_PX;
+    return deltaY;
   }
-  function setChannelAmplify(i, a){
-    a = clampBias(a);
-    if(channelAmplifies[i] === a) return;
-    channelAmplifies[i] = a;
-    renderChannelSquare(i);
-    if(padMode === "squares") sendSteerNow();
+  function fieldStepQuant(accPx, stepPx){
+    accPx = +accPx || 0;
+    var steps = accPx >= 0 ? Math.floor(accPx / stepPx) : -Math.floor(-accPx / stepPx);
+    return { steps: steps, rem: accPx - steps * stepPx };
   }
-  function buildChannelSquares(){
-    var host = $("channelSquares"); if(!host) return;
-    var chans = world.channels || [];
-    channelSqEls = [];
-    // preserve existing amplifies where the roster length matches; else reset.
-    if(channelAmplifies.length !== chans.length) channelAmplifies = new Array(chans.length).fill(0);
-    if(!chans.length){ host.innerHTML = '<div class="empty">no channels in this world</div>'; return; }
-    host.innerHTML = "";
-    chans.forEach(function(ch, i){
-      var el = document.createElement("div");
-      el.className = "chan-sq";
-      el.setAttribute("role","slider");
-      el.setAttribute("aria-label", (ch.name||("channel "+i))+" amplify / damp");
-      el.setAttribute("aria-valuemin","-1"); el.setAttribute("aria-valuemax","1");
-      el.setAttribute("aria-valuenow","0");
-      el.tabIndex = 0;
-      el.innerHTML = '<div class="fill"></div><div class="cs-mid"></div><div class="cs-body">'
-        + '<div class="cs-name">'+(ch.name || ("channel "+i))+'</div>'
-        + '<div class="cs-val">—</div></div>';
-      // hover-scroll (laptop): wheel up = amplify, down = damp.
-      el.addEventListener("wheel", function(ev){
-        ev.preventDefault();
-        setChannelAmplify(i, (channelAmplifies[i]||0) + (ev.deltaY < 0 ? CHAN_STEP : -CHAN_STEP));
-      }, { passive:false });
-      // vertical drag (mobile + laptop): drag up = amplify, down = damp.
-      var dragging = false, lastY = 0;
-      el.addEventListener("pointerdown", function(ev){
-        dragging = true; lastY = ev.clientY; el.setPointerCapture(ev.pointerId);
+  function fieldDragSteps(accPx){ return fieldStepQuant(accPx, FIELD_TOUCH_BIAS_PX); }
+  function fieldWheelSteps(accPx){ return fieldStepQuant(accPx, FIELD_WHEEL_BIAS_PX); }
+  // ZOOM/DRILL GATE (wheel/pinch storm): one deliberate gesture = exactly one layer.
+  function fieldZoomGate(st, deltaPx, nowMs){
+    var acc = (st && +st.acc) || 0;
+    var last = (st && typeof st.lastStepMs === "number") ? st.lastStepMs : -1e9;
+    if(nowMs - last < FIELD_ZOOM_COOLDOWN_MS) return { step: 0, acc: 0, lastStepMs: last };
+    deltaPx = +deltaPx || 0;
+    if(acc !== 0 && deltaPx !== 0 && (deltaPx > 0) !== (acc > 0)) acc = 0;
+    acc += deltaPx;
+    if(acc >= FIELD_ZOOM_STEP_DELTA)  return { step:  1, acc: 0, lastStepMs: nowMs };
+    if(acc <= -FIELD_ZOOM_STEP_DELTA) return { step: -1, acc: 0, lastStepMs: nowMs };
+    return { step: 0, acc: acc, lastStepMs: last };
+  }
+  function fieldClamp01(v){ v = +v || 0; return v < 0 ? 0 : (v > 1 ? 1 : v); }
+  function fieldClamp1(v){ v = +v || 0; return v < -1 ? -1 : (v > 1 ? 1 : v); }
+  function fieldKeyStr(key){ return JSON.stringify(key); }
+  // Participation-ratio noise floor — the SAME (Σw)²/Σw² that self-sized the anchor
+  // count (anchors.py::effective_rank), on a non-negative telemetry weight vector.
+  function fieldParticipationRatio(w){
+    var s1 = 0, s2 = 0;
+    for(var i=0;i<w.length;i++){ var v = w[i] > 0 ? w[i] : 0; s1 += v; s2 += v*v; }
+    if(s2 <= 0) return 0;
+    return (s1*s1)/s2;
+  }
+  // A track drills only while its sub-structure clears the floor: round(PR) >= 2.
+  function fieldClearsFloor(w){ return Math.round(fieldParticipationRatio(w)) >= 2; }
+  function fieldTruncMiddle(s, max){
+    s = String(s == null ? "" : s);
+    if(s.length <= max) return s;
+    var keep = max - 1, head = Math.ceil(keep/2), tail = Math.floor(keep/2);
+    return s.slice(0, head) + "…" + s.slice(s.length - tail);
+  }
+  function fieldTrackName(st, t){
+    var n = st.names && st.names[t];
+    return (n !== undefined && n !== null && n !== "") ? String(n) : ("track " + t);
+  }
+  // A square: {kind, key, label, track, settled, bias, expandable, nChildren}. `settled`
+  // is the engine's answer (glow); `bias` the operator input (ring). nChildren is the
+  // REAL interactive child count (operator hard rule: real or absent, never padded).
+  function fieldMkSquare(kind, key, label, track, settled, bias, expandable, nChildren){
+    return { kind:kind, key:key, label:label, track:track,
+             settled:fieldClamp01(settled), bias:(bias||0),
+             expandable:!!expandable, nChildren:(nChildren|0) };
+  }
+  function fieldTrackIds(st){
+    var ids = {};
+    for(var t in (st.profiles||{})) ids[t] = 1;
+    for(var t in (st.nowplaying||{})) ids[t] = 1;
+    return Object.keys(ids).map(Number).sort(function(a,b){ return a-b; });
+  }
+  // A TRACK's drill-in units (role HIDDEN): gather units across THIS track's effective
+  // role pools, filtered by track_id, bounded/ordered by the participation-ratio floor
+  // so a big set stays navigable. Role is used ONLY as neutral internal grouping to
+  // page/limit — never surfaced, never a bias target. A mushy track (profile below the
+  // floor) drills to NOTHING: honest disarm, not a fake drill.
+  function fieldTrackUnits(st, t){
+    var p = st.profiles && st.profiles[t];
+    if(!p || !fieldClearsFloor(p)) return [];           // honest disarm (below floor)
+    var kEff = Math.min(p.length, Math.round(fieldParticipationRatio(p)));
+    var order = p.map(function(v,i){ return i; })
+                 .sort(function(a,b){ return p[b] - p[a]; })
+                 .slice(0, kEff).sort(function(a,b){ return a - b; });
+    var out = [], seen = {};
+    order.forEach(function(role){
+      var pool = (st.unitPools && st.unitPools[role]) || [];
+      pool.forEach(function(u){
+        if((u.track_id|0) !== (t|0)) return;            // THIS track's units only
+        var uid = u.unit_id|0;
+        if(seen[uid]) return; seen[uid] = 1;            // dedup across role grouping
+        var key = ["unit", role, uid, t|0];             // uid drives the unit setter
+        out.push(fieldMkSquare("unit", key, "u"+uid, t|0,
+          (st.nowplaying && st.nowplaying[t]) || 0,     // disclosed track-grain glow
+          st.bias[fieldKeyStr(key)] || 0, false, 0));   // units are ATOMIC
       });
-      el.addEventListener("pointermove", function(ev){
-        if(!dragging) return;
-        var dy = lastY - ev.clientY; lastY = ev.clientY;
-        var rect = el.getBoundingClientRect();
-        setChannelAmplify(i, (channelAmplifies[i]||0) + dy / Math.max(40, rect.height));
-      });
-      function endDrag(ev){ if(dragging){ dragging = false; try{ el.releasePointerCapture(ev.pointerId); }catch(e){} } }
-      el.addEventListener("pointerup", endDrag);
-      el.addEventListener("pointercancel", endDrag);
-      // keyboard (a11y): up/down arrows.
-      el.addEventListener("keydown", function(ev){
-        if(ev.key === "ArrowUp"){ ev.preventDefault(); setChannelAmplify(i, (channelAmplifies[i]||0)+CHAN_STEP); }
-        else if(ev.key === "ArrowDown"){ ev.preventDefault(); setChannelAmplify(i, (channelAmplifies[i]||0)-CHAN_STEP); }
-      });
-      host.appendChild(el);
-      channelSqEls[i] = el;
-      renderChannelSquare(i);
+    });
+    return out;
+  }
+  function fieldTrackSquares(st){
+    return fieldTrackIds(st).map(function(t){
+      var kids = fieldTrackUnits(st, t).length;         // REAL child count (floor-bounded)
+      var key = ["track", t];
+      return fieldMkSquare("track", key, fieldTrackName(st, t), t,
+        (st.nowplaying && st.nowplaying[t]) || 0,
+        st.bias[fieldKeyStr(key)] || 0, kids >= 1, kids);
     });
   }
+  function fieldChildren(st, key){
+    if(key[0] === "track") return fieldTrackUnits(st, key[1]);
+    return [];                                           // unit: atomic (no deeper drill)
+  }
+  // the squares of the CURRENT view. Root = TRACK squares (role hidden); a drilled
+  // track shows its units. Depth is at most 1 (units are atomic).
+  function fieldCurrentSquares(st, stack){
+    if(!stack || !stack.length) return fieldTrackSquares(st);
+    return fieldChildren(st, stack[stack.length - 1]);
+  }
+  function fieldBreadcrumb(st, stack){
+    if(!stack || !stack.length) return "TRACKS";
+    var parts = ["TRACKS"];
+    for(var i=0;i<stack.length;i++){ var k = stack[i]; if(k[0] === "track") parts.push(fieldTrackName(st, k[1])); }
+    return parts.join(" › ");
+  }
+  function fieldLegendEntries(st){
+    return fieldTrackIds(st).map(function(t){ return { track: t, name: fieldTrackName(st, t) }; });
+  }
+  // LEGEND at depth: root -> per-track chips; drilled into a track -> that track's chip;
+  // none -> hidden (no track parent / empty payload — nothing to attribute).
+  function fieldLegendSpec(st, stack){
+    if(!stack || !stack.length)
+      return fieldTrackSquares(st).length ? { mode: "root" } : { mode: "none" };
+    var pt = fieldParentTrack(stack);
+    return (pt === null) ? { mode: "none" } : { mode: "track", track: pt };
+  }
+  function fieldGrid(n){
+    var cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+    var rows = Math.max(1, Math.ceil(n / cols));
+    return { rows:rows, cols:cols };
+  }
+  function fieldHitIndex(x, y, W, H, n){
+    if(n <= 0) return -1;
+    var g = fieldGrid(n);
+    var w = W / g.cols, h = H / g.rows;
+    if(w <= 0 || h <= 0) return -1;
+    var c = Math.floor(x / w), r = Math.floor(y / h);
+    if(c < 0 || c >= g.cols || r < 0 || r >= g.rows) return -1;
+    var k = r * g.cols + c;
+    return (k >= 0 && k < n) ? k : -1;
+  }
+  // Accumulate bias on a square (keyStr -> value), soft-saturating at ±FIELD_BIAS_LIMIT.
+  // `bias` is the keyStr->value ledger. A settled-to-zero entry is deleted (byte-clean).
+  function fieldAddBias(bias, keyStr, delta){
+    var b = (bias[keyStr] || 0) + delta;
+    if(b >  FIELD_BIAS_LIMIT) b =  FIELD_BIAS_LIMIT;
+    if(b < -FIELD_BIAS_LIMIT) b = -FIELD_BIAS_LIMIT;
+    if(Math.abs(b) < 1e-9) delete bias[keyStr]; else bias[keyStr] = b;
+    return b;
+  }
+  // Resolve st.bias into the two engine grains: a per-CHANNEL amplify VECTOR (the track
+  // roll-up, indexed by channel = source track) and a {unit_id -> amplify} MAP (the unit
+  // grain). This REPLACES the old region-vector send: track bias -> channel_bias,
+  // unit bias -> unit_bias. All-zero channel vector / empty unit map ⇒ bridge None ⇒
+  // byte-identical. Both are ALWAYS returned (explicit-empty), never omitted.
+  function fieldBiasPayload(st){
+    var chans = world.channels || [], idxByTid = {};
+    for(var i=0;i<chans.length;i++) idxByTid[chans[i].track_id|0] = i;
+    var cb = new Array(chans.length).fill(0), ub = {};
+    var bias = st.bias || {};
+    for(var ks in bias){
+      if(!bias.hasOwnProperty(ks)) continue;
+      var b = bias[ks]; if(!b) continue;
+      var key = JSON.parse(ks);
+      if(key[0] === "track"){
+        var idx = idxByTid[key[1]|0];
+        if(idx !== undefined) cb[idx] = fieldClamp1(b);   // track roll-up grain
+      } else if(key[0] === "unit"){
+        ub[key[2]|0] = fieldClamp1(b);                    // key[2] = unit_id (setter key)
+      }
+    }
+    return { channel_bias: cb, unit_bias: ub };
+  }
+  function fieldHexToHsl(hex){
+    var n = parseInt(String(hex).replace("#", ""), 16);
+    var r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    var l = (mx + mn) / 2;
+    var s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    var h = 0;
+    if(d !== 0){
+      if(mx === r) h = 60 * (((g - b) / d) % 6);
+      else if(mx === g) h = 60 * ((b - r) / d + 2);
+      else h = 60 * ((r - g) / d + 4);
+    }
+    if(h < 0) h += 360;
+    return { h: h, s: s * 100, l: l * 100 };
+  }
+  function fieldParentTrack(stack){
+    for(var i = (stack ? stack.length : 0) - 1; i >= 0; i--){
+      if(stack[i][0] === "track") return stack[i][1];
+    }
+    return null;
+  }
+  // Shade child i of a colour family (a unit inside a drilled track): SAME hue as the
+  // parent track, lightness/saturation stepped by index for legibility. null parent =>
+  // neutral grey ramp (no false track attribution).
+  function fieldFamilyShade(baseHex, i){
+    i = i | 0;
+    if(baseHex == null) return "hsl(0,0%," + (40 + ((i * 13) % 35)) + "%)";
+    var c = fieldHexToHsl(baseHex);
+    var l = 34 + (((i * 17) % 4) * 11);
+    var s = c.s * (0.65 + 0.35 * (((i * 7) % 3) / 2));
+    return "hsl(" + Math.round(c.h) + "," + Math.round(s) + "%," + l + "%)";
+  }
+  /* ===== END FIELD PURE LOGIC ===== */
+
+  var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus"), fieldLegend = $("fieldLegend");
+  var fieldCtx = fieldCanvas ? fieldCanvas.getContext("2d") : null;
+  // ---- TELEMETRY-FED STORES (the engine's answer) — WRITTEN ONLY by the appliers ----
+  var fieldSettled    = [];  // per-role settled activity (glow) — WRITTEN ONLY by fieldApplySettled
+  var fieldNowPlaying = {};  // track_id -> live activity (glow)  — WRITTEN ONLY by fieldApplySettled
+  var fieldProfiles   = {};  // track_id -> anchor profile (static) — WRITTEN ONLY by fieldApplyStatic
+  var fieldUnitPools  = {};  // role -> unit pool (static)          — WRITTEN ONLY by fieldApplyStatic
+  var fieldTrackNames = {};  // track_id -> honest name (static)    — WRITTEN ONLY by fieldApplyStatic
+  // ANCHOR-PROFILE ARMING (Theorem A corollary; /api/world profile_armed). False on the
+  // band-blind fixed point (uniform B): the server serves EMPTY unit_pools, so tracks
+  // floor-gate to non-expandable (no unit drill = honest unit-grain disarm). The TRACK
+  // bias is UNAFFECTED — it rides the ratified REV2 fiber lean, which never routes
+  // through B — so there is no track-lean disarm. Default true (informative-B / tests).
+  var fieldProfileArmed = true;   // — WRITTEN ONLY by fieldApplyStatic
+  // ---- OPERATOR INPUT + view state (never a glow) ----
+  var fieldBias    = {};     // keyStr -> bias (the ring) — written by the gesture handlers
+  var fieldStack   = [];     // drill path (array of square keys; depth <= 1)
+  var fieldHover   = null;   // hovered square key (targeting only; inert)
+  var fieldPending = false;  // a bias gesture awaiting the engine's re-settlement
+  var fieldZoomWheelState = { acc: 0, lastStepMs: -1e9 };  // Ctrl+wheel drill gate
+  var fieldPinchState     = { acc: 0, lastStepMs: -1e9 };  // two-finger pinch gate
+  var fieldWheelBiasState = { key: null, acc: 0 };         // plain-wheel bias remainder
+  var fieldInited = false;
+
+  function fieldState(){
+    return { roleact:fieldSettled, nowplaying:fieldNowPlaying, profiles:fieldProfiles,
+             unitPools:fieldUnitPools, names:fieldTrackNames, bias:fieldBias };
+  }
+  function fieldViewSquares(){ return fieldCurrentSquares(fieldState(), fieldStack); }
+  function cssVar(name){
+    try{ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
+    catch(e){ return "#888"; }
+  }
+  function fieldTrackColor(tid){
+    var n = TRACK_COLORS.length;
+    return TRACK_COLORS[(((tid|0) % n) + n) % n];
+  }
+  // Track squares carry their own track's legend colour; unit squares carry a shade of
+  // the PARENT track's colour family (honest attribution, never an invented hue that
+  // collides with another track's legend colour).
+  function fieldSquareColor(sq){
+    if(sq.kind === "track") return fieldTrackColor(sq.track);
+    var pt = fieldParentTrack(fieldStack);
+    var base = (pt !== null) ? fieldTrackColor(pt)
+             : (sq.track != null ? fieldTrackColor(sq.track) : null);
+    return fieldFamilyShade(base, sq.key[2] | 0);        // shade by unit_id
+  }
+  function fieldSetStatus(msg, settling){
+    if(!fieldStatus) return;
+    fieldStatus.textContent = msg || "";
+    fieldStatus.classList.toggle("settling", !!settling);
+  }
+  function fieldSquareAt(x, y){
+    var sqs = fieldViewSquares();
+    var idx = fieldHitIndex(x, y - FIELD_HEADER, fieldCanvas.clientWidth,
+                            fieldCanvas.clientHeight - FIELD_HEADER, sqs.length);
+    return idx >= 0 ? sqs[idx] : null;
+  }
+  function fieldKeyEq(a, b){ return a && b && fieldKeyStr(a) === fieldKeyStr(b); }
+  function fieldLegendChip(bg, text, title){
+    var chip = document.createElement("span"); chip.className = "leg";
+    chip.title = title || text;
+    var sw = document.createElement("span"); sw.className = "leg-sw"; sw.style.background = bg;
+    var nm = document.createElement("span"); nm.className = "leg-nm"; nm.textContent = text;
+    chip.appendChild(sw); chip.appendChild(nm);
+    if(fieldLegend) fieldLegend.appendChild(chip);
+  }
+  function fieldRenderLegend(){
+    if(!fieldLegend) return;
+    var st = fieldState();
+    var spec = fieldLegendSpec(st, fieldStack);
+    fieldLegend.innerHTML = "";
+    if(spec.mode === "none"){ fieldLegend.style.display = "none"; return; }
+    fieldLegend.style.display = "";
+    if(spec.mode === "root"){
+      fieldLegendEntries(st).forEach(function(e){
+        fieldLegendChip(fieldTrackColor(e.track), fieldTruncMiddle(e.name, 22), e.name);
+      });
+      return;
+    }
+    // drilled into a track: just the parent-track chip (role is not surfaced).
+    var base = fieldTrackColor(spec.track), name = fieldTrackName(st, spec.track);
+    fieldLegendChip(base, fieldTruncMiddle(name, 18), name);
+  }
+  function fieldDraw(){
+    if(!fieldCtx) return;
+    var W = fieldCanvas.clientWidth, H = fieldCanvas.clientHeight;
+    var dpr = window.devicePixelRatio || 1;
+    if(fieldCanvas.width !== Math.round(W*dpr) || fieldCanvas.height !== Math.round(H*dpr)){
+      fieldCanvas.width = Math.round(W*dpr); fieldCanvas.height = Math.round(H*dpr);
+    }
+    fieldCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fieldCtx.clearRect(0, 0, W, H);
+    fieldRenderLegend();
+    var st = fieldState();
+    fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
+    fieldCtx.fillText(fieldBreadcrumb(st, fieldStack) +
+      (fieldStack.length ? "   (click header / Ctrl+scroll out)" : ""), 8, 15);
+    var sqs = fieldViewSquares(), n = sqs.length;
+    if(n === 0){
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field",
+                        14, FIELD_HEADER + 20);
+      return;
+    }
+    var g = fieldGrid(n), cw = W / g.cols, ch = (H - FIELD_HEADER) / g.rows;
+    for(var k=0;k<n;k++){
+      var sq = sqs[k];
+      var r = Math.floor(k / g.cols), c = k % g.cols;
+      var x = c * cw, y = FIELD_HEADER + r * ch;
+      fieldCtx.globalAlpha = 0.15 + 0.85 * sq.settled;   // GLOW = settled telemetry ONLY
+      fieldCtx.fillStyle = fieldSquareColor(sq);
+      fieldCtx.fillRect(x+3, y+3, cw-6, ch-6);
+      fieldCtx.globalAlpha = 1;
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(x+3.5, y+3.5, cw-7, ch-7);
+      if(fieldKeyEq(sq.key, fieldHover)){                // hover highlight (inert)
+        fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 1;
+        fieldCtx.strokeRect(x+4.5, y+4.5, cw-9, ch-9);
+      }
+      if(Math.abs(sq.bias) > 1e-9){                      // RING = operator bias (separate
+        // from glow): accent = amplify, damp hue = damp; width by |bias|, neutral center.
+        fieldCtx.strokeStyle = sq.bias > 0 ? cssVar("--accent") : cssVar("--damp");
+        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(sq.bias));
+        fieldCtx.strokeRect(x+6, y+6, cw-12, ch-12);
+      }
+      var label = (sq.kind === "track") ? fieldTruncMiddle(sq.label, Math.max(6, Math.floor(cw/8)))
+                                        : sq.label;
+      fieldCtx.fillStyle = cssVar("--ink"); fieldCtx.font = "11px " + cssVar("--font-mono");
+      fieldCtx.fillText(label, x+8, y+18);
+      fieldCtx.fillStyle = cssVar("--muted");
+      fieldCtx.fillText(Math.round(sq.settled*100) + "", x+8, y+ch-10);
+      if(sq.expandable){                                 // ▸n = REAL child (unit) count
+        fieldCtx.fillStyle = cssVar("--faint");
+        fieldCtx.fillText("▸"+sq.nChildren, x+cw-24, y+ch-10);
+      }
+    }
+  }
+  // ---- THE TELEMETRY APPLIERS: the SOLE writers of the glow stores. Input handlers
+  // never call these. Empty telemetry -> empty field (no fabrication).
+  function fieldApplySettled(d){
+    var roles = (d && d.roles) || [];
+    fieldSettled = roles.map(function(v){ return fieldClamp01(v); });
+    var np = (d && d.nowplaying) || {}, m = {};
+    for(var t in np){ if(np.hasOwnProperty(t)) m[t] = fieldClamp01(np[t]); }
+    fieldNowPlaying = m;
+    fieldDraw();
+  }
+  // the STATIC per-world section (/api/world): per-track profiles + per-role unit pools
+  // (internal grouping) + honest names. Structure only (drill/label), never glow.
+  function fieldApplyStatic(w){
+    fieldProfiles   = (w && w.profiles)    || {};
+    fieldUnitPools  = (w && w.unit_pools)  || {};
+    fieldTrackNames = (w && w.track_names) || {};
+    fieldProfileArmed = !(w && w.profile_armed === false);
+    fieldStack = [];                                    // a new world resets the drill
+    fieldDraw();
+  }
+  // HONEST DISARM REFUSAL (Theorem A arming corollary). Reads its caption from the
+  // registered hidden span (single source of truth) — a real-state readout of
+  // profile_armed, never decorative. Shown when a track cannot drill because the server
+  // withheld the (false-attribution) unit pools under a uniform B.
+  function fieldRefuseUnitGrain(){
+    var el = $("fieldUnitGrainMsg");
+    fieldSetStatus(el ? el.textContent : "unit grain disarmed", false);
+  }
+  // a bias gesture landed: cue "settling…" until the next telemetry frame carries the
+  // engine's RE-SETTLEMENT (cleared in applyTelemetry) — never echo the input as glow.
+  function fieldMarkSettling(){
+    if(state === "playing"){ fieldPending = true; fieldSetStatus("settling…", true); }
+  }
+  function fieldOnWheel(ev){
+    ev.preventDefault();
+    if(!world.ready) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    var px = fieldWheelPx(ev.deltaY, ev.deltaMode);
+    if(ev.ctrlKey){                                      // Ctrl+scroll / trackpad pinch = drill
+      var g = fieldZoomGate(fieldZoomWheelState, -px, performance.now());
+      fieldZoomWheelState = { acc: g.acc, lastStepMs: g.lastStepMs };
+      if(g.step) fieldZoom(sq, g.step);
+      return;
+    }
+    if(!sq || !px) return;
+    // BIAS: one FIELD_BIAS_STEP per FIELD_WHEEL_BIAS_PX of travel (wheel up = amplify),
+    // remainder kept; retargeting drops the old square's sub-step remainder.
+    var ks = fieldKeyStr(sq.key);
+    if(fieldWheelBiasState.key !== ks){ fieldWheelBiasState.key = ks; fieldWheelBiasState.acc = 0; }
+    var s = fieldWheelSteps(fieldWheelBiasState.acc - px);
+    fieldWheelBiasState.acc = s.rem;
+    if(!s.steps) return;
+    fieldAddBias(fieldBias, ks, s.steps * FIELD_BIAS_STEP);
+    if(window.ambFirePulse) window.ambFirePulse();
+    fieldMarkSettling(); sendSteerNow(); fieldDraw();
+  }
+  function fieldOnMove(ev){                              // passive hover targeting ONLY — inert
+    var rect = fieldCanvas.getBoundingClientRect();
+    var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    var key = sq ? sq.key : null;
+    if(fieldCanvas) fieldCanvas.title = sq
+      ? ((sq.track !== null && sq.track !== undefined) ? fieldTrackName(fieldState(), sq.track) : sq.label) : "";
+    if(!fieldKeyEq(key, fieldHover)){ fieldHover = key; fieldDraw(); }
+  }
+  function fieldZoom(sq, amount){
+    if(amount > 0){ fieldZoomInto(sq); } else if(amount < 0){ fieldZoomOut(); }
+  }
+  function fieldZoomInto(sq){
+    if(!sq) return false;
+    if(!sq.expandable){
+      // a track is non-expandable because its unit sub-structure is below the noise
+      // floor OR the server withheld the pools under a uniform B: name the unit-grain
+      // wall specifically in the arming-off case, else the generic atomic refusal.
+      if(sq.kind === "track" && !fieldProfileArmed){ fieldRefuseUnitGrain(); return false; }
+      fieldSetStatus("atomic — nothing distinct inside above the noise floor", false);
+      return false;
+    }
+    fieldStack.push(sq.key); fieldHover = null; fieldSetStatus("", false); fieldDraw();
+    if(window.ambFirePulse) window.ambFirePulse();
+    return true;
+  }
+  function fieldZoomOut(){
+    if(!fieldStack.length) return false;
+    fieldStack.pop(); fieldHover = null; fieldSetStatus("", false); fieldDraw();
+    if(window.ambFirePulse) window.ambFirePulse();
+    return true;
+  }
+  function fieldOnClick(ev){                             // header = drill out; square = drill in
+    if(Date.now() - fieldLastTouchEnd < 700) return;     // suppress touch-synthesized click
+    if(!world.ready) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    if(y < FIELD_HEADER){ fieldZoomOut(); return; }
+    fieldZoomInto(fieldSquareAt(x, y));                  // refused (honestly) if atomic
+  }
+  var fieldPinch = 0;
+  var fieldTouch = null;         // {key, header, x, y, lastY, acc, moved}
+  var fieldLastTouchEnd = 0;
+  function fieldTouchDist(ev){
+    var dx = ev.touches[0].clientX - ev.touches[1].clientX;
+    var dy = ev.touches[0].clientY - ev.touches[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+  function fieldTouchStart(ev){
+    if(ev.touches && ev.touches.length === 2){           // two fingers = pinch drill
+      fieldPinch = fieldTouchDist(ev); fieldTouch = null;
+      fieldPinchState = { acc: 0, lastStepMs: fieldPinchState.lastStepMs };
+      return;
+    }
+    if(!(ev.touches && ev.touches.length === 1)) return;
+    var t = ev.touches[0], rect = fieldCanvas.getBoundingClientRect();
+    var x = t.clientX - rect.left, y = t.clientY - rect.top;
+    var sq = (world.ready && y >= FIELD_HEADER) ? fieldSquareAt(x, y) : null;
+    fieldTouch = { key: sq ? sq.key : null, header: y < FIELD_HEADER,
+                   x: x, y: y, lastY: t.clientY, acc: 0, moved: 0 };
+  }
+  function fieldTouchMove(ev){
+    if(ev.touches && ev.touches.length === 2){           // two-finger pinch = drill
+      ev.preventDefault();
+      fieldTouch = null;
+      var d = fieldTouchDist(ev), delta = d - fieldPinch; fieldPinch = d;
+      var rect = fieldCanvas.getBoundingClientRect();
+      var mx = (ev.touches[0].clientX + ev.touches[1].clientX)/2 - rect.left;
+      var my = (ev.touches[0].clientY + ev.touches[1].clientY)/2 - rect.top;
+      var g = fieldZoomGate(fieldPinchState, delta, performance.now());
+      fieldPinchState = { acc: g.acc, lastStepMs: g.lastStepMs };
+      if(g.step) fieldZoom(fieldSquareAt(mx, my), g.step);
+      return;
+    }
+    if(!(ev.touches && ev.touches.length === 1) || !fieldTouch) return;
+    ev.preventDefault();
+    var t = ev.touches[0], rect = fieldCanvas.getBoundingClientRect();
+    var dx = (t.clientX - rect.left) - fieldTouch.x;
+    var dy = (t.clientY - rect.top)  - fieldTouch.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist > fieldTouch.moved) fieldTouch.moved = dist;
+    if(!world.ready || fieldTouch.key === null){ fieldTouch.lastY = t.clientY; return; }
+    fieldTouch.acc += (fieldTouch.lastY - t.clientY);    // +up = amplify (wheel-up analog)
+    fieldTouch.lastY = t.clientY;
+    var s = fieldDragSteps(fieldTouch.acc);
+    fieldTouch.acc = s.rem;
+    if(!s.steps) return;
+    fieldAddBias(fieldBias, fieldKeyStr(fieldTouch.key), s.steps * FIELD_BIAS_STEP);
+    if(window.ambFirePulse) window.ambFirePulse();
+    fieldMarkSettling(); sendSteerNow(); fieldDraw();
+  }
+  function fieldTouchEnd(ev){
+    fieldLastTouchEnd = Date.now();
+    if(ev.cancelable) ev.preventDefault();
+    var g = fieldTouch; fieldTouch = null;
+    if(!g || (ev.touches && ev.touches.length)) return;
+    if(g.moved > FIELD_TAP_SLOP_PX) return;              // it was a bias drag, done
+    if(g.header){ fieldZoomOut(); return; }              // header tap = drill out
+    if(!world.ready || g.key === null) return;
+    // TAP on a square: show its hover highlight + tooltip only — no drill, no emit.
+    var trk = (g.key[0] === "unit") ? g.key[g.key.length - 1] : g.key[1];
+    fieldHover = g.key;
+    if(fieldCanvas) fieldCanvas.title = fieldTrackName(fieldState(), trk);
+    fieldDraw();
+  }
+  function fieldInit(){
+    if(fieldInited) return;
+    fieldInited = true;
+    if(!fieldCanvas) return;
+    fieldCanvas.addEventListener("wheel", fieldOnWheel, { passive:false });
+    fieldCanvas.addEventListener("pointermove", fieldOnMove);
+    fieldCanvas.addEventListener("pointerleave", function(){ fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw(); });
+    fieldCanvas.addEventListener("click", fieldOnClick);
+    fieldCanvas.addEventListener("touchstart", fieldTouchStart, { passive:false });
+    fieldCanvas.addEventListener("touchmove", fieldTouchMove, { passive:false });
+    fieldCanvas.addEventListener("touchend", fieldTouchEnd, { passive:false });
+    fieldCanvas.addEventListener("touchcancel", function(){ fieldTouch = null; });
+    fieldDraw();
+  }
+  window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
 
   /* ================= LANES (READ-ONLY live arrangement statistics) =========
      Each lane is a real, intrinsically-bounded [0,1] reduction of the engine's
@@ -2656,43 +3024,19 @@
   }
 
   function buildRadialOnce(){
-    if(!radialEls.wrap || radialBuiltForK === radialK) return;
+    // PAD REMOVED (PREREG-field-bias-REV3 Phase B): the XY radial pad was socket-
+    // swapped out for the field, so this no longer mounts a pad hero (#radialWrap is
+    // gone; radialEls.pad stays null and every pad-draw / tether fn guards on it). It
+    // still builds the KNOBS BAND extra-mode strips (component 2) — a genuinely
+    // separate surface that was merely co-located here — so the knobs keep working
+    // byte-identically. No wrap dependency: the strips build off #radialStripsBand.
+    if(radialBuiltForK === radialK) return;
     radialBuiltForK = radialK;
-    radialEls.wrap.innerHTML = "";
     if(radialEls.stripsBand) radialEls.stripsBand.innerHTML = "";
     radialEls.pad = null; radialEls.puck = null; radialEls.mark = null; radialEls.strips = null;
     radialPadState = { x:0, y:0, held:false, markX:null, markY:null, lastX:0, lastY:0 };
     radialStripStates = [];
-    if(padMetaEl){
-      padMetaEl.textContent = radialK > 0
-        ? ("k = " + radialK + (radialK === 1 ? " mode" : " modes") + " · basis: response-kernel")
-        : "no modes above the measured floor";
-    }
-    if(radialK <= 0){
-      radialEls.wrap.innerHTML = '<div class="empty">no modes above the measured floor on this world</div>';
-      return;
-    }
-    // HERO mount (#radialWrap, inside the pad-hero panel): the SAME 2-D pad for
-    // both k>=2 (a true multi-axis XY surface) and k===1 (an HONEST single-mode
-    // radial: only the puck's DISTANCE from centre matters — the angle is inert,
-    // no fabricated second axis). The pad is always the hero, never a 1-D strip.
-    if(radialK >= 1){
-      var pad = document.createElement("div");
-      pad.className = "radial-pad" + (radialK === 1 ? " single" : "");
-      pad.innerHTML = '<div class="rp-cross"></div><div class="rp-mark"></div>'+
-        '<div class="rp-badge rp-badge-x"></div><div class="rp-badge rp-badge-y"></div>'+
-        '<div class="rp-puck"></div>';
-      radialEls.wrap.appendChild(pad);
-      radialEls.pad = pad;
-      radialEls.puck = pad.querySelector(".rp-puck");
-      radialEls.mark = pad.querySelector(".rp-mark");
-      // k===1 has no second mode: the Y badge is not shown (never a fake mode).
-      if(radialK === 1){ var by0 = pad.querySelector(".rp-badge-y"); if(by0) by0.style.display = "none"; }
-      pad.addEventListener("pointerdown", radialPadDown);
-      pad.addEventListener("pointermove", radialPadMove);
-      pad.addEventListener("pointerup", radialPadUp);
-      pad.addEventListener("pointercancel", radialPadUp);
-    }
+    if(radialK <= 0) return;   // no modes above the floor -> no strips (honest empty)
     // EXTRA strips (k>=3 only) mount into the KNOBS BAND (component 2, the right
     // rail) alongside TEMP/GAUGE. k===1 has NO strip — its single mode lives in
     // the pad as a radial magnitude (below); k===2 is the pad's two axes.
@@ -3058,6 +3402,8 @@
     updateScalarLanes(d);         // scalar lanes' MACHINE MARK + release-follow (real)
     updateRadialFromTelemetry(d); // radial machine dot: achieved projection, release-follow
     updateGauge(d);               // read-only slide[g]/loop[g] gauge-drift pair
+    fieldApplySettled(d);         // FIELD glow = settled telemetry (roles + per-track nowplaying)
+    if(fieldPending){ fieldPending = false; fieldSetStatus("", false); }   // clear the "settling…" cue
     if(typeof d.t === "number") updateTape(d.t);
     // WARMING (OPEN_ENDS #21d): the first frame with a produced bar clears the
     // warming note (bar > 0 = the engine has rendered; the /api/world warmed

@@ -445,6 +445,12 @@ class StreamPlayer:
         from .channel_bias import channel_tids
         self._channel_bias: Optional[np.ndarray] = None
         self._channel_tids = channel_tids(self.world)
+        # FIELD-BIAS UNIT GRAIN (PREREG-field-bias-REV3): the per-UNIT amplify map
+        # {unit_id -> amplify∈[-1,1]} — the operator's ultimate "channel" (a beat-
+        # normalized sound unit). It rides the SAME ONE TiltTerms as the track grain
+        # (single carrier, I-1), assembled ADDITIVELY in produce_one_bar via
+        # field_logbias. Default None ⇒ no addend ⇒ byte-identical fiber draw.
+        self._unit_bias: Optional[dict] = None
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -1102,6 +1108,38 @@ class StreamPlayer:
         with self._lock:
             self._channel_bias = v
 
+    def set_unit_bias(self, unit_amp) -> None:
+        """Set the per-UNIT amplify map (PREREG-field-bias-REV3, extends the REV2
+        track grain). ``unit_amp`` is a mapping {unit_id -> amplify∈[-1,1]}: each
+        entry applies a SOFT bidirectional lean on THAT unit's candidate at the
+        FIBER-CHOICE measure — the UNIT grain, the operator's ultimate "channel"
+        (a beat-normalized sound unit). It becomes the ``"unit"`` sub-map of the ONE
+        ``channel_logbias`` datum the writer consumes (single carrier, I-1), summed
+        ADDITIVELY with the track roll-up per candidate (β_track[tid]+β_unit[uid]).
+        POSITIVE up-weights that unit; NEGATIVE soft-damps it — same softmax addend,
+        sign flipped. It is a bias the settlement works AROUND, not a clamp; a unit
+        only leans where its (role,band) makes it a candidate (soft, coverage-
+        contingent). Excluded from ``is_untilted``, so F / the O-block solve /
+        settlement / render stay byte-identical. A None / empty / all-zero map clears
+        the unit grain ⇒ no unit addend ⇒ (with no track bias) byte-identical audio."""
+        if not unit_amp:
+            with self._lock:
+                self._unit_bias = None
+            return
+        clean: dict = {}
+        for uid, a in dict(unit_amp).items():
+            try:
+                av = float(a)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(av):
+                av = 0.0
+            av = max(-1.0, min(1.0, av))
+            if av != 0.0:
+                clean[int(uid)] = av
+        with self._lock:
+            self._unit_bias = clean or None
+
     def channel_info(self) -> dict:
         """Read-only channel roster for the squares FE: channel index → track_id +
         display name. Which channels can actually PULL (vs disarm) is a MEASURED
@@ -1152,17 +1190,20 @@ class StreamPlayer:
         u = self._current_lane()
         with self._lock:                                     # second-moment shape (PREREG):
             a = None if self._wobble is None else np.asarray(self._wobble).copy()
-        # CHANNEL-BIAS (PREREG-channel-bias-squares, SOFT): fold the per-channel
-        # amplify vector into the ONE TiltTerms via `channel_logbias` — a soft lean
-        # in the fiber choice measure, NOT a clamp. `None` bias ⇒ no addend ⇒
-        # byte-identical to the un-biased tilt. Assembled at the SAME single tilt-
+        # FIELD-BIAS (PREREG-field-bias-REV3, SOFT multi-grain): fold the per-TRACK
+        # amplify vector (roll-up) AND the per-UNIT amplify map (the ultimate
+        # "channel") into the ONE TiltTerms via `channel_logbias` — a soft lean in
+        # the fiber choice measure, NOT a clamp, resolved ADDITIVELY per candidate
+        # (β_track[tid]+β_unit[uid]). Empty at BOTH grains ⇒ no addend ⇒ byte-
+        # identical to the un-biased tilt. Assembled at the SAME single tilt-
         # construction point as every other setter (a rides it too); no new channel.
         with self._lock:
             bias = None if self._channel_bias is None else self._channel_bias.copy()
-        clogbias = None
-        if bias is not None:
-            from .channel_bias import channel_logbias
-            clogbias = channel_logbias(bias, self._channel_tids)
+            unit_amp = None if self._unit_bias is None else dict(self._unit_bias)
+        from .channel_bias import channel_logbias, grain_logbias, field_logbias
+        track_w = channel_logbias(bias, self._channel_tids) if bias is not None else None
+        unit_w = grain_logbias(unit_amp) if unit_amp else None
+        clogbias = field_logbias(track=track_w, unit=unit_w)
         tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)

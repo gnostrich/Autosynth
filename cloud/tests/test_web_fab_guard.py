@@ -93,17 +93,22 @@ _SCAR_PHRASES = ("settled render", "tolerances & weights",
 # backing symbol is a live function in the main app script (checked below). A
 # data-claim caption matched by NO key is unregistered -> FAIL.
 #
-# FIELD REMOVED (OPEN_ENDS item 2, 2026-07-18): the field's "settled telemetry"
-# fill caption and its two Theorem-A disarm refusal captions ("track lean
-# disarmed" / "unit grain disarmed") were removed WITH the field surface itself
-# (fieldApplySettled/fieldRefuseTrackLean/fieldRefuseUnitGrain no longer exist) —
-# retired together, not orphaned. The Train receipt's "disarmed" readout (item 3)
-# uses a plain `.kv .k`/`.kv .v` row (the SAME unscanned informational-copy
-# pattern the pre-existing `.seal` privacy notice already uses elsewhere in this
-# file) rather than one of the four reactive-readout classes this guard scans —
-# it is a real, world_info-backed value (renderTrainReceipt), just not a
-# telemetry-frame-reactive one, so it is not a NEW instance of the guarded class.
+# FIELD RESTORED (PREREG-field-bias-REV3, Phase B, 2026-07-19): the field is back
+# as the single Play steering surface (it replaced the XY pad). Its "settled
+# telemetry" fill caption is re-registered to its real backing writer
+# (fieldApplySettled — the SOLE writer of the fill stores from d.roles/nowplaying).
+# The Theorem-A UNIT-grain disarm caption ("unit grain disarmed") is likewise
+# re-registered to fieldRefuseUnitGrain (shown when a track's sub-structure is below
+# the participation-ratio floor / the server withheld unit pools). The old TRACK-lean
+# disarm caption is GONE: the track grain now biases through the ratified REV2 fiber
+# lean (set_channel_bias), which does not route through the anchor band-profile B, so
+# it is never disarmed — no orphaned caption, no fabricated backing. The Train
+# receipt's "disarmed" readout (item 3) uses a plain `.kv .k`/`.kv .v` row (the SAME
+# unscanned informational-copy pattern the `.seal` privacy notice uses), not one of
+# the reactive-readout classes this guard scans, so it is not a new guarded instance.
 _CAPTION_SOURCE_MAP = {
+    "settled telemetry": "fieldApplySettled",    # THE FIELD fill (roles/nowplaying telemetry)
+    "unit grain disarmed": "fieldRefuseUnitGrain", # track->unit drill disarm (below floor / uniform B)
     "from telemetry": "updateTape",              # tape playhead (committed-bar time)
 }
 

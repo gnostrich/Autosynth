@@ -1433,6 +1433,16 @@ class _Handler(BaseHTTPRequestHandler):
             # pad emits no channel_bias; the squares pad emits no region force — one
             # active pad mode at a time, each through its own datum.
             if "channel_bias" in data: p.set_channel_bias(data["channel_bias"])
+            # FIELD UNIT-BIAS (PREREG-field-bias-REV3, Phase B): the drilled UNIT
+            # grain of the field. {unit_id -> amplify in [-1,1]} rides its OWN setter
+            # (p.set_unit_bias -> the "unit" sub-map of the ONE channel_logbias datum,
+            # summed additively with the track roll-up at the fiber measure). The field
+            # sends BOTH channel_bias (track) and unit_bias (unit) on every publish, so
+            # a neutral square / leaving the field disarms EXPLICITLY: absent or empty
+            # => set_unit_bias(None/{}) => no unit addend => (with no track bias)
+            # byte-identical audio. Track and unit are the only two bias grains — role
+            # is internal to training and steers via the region lane, never here.
+            p.set_unit_bias(data.get("unit_bias"))
             self._json(200, {"ok": True})
             return
         if path == "/api/play":
