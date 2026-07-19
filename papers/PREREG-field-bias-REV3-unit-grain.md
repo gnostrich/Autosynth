@@ -162,6 +162,25 @@ amplify, down = damp), reusing the field's existing per-key bias ledger `st.bias
 now resolved by `fieldBiasPayload(st)` into the two engine datums (this REPLACES the old
 region-vector send — the field no longer steers the region lane).
 
+## TRACK-LEVEL-ONLY decision (2026-07-19) — unit drill retired from the UI, infra dormant
+Operator decision: the unit-level drill does not fit and is not practically steerable
+(single-unit bias is ~0.2% of rows, the beat-normalized per-role counts are uniform, and
+192 units don't fit a navigable grid), so the drill-in is **retired from the UI** — the
+field interacts at **TRACK level only**. ALL unit infra is **retained dormant** in the
+codebase (version control retained; nothing deleted): `fieldTrackUnits` / unit squares /
+per-unit glow (`nowplaying_unit` / `nowplaying_unit_activity`) / `track_unit_pool` /
+`unit_bias` routing (`/api/steer` → `set_unit_bias`) / the `channel_logbias` unit grain
+all stay wired but unreachable from the FE. A single documented FE flag,
+`FIELD_DRILL_ENABLED = false` (near the field code in `index.html`), gates it: while
+false the field renders **TRACK squares only** (no `▸n` affordance), a track
+scroll/drag/arrow only **biases** the track (amplify/damp via `set_channel_bias`,
+unchanged), and the drill-in gesture (`fieldZoomInto` / Ctrl+scroll / pinch / click) is a
+silent **no-op** (`fieldCurrentSquares` never descends). Flip the flag `true` to restore
+the drill verbatim. This is an **FE-only** change: the bias mechanism, the `/api/steer`
+`unit_bias` routing (left wired, simply unused from the FE), the engine, and root `ets/`
+are untouched — **audio byte-identical**. The sections below describe the drill as it
+exists behind the flag.
+
 ## Drill = TRACK → UNITS (role HIDDEN)
 Root shows TRACK squares. Drilling a track opens **that track's own units** from
 `static_field().track_unit_pools[track_id]` (`fieldTrackUnits`), still gated by the

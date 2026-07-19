@@ -1091,3 +1091,7 @@
 {"head": "0f7e07a", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-19T15:42:58+00:00"}
 {"head": "0f7e07a", "path": "cloud/tests/test_nowplaying_unit.py", "tool": "Write", "ts": "2026-07-19T15:43:16+00:00"}
 {"head": "0f7e07a", "path": "papers/PREREG-field-bias-REV3-unit-grain.md", "tool": "Edit", "ts": "2026-07-19T15:44:04+00:00"}
+{"head": "3feb5dc", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-19T16:21:11+00:00"}
+{"head": "3feb5dc", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-19T16:21:24+00:00"}
+{"head": "3feb5dc", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-19T16:21:34+00:00"}
+{"head": "3feb5dc", "path": "papers/PREREG-field-bias-REV3-unit-grain.md", "tool": "Edit", "ts": "2026-07-19T16:23:14+00:00"}

@@ -1709,6 +1709,15 @@
      (commit 16a8f53^) and adapted: role removed from the drill/bias, region-send
      replaced by the two soft-lean grains. */
   /* ---------- pure logic (no DOM / no telemetry writes) — FIELD PURE LOGIC ---- */
+  // Operator decision 2026-07-19: unit-level drill is not practically steerable
+  // (single-unit bias ~0.2%, beat-normalized counts are uniform) and 192 units don't
+  // fit; the field interacts at TRACK level only. All unit infra (fieldTrackUnits, unit
+  // squares, per-unit glow nowplaying_unit, track_unit_pool, unit_bias routing,
+  // channel_logbias unit grain) is retained DORMANT for future re-enable — flip this
+  // flag true to restore the drill. While false: the field renders TRACK squares only,
+  // a track scroll/drag/arrow just BIASES the track (amplify/damp), and the drill-in
+  // gesture (Ctrl+scroll / pinch / click) is a no-op; no unit squares ever appear.
+  var FIELD_DRILL_ENABLED = false;
   var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
   var FIELD_HEADER = 22;          // top strip reserved for the breadcrumb (grid below)
   var FIELD_BIAS_LIMIT = 1.0;     // soft-saturation stop (matches amplify's [-1,1])
@@ -1812,11 +1821,14 @@
   }
   function fieldTrackSquares(st){
     return fieldTrackIds(st).map(function(t){
-      var kids = fieldTrackUnits(st, t).length;         // REAL child count (floor-bounded)
+      // DORMANT DRILL (FIELD_DRILL_ENABLED=false): tracks are non-expandable, so no
+      // `▸n` affordance and no drill — a track square only biases. Flip the flag true
+      // to restore the unit child count + drill (all infra retained).
+      var kids = FIELD_DRILL_ENABLED ? fieldTrackUnits(st, t).length : 0;
       var key = ["track", t];
       return fieldMkSquare("track", key, fieldTrackName(st, t), t,
         (st.nowplaying && st.nowplaying[t]) || 0,
-        st.bias[fieldKeyStr(key)] || 0, kids >= 1, kids);
+        st.bias[fieldKeyStr(key)] || 0, FIELD_DRILL_ENABLED && kids >= 1, kids);
     });
   }
   function fieldChildren(st, key){
@@ -1824,9 +1836,11 @@
     return [];                                           // unit: atomic (no deeper drill)
   }
   // the squares of the CURRENT view. Root = TRACK squares (role hidden); a drilled
-  // track shows its units. Depth is at most 1 (units are atomic).
+  // track shows its units. Depth is at most 1 (units are atomic). While the drill is
+  // dormant (FIELD_DRILL_ENABLED=false) this stays at the TRACK root — the drill
+  // gesture never pushes a track onto the stack (fieldZoomInto no-ops).
   function fieldCurrentSquares(st, stack){
-    if(!stack || !stack.length) return fieldTrackSquares(st);
+    if(!FIELD_DRILL_ENABLED || !stack || !stack.length) return fieldTrackSquares(st);
     return fieldChildren(st, stack[stack.length - 1]);
   }
   function fieldBreadcrumb(st, stack){
@@ -2144,6 +2158,10 @@
     if(amount > 0){ fieldZoomInto(sq); } else if(amount < 0){ fieldZoomOut(); }
   }
   function fieldZoomInto(sq){
+    // DORMANT DRILL (operator, track-level-only): the drill-in gesture is a silent
+    // no-op while FIELD_DRILL_ENABLED is false — a track scroll/drag/arrow only biases,
+    // never descends to units. Retained (not deleted) for future re-enable.
+    if(!FIELD_DRILL_ENABLED) return false;
     if(!sq) return false;
     if(!sq.expandable){
       // a track is non-expandable because its unit sub-structure is below the noise
