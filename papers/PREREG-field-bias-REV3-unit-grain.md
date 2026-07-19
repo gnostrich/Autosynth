@@ -1,6 +1,9 @@
 # PREREG revision R3 — field bias at MULTIPLE DRILL GRAINS (track roll-up + unit "channel")
 
-**Status:** operator-directed 2026-07-19 (Phase A = mechanism + gate; NO FE this
+**Status:** **RATIFIED** by operator (2026-07-19) — directed the units-are-ultimate /
+track-grouping / roles-internal design; ets-auditor **PASS** on Phase A (unit+track grain,
+role-wall confirmed, byte-identical off). Cleared for merge + deploy.
+Operator-directed 2026-07-19 (Phase A = mechanism + gate; NO FE this
 phase). Extends `PREREG-channel-bias-squares-REV2-bidirectional.md` (**RATIFIED**);
 the REV2 record is left intact. This is a **GRAIN GENERALIZATION of an already-
 ratified control**, not a new mechanism: the soft bidirectional `channel_logbias`
@@ -135,9 +138,13 @@ substituted.
 
 # Phase B — the FIELD as the single Play steering surface (UI, FE + routing only)
 
-**Status:** operator-directed 2026-07-19. **FE + app.py routing ONLY** — the bias
+**Status:** **RATIFIED** by operator (2026-07-19) — field replaces XY, drill track→units,
+role internal; ets-auditor **PASS-WITH-NOTES** (two non-blocking dead-code notes; mechanism
+frozen, byte-identical at neutral, test changes are legitimate realignment, WEBFAB guard teeth
+intact). Cleared for merge + deploy.
+Operator-directed 2026-07-19. **FE + app.py routing ONLY** — the bias
 MECHANISM (channel_bias.py / tilt.py / realize.py / engine) is FROZEN this phase
-(Phase A, audit-pending). No root `ets/` edit. Branch `claude/field-surface-unified-*`.
+(Phase A). No root `ets/` edit. Branch `claude/field-surface-unified-*`.
 
 ## What Phase B does
 Restores the drill FIELD component (removed in commit `16a8f53`) as the Play steering
