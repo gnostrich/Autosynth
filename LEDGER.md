@@ -1379,3 +1379,22 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `abd953e`
 - `Edit` papers/PREREG-channel-bias-squares-REV2-bidirectional.md (2026-07-19T10:37:29+00:00)
 - `Edit` papers/PREREG-channel-bias-squares-REV2-bidirectional.md (2026-07-19T10:37:40+00:00)
+
+### at `2bfefb6`
+- `Edit` cloud/companion/channel_bias.py (2026-07-19T11:36:51+00:00)
+- `Edit` cloud/companion/channel_bias.py (2026-07-19T11:37:07+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T11:37:17+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T11:37:28+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T11:37:37+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T11:37:45+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-19T11:37:57+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T11:38:05+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T11:38:17+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T11:38:27+00:00)
+- `Write` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T11:46:14+00:00)
+- `Write` cloud/tools/field_bias_unit_verify.py (2026-07-19T11:47:31+00:00)
+- `Edit` cloud/tools/field_bias_unit_verify.py (2026-07-19T11:47:40+00:00)
+- `Edit` cloud/tools/field_bias_unit_verify.py (2026-07-19T11:48:12+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-19T11:49:27+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-19T11:49:44+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-19T11:49:56+00:00)
