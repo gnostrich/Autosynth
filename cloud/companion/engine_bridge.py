@@ -59,6 +59,16 @@ _ARCH_V6 = str(Path(__file__).resolve().parents[2] / "architecture-v6")
 # that makes B informative re-arms with no edit here.
 _PROFILE_ARMING_EPS = 1e-6   # numerical-noise floor on B's RELATIVE row spread
 
+# PER-UNIT nowplaying DISPLAY SMOOTHING (disclosed; PREREG-field-bias-REV3 Phase B).
+# Per-track nowplaying is fresh-per-bar, but only a sparse subset of units is placed in
+# any one bar (~60 of N), so a raw per-unit glow would STROBE. A light EMA across bars
+# lets a just-played unit FADE over a few bars instead of hard-flickering off. This
+# smooths REAL placement telemetry — a unit only ever lights from a bar that actually
+# placed it and decays monotonically to 0 once it stops; nothing is fabricated. ALPHA is
+# the per-bar attack/decay weight; entries below EPS are pruned so the map stays bounded.
+_NP_UNIT_ALPHA = 0.45
+_NP_UNIT_EPS = 1e-3
+
 
 def anchor_profile_armed(B) -> bool:
     """MEASURED arming test for the anchor band-profile observable: ``True`` iff the
@@ -76,6 +86,29 @@ def anchor_profile_armed(B) -> bool:
         return False
     row_ptp = float((Bm.max(axis=1) - Bm.min(axis=1)).max())
     return (row_ptp / scale) > _PROFILE_ARMING_EPS
+
+
+def nowplaying_unit_activity(rows) -> dict:
+    """READ-ONLY per-UNIT counterpart of ``engine.nowplaying_activity``.
+
+    ``rows`` is the writer's produced schedule for the frontier bar (tuples
+    ``(out_slot, src_track, src_unit, section, mass)``). Per-track nowplaying sums mass
+    by ``src_track``; this sums by ``src_unit`` and normalizes by the bar's PEAK unit
+    mass to a 0..1 activity, so each UNIT square glows by its OWN placement (units within
+    a track DIVERGE, unlike the shared per-track glow). Reads produced rows only — no
+    settlement / writer / render / F — so audio is byte-identical whether or not it runs.
+
+    Returns ``{unit_id -> 0..1 activity}`` for the units placed this bar (a unit NOT
+    placed is simply absent ⇒ the field reads it as 0 = dark)."""
+    energy: dict = {}
+    for (_slot, _tid, uid, _sec, mass) in rows:
+        energy[int(uid)] = energy.get(int(uid), 0.0) + float(mass)
+    if not energy:
+        return {}
+    peak = max(energy.values())
+    if peak <= 0.0:
+        return {uid: 0.0 for uid in energy}
+    return {uid: energy[uid] / peak for uid in energy}
 
 
 def track_unit_pool(world, top_n: int = 48) -> dict:
@@ -494,6 +527,10 @@ class StreamPlayer:
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._bar_index = 0
+        # PER-UNIT nowplaying EMA state (display smoothing of REAL per-unit placement
+        # telemetry; see _NP_UNIT_ALPHA). {unit_id -> smoothed 0..1 activity}, updated
+        # each produced bar, pruned below _NP_UNIT_EPS. Display-only; never touches audio.
+        self._nowplaying_unit_ema: dict = {}
         # WARMED (OPEN_ENDS #21d): has the produce loop rendered its FIRST bar yet?
         # False until the loop emits (the bank build + first render is the multi-
         # minute cold window a listener would otherwise sit through in silence).
@@ -1294,12 +1331,30 @@ class StreamPlayer:
         # TRACK/UNIT square fills.
         nowplaying = {int(tid): float(act)
                       for tid, act in nowplaying_activity(r.rows)}
+        # READ-ONLY per-UNIT nowplaying: the SAME reduction as per-track nowplaying but
+        # keyed by source UNIT (r.rows carry (slot, tid, uid, sec, mass)). Sum mass per
+        # uid, normalize by the bar's PEAK unit mass to 0..1 — so each UNIT square glows
+        # by its OWN placement activity (units within a track diverge live, unlike the
+        # shared per-track glow). Reads produced rows only; no downstream call → audio
+        # byte-identical. A light EMA across bars (disclosed, _NP_UNIT_ALPHA) fades a
+        # just-played unit instead of strobing, since only a sparse subset lights per bar.
+        raw_unit = nowplaying_unit_activity(r.rows)
+        ema = self._nowplaying_unit_ema
+        for uid in set(ema) | set(raw_unit):
+            v = (_NP_UNIT_ALPHA * raw_unit.get(uid, 0.0)
+                 + (1.0 - _NP_UNIT_ALPHA) * ema.get(uid, 0.0))
+            if v >= _NP_UNIT_EPS:
+                ema[uid] = v
+            else:
+                ema.pop(uid, None)
+        nowplaying_unit = {int(uid): float(v) for uid, v in ema.items()}
         self._bar_index = int(r.bar)
         lanes = self._lane_readouts(r)
         loop_val, slide_val = self._gauge_meters(r)
         self.telemetry = {"roles": roles, "bar": int(r.bar),
                           "t": float(r.bar * self.engine.writer.bar_seconds),
                           "nowplaying": nowplaying,
+                          "nowplaying_unit": nowplaying_unit,
                           "lanes": lanes, "loop": loop_val, "slide": slide_val}
         pcm = _to_int16(audio)
         return pcm, roles

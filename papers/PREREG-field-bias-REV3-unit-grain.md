@@ -190,10 +190,30 @@ reduction of the frozen world (B + provenance) — it touches NOTHING in the Gib
 so **audio is byte-identical** (the bias mechanism and `/api/steer` routing are unchanged).
 
 ## Glow vs bias — kept honestly distinct
-Square **FILL/glow = LIVE settled telemetry** (`fieldApplySettled`, from `d.roles` /
-per-track `d.nowplaying`) — the engine's answer, never the input echoed back. The bias
-**RING is a SEPARATE bipolar indicator** (accent = amplify, damp hue = damp, neutral
-centre, width by `|amplify|`). The two are never conflated.
+Square **FILL/glow = LIVE settled telemetry** (`fieldApplySettled`) — the engine's answer,
+never the input echoed back. The bias **RING is a SEPARATE bipolar indicator** (accent =
+amplify, damp hue = damp, neutral centre, width by `|amplify|`). The two are never
+conflated.
+
+### Per-unit OWN glow (telemetry-only, byte-identical)
+Operator principle: EVERY square glows by its OWN live settled telemetry. Track squares
+already diverge (per-track `nowplaying_activity`). Unit squares previously borrowed the
+TRACK's glow (`nowplaying[t]` for every unit), so they could never diverge — a violation.
+FIX (telemetry + display only): `engine_bridge.nowplaying_unit_activity(rows)` is the
+per-UNIT counterpart of the engine's per-track reduction — it sums the produced bar's row
+mass by `src_unit` (`r.rows` = `(slot, tid, uid, sec, mass)`) and normalizes by the bar's
+peak unit mass to 0..1 (the SAME scale as per-track). Emitted on the telemetry frame as
+`nowplaying_unit`; the FE (`fieldApplySettled` → `fieldNowPlayingUnit`; `fieldTrackUnits`)
+sources each unit square's `settled` from `st.nowplayingUnit[uid]` (0 = dark if unplaced).
+**Smoothing (disclosed):** per-track glow is fresh-per-bar, but only a sparse subset of
+units is placed per bar (~60 of N), so the per-unit map gets a light **EMA** across bars
+(`_NP_UNIT_ALPHA = 0.45`, prune below `1e-3`) so a just-played unit FADES over a few bars
+instead of strobing. This smooths REAL placement telemetry — a unit only ever lights from
+a bar that actually placed it and decays monotonically to 0 once it stops; nothing is
+fabricated, and it is never the bias echoed back (the WEBFAB glow/ring split holds). Reads
+placed rows only — no settlement / writer / render / F — so **audio is byte-identical**.
+Verified: on demo, per-bar per-unit maps carry ~57-64 distinct units with 8-15 distinct
+glow values, units WITHIN a track diverge, and the active set changes bar-to-bar.
 
 ## Honest disarm (retained, no fakes)
 - **Unit drill self-sizes:** a track drills only where its sub-structure clears the

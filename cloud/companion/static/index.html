@@ -1805,7 +1805,7 @@
       var role = fieldArgmax(u.profile);                // band-dominant role (key string only)
       var key = ["unit", role, uid, t|0];               // uid drives the unit setter
       out.push(fieldMkSquare("unit", key, "u"+uid, t|0,
-        (st.nowplaying && st.nowplaying[t]) || 0,       // disclosed track-grain glow
+        (st.nowplayingUnit && st.nowplayingUnit[uid]) || 0,  // its OWN per-unit glow (0 if not placed)
         st.bias[fieldKeyStr(key)] || 0, false, 0));     // units are ATOMIC
     });
     return out;
@@ -1932,6 +1932,7 @@
   // ---- TELEMETRY-FED STORES (the engine's answer) — WRITTEN ONLY by the appliers ----
   var fieldSettled    = [];  // per-role settled activity (glow) — WRITTEN ONLY by fieldApplySettled
   var fieldNowPlaying = {};  // track_id -> live activity (glow)  — WRITTEN ONLY by fieldApplySettled
+  var fieldNowPlayingUnit = {}; // unit_id -> OWN live activity (glow) — WRITTEN ONLY by fieldApplySettled
   var fieldProfiles   = {};  // track_id -> anchor profile (static) — WRITTEN ONLY by fieldApplyStatic
   var fieldUnitPools  = {};  // role -> unit pool (static)          — WRITTEN ONLY by fieldApplyStatic
   var fieldTrackUnitPools = {}; // track_id -> per-track unit pool (static) — WRITTEN ONLY by fieldApplyStatic
@@ -1953,7 +1954,8 @@
   var fieldInited = false;
 
   function fieldState(){
-    return { roleact:fieldSettled, nowplaying:fieldNowPlaying, profiles:fieldProfiles,
+    return { roleact:fieldSettled, nowplaying:fieldNowPlaying,
+             nowplayingUnit:fieldNowPlayingUnit, profiles:fieldProfiles,
              unitPools:fieldUnitPools, trackUnitPools:fieldTrackUnitPools,
              names:fieldTrackNames, bias:fieldBias };
   }
@@ -2075,6 +2077,11 @@
     var np = (d && d.nowplaying) || {}, m = {};
     for(var t in np){ if(np.hasOwnProperty(t)) m[t] = fieldClamp01(np[t]); }
     fieldNowPlaying = m;
+    // per-UNIT glow: each unit square glows by its OWN placement activity (nowplaying_unit
+    // reduced by uid, EMA-smoothed in the bridge), NOT the shared track glow.
+    var npu = (d && d.nowplaying_unit) || {}, mu = {};
+    for(var uk in npu){ if(npu.hasOwnProperty(uk)) mu[uk] = fieldClamp01(npu[uk]); }
+    fieldNowPlayingUnit = mu;
     fieldDraw();
   }
   // the STATIC per-world section (/api/world): per-track profiles + per-role unit pools
