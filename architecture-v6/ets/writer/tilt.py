@@ -95,6 +95,16 @@ class SigmaPhi:
                    meta=dict(m.get("meta", {})))
 
 
+# SECOND-MOMENT SHAPE (covariance-shape XY, PREREG-sampler-covariance-xy). The
+# per-eigendirection anisotropy `a` (below) rescales the ALREADY-EXISTING Laplace
+# draw's variance along each Hessian eigendirection; it never touches F, the
+# settled mode, or the λ tilt. It is clamped to this safe band at the single
+# control boundary (TiltTerms.__post_init__) so no path can drive an unclamped
+# over-/under-dispersion into the writer. a=None ⇒ exactly the current draw.
+A_SHAPE_LO: float = 0.25
+A_SHAPE_HI: float = 4.0
+
+
 @dataclass(frozen=True)
 class TiltTerms:
     """The h-transform tilt, in F's units — the ONE control object the writer
@@ -109,6 +119,23 @@ class TiltTerms:
     degenerate: Tuple[str, ...] = ()   # lanes whose φ was σ=0-degenerate (exact identity)
     disarmed: Tuple[str, ...] = ()     # lanes the instrument could not identify
                                        # (λ undefined; NO tilt applied; honest state)
+    a: Optional[np.ndarray] = None     # (M,) per-Hessian-eigendirection variance scale
+                                       # for the Laplace draw (SECOND moment only; None
+                                       # ⇒ ones ⇒ byte-identical current draw). Ordered
+                                       # stiffest-first (a[0] scales the largest-curvature
+                                       # direction); the writer aligns it to eigh order.
+    channel_logbias: Optional[Mapping] = None
+                                       # SOFT per-channel (source-track) lean
+                                       # (PREREG-channel-bias-squares): {track_id ->
+                                       # additive log-weight} folded into the FIBER
+                                       # choice measure (the distribution over pooled
+                                       # channels at each beat, fiber_choice_logits).
+                                       # NOT a φ lane, no σ scale, NO effect on the
+                                       # settled O mode — it up-weights a channel's
+                                       # candidate units in the SOFT Gibbs draw, so the
+                                       # settlement perceives the lean and accommodates
+                                       # it (nothing pinned; the writer stays generative).
+                                       # None/empty ⇒ no addend ⇒ byte-identical draw.
 
     def __post_init__(self):
         object.__setattr__(self, "lam_region",
@@ -120,20 +147,47 @@ class TiltTerms:
                                 self.lam_gauge, self.lam_novelty]])
         if not np.all(np.isfinite(vals)):
             raise ValueError("tilt λ must be finite")
+        if self.a is not None:
+            a = np.asarray(self.a, float).reshape(-1)
+            if a.shape[0] != self.lam_region.shape[0]:
+                raise ValueError(
+                    f"anisotropy `a` has length {a.shape[0]} but the tilt has "
+                    f"{self.lam_region.shape[0]} eigendirections (one per anchor)")
+            if not np.all(np.isfinite(a)):
+                raise ValueError("anisotropy `a` must be finite")
+            # CLAMP at the boundary (the coherence guard's safe band): no writer
+            # path ever sees an `a` outside [A_SHAPE_LO, A_SHAPE_HI].
+            object.__setattr__(self, "a", np.clip(a, A_SHAPE_LO, A_SHAPE_HI))
+        if self.channel_logbias is not None:
+            cb = {int(k): float(v) for k, v in dict(self.channel_logbias).items()}
+            if not all(np.isfinite(v) for v in cb.values()):
+                raise ValueError("channel_logbias weights must be finite")
+            object.__setattr__(self, "channel_logbias", (cb or None))
 
     @property
     def is_untilted(self) -> bool:
+        # `a` is deliberately EXCLUDED: it modulates only the draw's second
+        # moment (spread), never the settled mode F descends to. A tilt carrying
+        # only an anisotropy still settles to the untilted mode (settle.py reads
+        # this property to skip the O-block tilt potential — correct, since `a`
+        # adds no O-block potential).
         return (not np.any(self.lam_region) and self.lam_density == 0.0
                 and self.lam_cont == 0.0 and self.lam_gauge == 0.0
                 and self.lam_novelty == 0.0)
 
 
-def untilted(n_anchors: int, T_s: float = 1.0) -> TiltTerms:
+def untilted(n_anchors: int, T_s: float = 1.0,
+             a: Optional[np.ndarray] = None,
+             channel_logbias: Optional[Mapping] = None) -> TiltTerms:
     """The identity tilt at temperature T_s (u = 0). This is the untilted
-    writer the σ_φ calibration instrument runs."""
+    writer the σ_φ calibration instrument runs. `a` (default None) is the
+    optional second-moment anisotropy; None keeps the draw byte-identical.
+    `channel_logbias` (default None) is the optional SOFT per-channel fiber
+    lean (PREREG-channel-bias-squares) — None/empty keeps the draw byte-
+    identical; it never touches the settled O mode (fiber block only)."""
     return TiltTerms(lam_region=np.zeros(int(n_anchors)), lam_density=0.0,
                      lam_cont=0.0, lam_gauge=0.0, lam_novelty=0.0,
-                     T_s=float(T_s))
+                     T_s=float(T_s), a=a, channel_logbias=channel_logbias)
 
 
 class WorldNotCalibrated(RuntimeError):
@@ -160,14 +214,23 @@ def _lam(u: float, sigma: float, lane: str, identifiable: bool,
     return float(u) / float(sigma)
 
 
-def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
+def layer0(u, sigma: Optional[SigmaPhi],
+           a: Optional[np.ndarray] = None,
+           channel_logbias: Optional[Mapping] = None) -> TiltTerms:
     """The Layer-0 map: lane vector u (+ T_s) → TiltTerms via λ_i = u_i/σ_φi.
 
     `u` is an ets.panel.lanes.LaneVector-typed object (duck-typed here so the
     writer package does not import the panel package: the wire decodes to it,
     the engine hands it over). `sigma` is the registered calibration; None is
     accepted ONLY for an all-zero lean (the untilted writer needs no scale) —
-    a nonzero lean on an uncalibrated world raises WorldNotCalibrated."""
+    a nonzero lean on an uncalibrated world raises WorldNotCalibrated.
+
+    `a` (default None) is the optional per-eigendirection second-moment
+    anisotropy (PREREG-sampler-covariance-xy). It is NOT a φ lane and carries no
+    σ scale — it rescales the draw's spread, not the settled mode — so it is
+    copied verbatim onto the ONE TiltTerms the writer consumes (clamped there),
+    keeping this the single tilt-construction point (C-3) with no new lane and no
+    second channel. None ⇒ ones ⇒ byte-identical draw."""
     r = np.asarray(u.u_region, float).reshape(-1)
     leans_zero = (not np.any(r) and float(u.u_density) == 0.0
                   and float(u.u_continuity) == 0.0 and float(u.u_gauge) == 0.0
@@ -178,7 +241,8 @@ def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
                 "nonzero lane lean received but this world carries no σ_φ "
                 "calibration (ets/calibration/sigma_phi.json). Run the "
                 "calibration instrument at world-freeze; λ will not be invented.")
-        return untilted(r.shape[0], T_s=float(u.T_s))
+        return untilted(r.shape[0], T_s=float(u.T_s), a=a,
+                        channel_logbias=channel_logbias)
 
     sr = np.asarray(sigma.region, float).reshape(-1)
     if sr.shape[0] != r.shape[0]:
@@ -205,6 +269,8 @@ def layer0(u, sigma: Optional[SigmaPhi]) -> TiltTerms:
         T_s=float(u.T_s),
         degenerate=tuple(degenerate),
         disarmed=tuple(disarmed),
+        a=a,
+        channel_logbias=channel_logbias,
     )
     return terms
 
@@ -234,20 +300,30 @@ def o_block_gradient(tilt: TiltTerms, M: int, n_slots: int) -> np.ndarray:
 
 
 def fiber_choice_logits(energies: np.ndarray, is_continuation: np.ndarray,
-                        reuse: np.ndarray, tilt: TiltTerms) -> np.ndarray:
+                        reuse: np.ndarray, tilt: TiltTerms,
+                        channel_bias: Optional[np.ndarray] = None) -> np.ndarray:
     """Per-choice log-weights of the Layer-0 measure over a fiber choice set.
 
     `energies` are the F-side energies of each candidate placement (computed by
     the writer from f.py's own T1p/T4 term math — see realize.FiberThreader);
     `is_continuation` marks the choices that continue a source run (Δφ_cont=1);
-    `reuse` is each candidate's recency weight (Δφ_novelty contribution).
+    `reuse` is each candidate's recency weight (Δφ_novelty contribution);
+    `channel_bias` (optional, per-choice) is the SOFT per-channel lean β(c) —
+    the additive log-weight of the candidate's source track under
+    `tilt.channel_logbias` (PREREG-channel-bias-squares). None ⇒ zero addend.
 
-        log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c)
+        log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c) + β(c)
 
+    The channel lean is inside the SAME measure — it does not pin any choice; a
+    channel with no candidate in this (role,band) set gets no term, so the pull is
+    contingent on the settled O and the channel's coverage (soft, generative).
     φ_region/φ_density are fixed by the already-settled O at this point and
     contribute an equal constant to every choice (dropped); φ_gauge does not
     read the fiber."""
     e = np.asarray(energies, float)
-    return (-e / tilt.T_s
-            + tilt.lam_cont * np.asarray(is_continuation, float)
-            + tilt.lam_novelty * np.asarray(reuse, float))
+    logits = (-e / tilt.T_s
+              + tilt.lam_cont * np.asarray(is_continuation, float)
+              + tilt.lam_novelty * np.asarray(reuse, float))
+    if channel_bias is not None:
+        logits = logits + np.asarray(channel_bias, float)
+    return logits

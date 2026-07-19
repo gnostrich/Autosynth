@@ -428,6 +428,23 @@ class StreamPlayer:
         self._u_density = 0.0        # DENSITY→ φ_density  (T1)
         self._u_gauge = 0.0          # KEY LOCK→ gauge frame (T3; degenerate on v0)
         self._T_s = 1.0              # CHAOS  → temperature (T2, directionless)
+        # COVARIANCE-SHAPE (PREREG-sampler-covariance-xy): the OPTIONAL per-
+        # eigendirection second-moment anisotropy `a` (length M, stiffest-first).
+        # Default None ⇒ ones ⇒ byte-identical draw. It is NOT a φ lane (no σ, no
+        # effect on the settled mode); it rides the ONE TiltTerms the writer
+        # consumes via _tilt_for(u, a=...), the same single tilt-construction
+        # point as every other setter — never a second control channel.
+        self._wobble: Optional[np.ndarray] = None
+        # CHANNEL-BIAS (PREREG-channel-bias-squares, Phase 1 — SOFT revision): per-
+        # channel (=per source track) amplify ∈ [0,1] = bias STRENGTH. Amplify T ⇒
+        # a SOFT additive log-weight on track-T's candidate units inside the Layer-0
+        # FIBER choice measure (the distribution over pooled channels at each beat);
+        # the settlement PERCEIVES the lean and accommodates it, nothing pinned. It
+        # rides the SAME ONE TiltTerms the writer consumes (I-1) — no clamp, no new
+        # lane. Default None ⇒ no addend ⇒ byte-identical fiber draw.
+        from .channel_bias import channel_tids
+        self._channel_bias: Optional[np.ndarray] = None
+        self._channel_tids = channel_tids(self.world)
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -1024,6 +1041,76 @@ class StreamPlayer:
         with self._lock:
             self._T_s = v
 
+    def set_wobble(self, vec) -> None:        # SHAPE (covariance-shape XY; PREREG)
+        """Set the OPTIONAL second-moment anisotropy `a` — how the draw's SPREAD
+        is shaped per Hessian eigendirection (stiffest-first), NOT where the mean
+        goes. Mirrors the other setters: it stores one datum that `produce_one_bar`
+        folds into the SINGLE TiltTerms the writer consumes (no new channel). A
+        None/empty vector clears it (=> ones => byte-identical draw). The vector is
+        length-M and clamped to the writer's safe band [A_SHAPE_LO, A_SHAPE_HI]; the
+        engine re-clamps at the TiltTerms boundary, so this is defence-in-depth,
+        never the only guard."""
+        from ets.writer.tilt import A_SHAPE_LO, A_SHAPE_HI
+        if vec is None:
+            with self._lock:
+                self._wobble = None
+            return
+        a = np.asarray(vec, dtype=np.float64).reshape(-1)
+        if a.size == 0:
+            with self._lock:
+                self._wobble = None
+            return
+        if a.size < self.M:
+            a = np.concatenate([a, np.ones(self.M - a.size, np.float64)])
+        a = a[:self.M]
+        a = np.where(np.isfinite(a), a, 1.0)
+        a = np.clip(a, float(A_SHAPE_LO), float(A_SHAPE_HI))
+        with self._lock:
+            self._wobble = a
+
+    def set_channel_bias(self, vec) -> None:
+        """Set the per-channel amplify vector (PREREG-channel-bias-squares-REV1-soft).
+        Each component ∈ [0,1] applies a SOFT lean toward one channel (a source
+        track, ordered by ``self._channel_tids``) at the FIBER-CHOICE measure: it
+        becomes a ``channel_logbias`` addend on the pooled-channel candidate logits
+        in ``fiber_choice_logits`` (the writer's which-unit-fills-this-slot draw),
+        carried on the ONE ``TiltTerms`` and consumed in ``produce_one_bar`` via
+        ``_tilt_for(u, channel_logbias=...)``. It is a bias the settlement works
+        AROUND, not a clamp — nothing is pinned (measured pull plateaus below 1.0,
+        stays generative). ``channel_logbias`` is excluded from ``is_untilted``, so
+        F / the O-block role solve / settlement / render are mathematically
+        unchanged; only the fiber choice leans. A None / empty / all-zero vector
+        clears the bias ⇒ no addend ⇒ byte-identical audio."""
+        if vec is None:
+            with self._lock:
+                self._channel_bias = None
+            return
+        v = np.asarray(vec, dtype=np.float64).reshape(-1)
+        if v.size == 0:
+            with self._lock:
+                self._channel_bias = None
+            return
+        v = np.where(np.isfinite(v), v, 0.0)
+        v = np.clip(v, 0.0, 1.0)
+        if not np.any(v > 0.0):
+            with self._lock:
+                self._channel_bias = None
+            return
+        with self._lock:
+            self._channel_bias = v
+
+    def channel_info(self) -> dict:
+        """Read-only channel roster for the squares FE: channel index → track_id +
+        display name. Which channels can actually PULL (vs disarm) is a MEASURED
+        property (PREREG Phase-1 gate), not asserted here. Reads only the frozen
+        roster; touches no engine state."""
+        kind = "track" if self.is_trained else "demo track"
+        chans = [{"channel": ch, "track_id": int(tid),
+                  "name": "%s %d" % (kind, int(tid))}
+                 for ch, tid in enumerate(self._channel_tids)]
+        return {"n_channels": len(chans), "s_phase": int(self.s_phase),
+                "channels": chans}
+
     @staticmethod
     def _sigma_scalar(sig, lane: str) -> float:
         """The scalar σ_φ magnitude of one lane (region → its max per-anchor σ), for
@@ -1060,7 +1147,20 @@ class StreamPlayer:
         from ets.render import render as render_schedule
         self._ensure_bank()
         u = self._current_lane()
-        tilt = self.engine._tilt_for(u)                      # ONE lane->tilt point
+        with self._lock:                                     # second-moment shape (PREREG):
+            a = None if self._wobble is None else np.asarray(self._wobble).copy()
+        # CHANNEL-BIAS (PREREG-channel-bias-squares, SOFT): fold the per-channel
+        # amplify vector into the ONE TiltTerms via `channel_logbias` — a soft lean
+        # in the fiber choice measure, NOT a clamp. `None` bias ⇒ no addend ⇒
+        # byte-identical to the un-biased tilt. Assembled at the SAME single tilt-
+        # construction point as every other setter (a rides it too); no new channel.
+        with self._lock:
+            bias = None if self._channel_bias is None else self._channel_bias.copy()
+        clogbias = None
+        if bias is not None:
+            from .channel_bias import channel_logbias
+            clogbias = channel_logbias(bias, self._channel_tids)
+        tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
         audio, _prov = render_schedule(sched, self._bank)

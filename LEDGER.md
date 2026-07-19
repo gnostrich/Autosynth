@@ -1295,3 +1295,60 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/engine_bridge.py (2026-07-18T19:58:23+00:00)
 - `Edit` cloud/companion/engine_bridge.py (2026-07-18T19:58:39+00:00)
 - `Write` cloud/tests/test_sweep_cache.py (2026-07-18T19:59:18+00:00)
+
+### at `7baa60d`
+- `Write` papers/PREREG-sampler-covariance-xy.md (2026-07-19T06:50:53+00:00)
+
+### at `43ecbbc`
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T06:54:48+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T06:54:54+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T06:55:08+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T06:55:13+00:00)
+- `Edit` architecture-v6/ets/writer/stream.py (2026-07-19T06:55:32+00:00)
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-19T06:55:39+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T06:55:50+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T06:56:02+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T06:56:08+00:00)
+- `Edit` cloud/companion/app.py (2026-07-19T06:56:15+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T07:07:12+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T07:07:20+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T07:07:44+00:00)
+
+### at `0d5d1ec`
+- `Write` papers/PREREG-channel-bias-squares.md (2026-07-19T08:49:21+00:00)
+
+### at `16e8f06`
+- `Write` cloud/companion/channel_bias.py (2026-07-19T08:56:41+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T08:56:50+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T08:57:02+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T08:57:10+00:00)
+- `Write` cloud/tools/channel_bias_pull_verify.py (2026-07-19T09:00:13+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:28+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:36+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:51+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:55+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:04:58+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:05:03+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-19T09:05:23+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-19T09:05:30+00:00)
+- `Edit` architecture-v6/ets/engine/engine.py (2026-07-19T09:05:39+00:00)
+- `Write` cloud/companion/channel_bias.py (2026-07-19T09:05:59+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:06:09+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:06:19+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:06:31+00:00)
+- `Write` cloud/tools/channel_bias_pull_verify.py (2026-07-19T09:07:17+00:00)
+- `Write` cloud/tests/test_channel_bias.py (2026-07-19T09:09:10+00:00)
+- `Write` papers/PREREG-channel-bias-squares-REV1-soft.md (2026-07-19T09:11:26+00:00)
+
+### at `b9e4b7b`
+- `Edit` cloud/companion/app.py (2026-07-19T09:12:14+00:00)
+- `Edit` cloud/companion/app.py (2026-07-19T09:12:26+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T09:14:12+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T09:14:23+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T09:14:32+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T09:14:43+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T09:14:55+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T09:15:27+00:00)
+
+### at `1c3b3c0`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:28:56+00:00)
