@@ -546,8 +546,18 @@ class StreamPlayer:
             _have = ({round(float(r["T_s"]), 4) for r in _loaded["sweep"]}
                      if isinstance(_loaded, dict) and _loaded.get("sweep") else set())
             _missing = [T for T in _SWEEP_T_GRID if round(float(T), 4) not in _have]
+        # AUTO-SWEEP DISABLED (2026-07-18): the measured trained corpora are single-mode at
+        # every temperature (k=1: top mode dominates 10-30x, 2nd mode <2% of the noise floor
+        # when hot — heating makes it MORE single-mode, not less). So the auto-sweep spends
+        # ~20-40 min of background compute per world only to confirm a flat k=1 table, which
+        # isn't worth the load on the audio-serving box. The whole apparatus is kept intact
+        # and DORMANT: any externally-supplied table (the committed demo, an admin upload) is
+        # still loaded and used, and the FE reselection still works when a table is present —
+        # only the automatic RE-MEASUREMENT is off. Flip _SWEEP_AUTO back to True to re-enable
+        # (e.g. once a corpus is trained that actually resolves >=2 steerable modes).
+        _SWEEP_AUTO = False
         self._sweep_args = ((sigma, list(_SWEEP_T_GRID), eigen_n_seed, eigen_n_bar)
-                            if (_missing and sigma is not None and self.M > 0) else None)
+                            if (_SWEEP_AUTO and _missing and sigma is not None and self.M > 0) else None)
         self._static_field_cache: Optional[dict] = None
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
