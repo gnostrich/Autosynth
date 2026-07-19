@@ -320,21 +320,13 @@ def test_ep5_composition_string_contains_only_known_keys_and_numbers():
     assert _run(driver) == "OK"
 
 
-def test_ep5_word_toggle_is_off_by_default_and_gates_the_only_word_surface():
-    html = _INDEX.read_text()
-    m = re.search(r'<input type="checkbox" id="radialWordToggle"[^>]*>', html)
-    assert m, "radialWordToggle checkbox missing"
-    assert "checked" not in m.group(0), "earned-word tooltip must be OFF by default"
-    assert ".rp-word{ display:none" in html or ".rp-word { display: none" in html, \
-        "the earned-word span must be hidden by default"
-    assert "words-on .rp-word" in html or "radialWordToggle:checked ~ .rp-word" in html, \
-        "the earned word must only reveal via the off-by-default toggle"
-    # earned_word is assigned to .rp-word ONLY (never a directly-visible badge/label).
-    js = _inline_js()
-    label_fn = _js_functions(js).get("radialLabelBadges", "")
-    assert "earned_word" in label_fn
-    assert re.search(r"word\.textContent\s*=\s*m\.earned_word", label_fn), \
-        "earned_word must be written only into the gated .rp-word element"
+# EP5 RETIRED (PREREG-field-bias-REV3 Phase B, 2026-07-19): the earned-word toggle
+# lived in the XY pad's foot (radialWordToggle + the "your force / achieved" legend).
+# The pad was socket-swapped out for the field, so its foot — and the earned-word
+# reveal toggle it hosted — went with it (operator: "do NOT leave dead toggles"). The
+# radialLabelBadges writer stays (guarded, inert without a pad), but there is no toggle
+# markup to assert; the test whose whole subject is that removed toggle is retired
+# rather than left asserting a deliberately-removed element.
 
 
 def test_ep5_badge_elements_always_created_for_every_rendered_mode():
@@ -468,7 +460,10 @@ def test_legacy_drawer_and_outboard_exist():
     html = _INDEX.read_text()
     assert 'id="legacyDrawer"' in html and "<summary>" in html
     assert 'id="outboard"' in html
-    assert 'id="radialWrap"' in html
+    # the XY pad mount (#radialWrap) was socket-swapped out for the FIELD as the single
+    # Play steering surface (PREREG-field-bias-REV3 Phase B); the field canvas is now
+    # the steering surface that must exist and stay functional.
+    assert 'id="fieldCanvas"' in html
 
 
 def test_scalar_lanes_still_route_through_the_same_one_datum(dump):

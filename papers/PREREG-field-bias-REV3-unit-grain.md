@@ -130,3 +130,87 @@ recorded. STOP/DISARM: if the unit pull is mushy on demo (ρ < ρ_min), the unit
 disarms honestly — the mechanism is retained (it is coverage-contingent; Phase B's
 drill exposes units only where sub-structure clears the noise floor) and NO clamp is
 substituted.
+
+---
+
+# Phase B — the FIELD as the single Play steering surface (UI, FE + routing only)
+
+**Status:** operator-directed 2026-07-19. **FE + app.py routing ONLY** — the bias
+MECHANISM (channel_bias.py / tilt.py / realize.py / engine) is FROZEN this phase
+(Phase A, audit-pending). No root `ets/` edit. Branch `claude/field-surface-unified-*`.
+
+## What Phase B does
+Restores the drill FIELD component (removed in commit `16a8f53`) as the Play steering
+surface, **REPLACING the XY pad** — a socket swap of the pad element, the rest of the
+page byte-for-byte unchanged. The field wires the Phase-A bias mechanism at exactly two
+grains:
+
+- **TRACK square → the track roll-up bias** — the ratified REV2 `channel_bias` path
+  (`set_channel_bias`, the per-channel amplify vector keyed by source track).
+- **UNIT square → the unit grain** — `unit_bias = {unit_id → amplify}` (`set_unit_bias`,
+  Phase A). The square key is `["unit", role, uid, tid]`; the **uid** drives the setter.
+
+Both are bidirectional `amplify ∈ [-1,1]` (hover-scroll / vertical drag / arrows: up =
+amplify, down = damp), reusing the field's existing per-key bias ledger `st.bias[key]`,
+now resolved by `fieldBiasPayload(st)` into the two engine datums (this REPLACES the old
+region-vector send — the field no longer steers the region lane).
+
+## Drill = TRACK → UNITS (role HIDDEN)
+Root shows TRACK squares. Drilling a track opens **that track's units** (gathered from
+`static_field().unit_pools` across roles, filtered by `track_id`), bounded/ordered by the
+participation-ratio noise floor (`fieldTrackUnits`: the track's top-`round(PR(profile))`
+effective role pools, deduped). **Role is used only as neutral internal grouping to
+page/limit a big unit set — never surfaced, never labeled, never a bias target.** This
+honours the operator's locked hierarchy: units are the ultimate bias target, track is the
+roll-up, role is internal to training (it steers, if ever, through the O-block **region
+lane**, per the Phase-A role wall — not here).
+
+## Glow vs bias — kept honestly distinct
+Square **FILL/glow = LIVE settled telemetry** (`fieldApplySettled`, from `d.roles` /
+per-track `d.nowplaying`) — the engine's answer, never the input echoed back. The bias
+**RING is a SEPARATE bipolar indicator** (accent = amplify, damp hue = damp, neutral
+centre, width by `|amplify|`). The two are never conflated.
+
+## Honest disarm (retained, no fakes)
+- **Unit drill self-sizes:** a track drills only where its sub-structure clears the
+  shuffle floor (`fieldClearsFloor`); a mushy track drills to nothing (honest inert),
+  never a fake drill. On a band-blind world (`profile_armed:false`) the server already
+  serves EMPTY `unit_pools`, so tracks are non-expandable and the refused drill names the
+  wall (`fieldRefuseUnitGrain` → the registered "unit grain disarmed" caption).
+- **No track-lean disarm:** the track grain rides the ratified REV2 fiber lean, which does
+  NOT route through the anchor band-profile B, so it is never disarmed — the old
+  track-lean disarm caption is removed (not orphaned).
+
+## Byte-identity at neutral (the hard invariant)
+`fieldBiasPayload` sends BOTH grains on EVERY publish (explicit-empty, never omitted): an
+all-zero channel vector ⇒ `set_channel_bias` → None; an empty unit map ⇒ `set_unit_bias`
+→ None. No square biased ⇒ no fiber addend ⇒ **bit-identical audio** (Phase-A
+`test_channel_bias.py` proves the mechanism-level identity; Phase B does not touch it).
+`/api/steer` routes `unit_bias` via `p.set_unit_bias(data.get("unit_bias"))` (absent ⇒
+cleared) and keeps the REV2 `channel_bias` path unchanged.
+
+## Socket-swap surface (what changed on the page, and ONLY this)
+Removed from the pad-hero: the XY radial pad mount (`#radialWrap`), the flat channel-
+squares grid (`#channelSquares`), the aim/shape/squares `padMode` toggle, and the pad-foot
+(the puck/mark legend + the now-dead "earned words" toggle). The field canvas + legend +
+status take their place. `buildRadialOnce` was decoupled so the KNOBS band extra-mode
+strips (a separate surface merely co-located with the pad build) keep working
+byte-identically without the pad wrap. Everything else (header, tabs, tracklist,
+transport, Train, telemetry lanes, knobs, chrome) is byte-for-byte unchanged.
+
+## Gate / verification (Phase B)
+- `cloud/tests/test_field_unit_bias_route.py` (**new**): `/api/steer` routes `unit_bias`
+  → `set_unit_bias` (present → map; absent → cleared/None); REV2 `channel_bias` →
+  `set_channel_bias` unchanged.
+- `cloud/tests/test_web_fab_guard.py`: the restored "settled telemetry" and "unit grain
+  disarmed" captions re-registered to their real backings (`fieldApplySettled` /
+  `fieldRefuseUnitGrain`).
+- `cloud/tests/test_fe_render_smoke.py` + `test_eigenpanel.py`: realigned from the
+  field-removed / pad-present state to the Phase-B socket swap (field present, pad gone).
+- Node drive of the extracted FIELD PURE LOGIC on a synthetic world: root = tracks;
+  drilling a track shows ONLY that track's units (filtered by `track_id`, role hidden);
+  breadcrumb carries no role level; neutral `fieldBiasPayload` is empty (byte-identity);
+  track bias → `channel_bias[channel]`, unit bias → `unit_bias[uid]`; a mushy track is
+  non-expandable (honest disarm). Full-browser drill/bias-under-live-telemetry was NOT
+  driven headlessly (it needs a booted world + play loop; the closure-encapsulated field
+  state is not reachable from `page.evaluate`) — disclosed, not claimed.
