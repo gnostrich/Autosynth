@@ -78,6 +78,45 @@ def anchor_profile_armed(B) -> bool:
     return (row_ptp / scale) > _PROFILE_ARMING_EPS
 
 
+def track_unit_pool(world, top_n: int = 48) -> dict:
+    """READ-ONLY static PER-TRACK unit POOL for the field's TRACK -> UNITS drill.
+
+    A per-track counterpart to ``ets.engine.engine.role_unit_pool``. ``role_unit_pool``
+    keeps a GLOBAL top-N of units per ROLE, ranked by ``B[i, band]``; on a DEGENERATE
+    anchor matrix B (k=1: every anchor ranks the bands near-identically) ONE track's
+    bands sweep the top-N of EVERY role, so filtering the role pools by ``track_id``
+    leaves the OTHER tracks EMPTY even though they own real units (the live-set bug:
+    all role pools were 24 units, all ``track_id 0``). This pool is keyed by the unit's
+    OWN track instead: for each track it takes THAT track's units (from
+    ``track.provenance_index``), so membership is GROUND-TRUTH provenance (the track
+    owns these units) — independent of B's degeneracy, so every track is non-empty.
+
+    Per-track RANKING (disclosed): band ANCHOR-SALIENCE = ``max_i B[i, band]`` (how
+    strongly any anchor claims the unit's band), descending, ties by ``unit_id`` ascending
+    (deterministic). CAP (disclosed): ``top_n = 48`` units/track — a slightly larger
+    navigable cap than the role pool's 24, since a track's own pool is the whole drill.
+
+    SAME frozen inputs and entry shape as ``role_unit_pool`` (``unit_id, track_id, band,
+    profile=B[:, band]``); pure reduction over the frozen world (``fstate.B`` + track
+    provenance), computed ONCE, calls NOTHING downstream (pre-Gibbs, byte-identical to
+    audio). Returns ``{track_id: [(unit_id, track_id, band, np.ndarray (M,)), ...]}``."""
+    B = np.asarray(world.fstate.B, dtype=np.float64)          # (M, n_bands)
+    M, n_bands = B.shape
+    band_peak = B.max(axis=0) if M > 0 else np.zeros(n_bands)  # (n_bands,) salience
+    pools: dict = {}
+    for track in world.tracks:
+        tid = int(track.track_id)
+        prov = track.provenance_index
+        uids = np.asarray(prov["unit_id"], dtype=np.int64).tolist()
+        bands = np.asarray(prov["band"], dtype=np.int64).tolist()
+        units = [(int(uid), int(band)) for uid, band in zip(uids, bands)
+                 if 0 <= band < n_bands]
+        units.sort(key=lambda ub: (-float(band_peak[ub[1]]), ub[0]))
+        pools[tid] = [(uid, tid, band, B[:, band].copy())
+                      for (uid, band) in units[:int(top_n)]]
+    return pools
+
+
 # ---------------------------------------------------------------------------
 # EIGENPANEL (OPEN_ENDS #23; E1/E2) — the object's own control basis.
 #
@@ -490,6 +529,12 @@ class StreamPlayer:
         from ets.engine.engine import track_anchor_profiles, role_unit_pool
         self._track_profiles = track_anchor_profiles(self.world)   # {tid: (M,)}
         self._role_pools = role_unit_pool(self.world)              # {role: [...]}
+        # PER-TRACK unit pool (cloud-layer, input-level display fix): the field drills
+        # TRACK -> UNITS, so it needs each track's OWN units. The role pools above
+        # concentrate onto one track on a degenerate B (see track_unit_pool); this
+        # per-track pool is keyed by the unit's own track (ground-truth provenance) so
+        # every track drills to its own units. Read-only, pre-Gibbs, byte-identical.
+        self._track_pools = track_unit_pool(self.world)            # {tid: [...]}
         # ANCHOR-PROFILE ARMING (Theorem A arming corollary; module docstring above).
         # MEASURED once off the frozen world's anchor band-profile B: True iff B
         # distinguishes bands (some anchor row varies), False on the band-blind fixed
@@ -947,7 +992,11 @@ class StreamPlayer:
             normalized anchor-mass profile (track_anchor_profiles). The TRACK
             grain of the field ladder: fill/expandability come from these.
           * ``unit_pools`` {role: [{unit_id, track_id, band, profile:[float]*M}]}
-            — each role's drill-in unit pool (role_unit_pool). The UNIT grain.
+            — each ROLE's drill-in unit pool (role_unit_pool). Kept for role grouping.
+          * ``track_unit_pools`` {track_id: [{unit_id, track_id, band, profile:[float]*M}]}
+            — each TRACK's OWN drill-in units (track_unit_pool). The field's TRACK ->
+            UNITS grain; per-track membership, so a degenerate B can't concentrate the
+            drill onto one track. Same arming gate as unit_pools.
           * ``track_names`` {track_id: str} — an HONEST display label per track.
             The frozen world carries NO source filenames (embedded/synthetic
             tracks have none), so the bridge labels tracks by WHAT THEY ARE: a
@@ -982,9 +1031,25 @@ class StreamPlayer:
                         {"unit_id": int(uid), "track_id": int(tid), "band": int(band),
                          "profile": [float(x) for x in np.asarray(prof).reshape(-1)]}
                         for (uid, tid, band, prof) in entries]
+            # PER-TRACK unit pools (the field's TRACK -> UNITS drill). Same arming gate
+            # as the role pools (Theorem A): served ONLY on an informative B, so a
+            # band-blind world still disarms the unit drill honestly. On an ARMED world
+            # this pool is keyed by the unit's OWN track (ground-truth provenance), so a
+            # degenerate-but-armed B no longer concentrates every track's drill onto one
+            # track — each floor-clearing track drills to ITS OWN units. Read-only,
+            # pre-Gibbs; the role `unit_pools` above are KEPT (role grouping may read
+            # them), this only ADDS the per-track view.
+            track_pools: dict = {}
+            if self._profile_armed:
+                for tid, entries in self._track_pools.items():
+                    track_pools[int(tid)] = [
+                        {"unit_id": int(uid), "track_id": int(tt), "band": int(band),
+                         "profile": [float(x) for x in np.asarray(prof).reshape(-1)]}
+                        for (uid, tt, band, prof) in entries]
             kind = "track" if self.is_trained else "demo track"
             names = {int(t): "%s %d" % (kind, int(t)) for t in profiles}
             self._static_field_cache = {"profiles": profiles, "unit_pools": pools,
+                                        "track_unit_pools": track_pools,
                                         "track_names": names,
                                         "profile_armed": bool(self._profile_armed)}
         return self._static_field_cache

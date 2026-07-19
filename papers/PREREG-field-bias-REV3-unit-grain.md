@@ -163,14 +163,31 @@ now resolved by `fieldBiasPayload(st)` into the two engine datums (this REPLACES
 region-vector send — the field no longer steers the region lane).
 
 ## Drill = TRACK → UNITS (role HIDDEN)
-Root shows TRACK squares. Drilling a track opens **that track's units** (gathered from
-`static_field().unit_pools` across roles, filtered by `track_id`), bounded/ordered by the
-participation-ratio noise floor (`fieldTrackUnits`: the track's top-`round(PR(profile))`
-effective role pools, deduped). **Role is used only as neutral internal grouping to
-page/limit a big unit set — never surfaced, never labeled, never a bias target.** This
+Root shows TRACK squares. Drilling a track opens **that track's own units** from
+`static_field().track_unit_pools[track_id]` (`fieldTrackUnits`), still gated by the
+participation-ratio noise floor (`fieldClearsFloor(profile)`) so a mushy track disarms.
+**Role is never surfaced, labeled, or a bias target** — the bias key's role slot is
+internal (key-string only); the bias resolves to `unit_id` → `set_unit_bias`. This
 honours the operator's locked hierarchy: units are the ultimate bias target, track is the
 roll-up, role is internal to training (it steers, if ever, through the O-block **region
 lane**, per the Phase-A role wall — not here).
+
+### Per-track unit pool — an INPUT-LEVEL display fix (pre-Gibbs, read-only, byte-identical)
+The first cut gathered units from the ROLE pools (`role_unit_pool`) filtered by
+`track_id`. BUG (found on the live set): `role_unit_pool` keeps a GLOBAL top-N per role
+ranked by `B[i, band]`; on a degenerate anchor matrix B (k=1: every anchor ranks the
+bands near-identically) ONE track's bands sweep the top-N of EVERY role, so all role
+pools are the same track — the other tracks clear the noise floor yet drill to **nothing**.
+FIX (cloud layer, `engine_bridge.track_unit_pool`, do NOT edit the engine tree): a
+per-track pool keyed by the unit's OWN track (from `track.provenance_index`), ranked by
+band anchor-salience `max_i B[i, band]` (ties by `unit_id`), capped `top_n = 48`, entry
+shape mirroring `role_unit_pool` (`unit_id, track_id, band, profile=B[:, band]`). Membership
+is ground-truth provenance, independent of B's degeneracy, so **every floor-clearing track
+drills to its own units**. Served in `static_field` as `track_unit_pools` under the SAME
+`profile_armed` arming gate as the role `unit_pools` (a band-blind world still disarms the
+drill honestly); the role `unit_pools` are KEPT in the payload. This is a static read-only
+reduction of the frozen world (B + provenance) — it touches NOTHING in the Gibbs machine,
+so **audio is byte-identical** (the bias mechanism and `/api/steer` routing are unchanged).
 
 ## Glow vs bias — kept honestly distinct
 Square **FILL/glow = LIVE settled telemetry** (`fieldApplySettled`, from `d.roles` /
@@ -209,6 +226,14 @@ transport, Train, telemetry lanes, knobs, chrome) is byte-for-byte unchanged.
 - `cloud/tests/test_field_unit_bias_route.py` (**new**): `/api/steer` routes `unit_bias`
   → `set_unit_bias` (present → map; absent → cleared/None); REV2 `channel_bias` →
   `set_channel_bias` unchanged.
+- `cloud/tests/test_track_unit_pool.py` (**new**): per-track membership (every unit in
+  track T's pool has `track_id == T`); every floor-clearing track non-empty on a spread
+  world; and the bug/fix contrast — the OLD global-role-pool-filtered-by-track move
+  starves non-dominant tracks on a degenerate-but-armed B, while `track_unit_pool` gives
+  each track its own units; `top_n` cap holds. On `demo.etsworld` the frozen B is
+  band-blind (`profile_armed=False`), so the drill honestly disarms there; the fix is
+  exercised on an armed multi-track fixture. Ungated, `track_unit_pool(demo.world)` gives
+  each of the 4 tracks its own 48 units (all `track_id == T`).
 - `cloud/tests/test_web_fab_guard.py`: the restored "settled telemetry" and "unit grain
   disarmed" captions re-registered to their real backings (`fieldApplySettled` /
   `fieldRefuseUnitGrain`).

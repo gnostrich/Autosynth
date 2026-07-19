@@ -1783,30 +1783,30 @@
     for(var t in (st.nowplaying||{})) ids[t] = 1;
     return Object.keys(ids).map(Number).sort(function(a,b){ return a-b; });
   }
-  // A TRACK's drill-in units (role HIDDEN): gather units across THIS track's effective
-  // role pools, filtered by track_id, bounded/ordered by the participation-ratio floor
-  // so a big set stays navigable. Role is used ONLY as neutral internal grouping to
-  // page/limit — never surfaced, never a bias target. A mushy track (profile below the
-  // floor) drills to NOTHING: honest disarm, not a fake drill.
+  function fieldArgmax(v){
+    if(!v || !v.length) return 0;
+    var mi = 0; for(var i=1;i<v.length;i++){ if(v[i] > v[mi]) mi = i; } return mi;
+  }
+  // A TRACK's drill-in units (role HIDDEN): read the PER-TRACK pool (track_unit_pools),
+  // which is keyed by the unit's OWN track (ground-truth provenance) — so every track
+  // drills to ITS OWN units, even on a degenerate B where the global role pools would
+  // concentrate onto one track. Pre-capped/ranked in the bridge (top_n by band
+  // salience). A mushy track (profile below the floor) still drills to NOTHING: honest
+  // disarm, not a fake drill. The role slot in the bias key is INTERNAL (only for the
+  // key string); the bias resolves to unit_id -> set_unit_bias by uid.
   function fieldTrackUnits(st, t){
     var p = st.profiles && st.profiles[t];
     if(!p || !fieldClearsFloor(p)) return [];           // honest disarm (below floor)
-    var kEff = Math.min(p.length, Math.round(fieldParticipationRatio(p)));
-    var order = p.map(function(v,i){ return i; })
-                 .sort(function(a,b){ return p[b] - p[a]; })
-                 .slice(0, kEff).sort(function(a,b){ return a - b; });
+    var pool = (st.trackUnitPools && st.trackUnitPools[t]) || [];
     var out = [], seen = {};
-    order.forEach(function(role){
-      var pool = (st.unitPools && st.unitPools[role]) || [];
-      pool.forEach(function(u){
-        if((u.track_id|0) !== (t|0)) return;            // THIS track's units only
-        var uid = u.unit_id|0;
-        if(seen[uid]) return; seen[uid] = 1;            // dedup across role grouping
-        var key = ["unit", role, uid, t|0];             // uid drives the unit setter
-        out.push(fieldMkSquare("unit", key, "u"+uid, t|0,
-          (st.nowplaying && st.nowplaying[t]) || 0,     // disclosed track-grain glow
-          st.bias[fieldKeyStr(key)] || 0, false, 0));   // units are ATOMIC
-      });
+    pool.forEach(function(u){
+      var uid = u.unit_id|0;
+      if(seen[uid]) return; seen[uid] = 1;
+      var role = fieldArgmax(u.profile);                // band-dominant role (key string only)
+      var key = ["unit", role, uid, t|0];               // uid drives the unit setter
+      out.push(fieldMkSquare("unit", key, "u"+uid, t|0,
+        (st.nowplaying && st.nowplaying[t]) || 0,       // disclosed track-grain glow
+        st.bias[fieldKeyStr(key)] || 0, false, 0));     // units are ATOMIC
     });
     return out;
   }
@@ -1934,6 +1934,7 @@
   var fieldNowPlaying = {};  // track_id -> live activity (glow)  — WRITTEN ONLY by fieldApplySettled
   var fieldProfiles   = {};  // track_id -> anchor profile (static) — WRITTEN ONLY by fieldApplyStatic
   var fieldUnitPools  = {};  // role -> unit pool (static)          — WRITTEN ONLY by fieldApplyStatic
+  var fieldTrackUnitPools = {}; // track_id -> per-track unit pool (static) — WRITTEN ONLY by fieldApplyStatic
   var fieldTrackNames = {};  // track_id -> honest name (static)    — WRITTEN ONLY by fieldApplyStatic
   // ANCHOR-PROFILE ARMING (Theorem A corollary; /api/world profile_armed). False on the
   // band-blind fixed point (uniform B): the server serves EMPTY unit_pools, so tracks
@@ -1953,7 +1954,8 @@
 
   function fieldState(){
     return { roleact:fieldSettled, nowplaying:fieldNowPlaying, profiles:fieldProfiles,
-             unitPools:fieldUnitPools, names:fieldTrackNames, bias:fieldBias };
+             unitPools:fieldUnitPools, trackUnitPools:fieldTrackUnitPools,
+             names:fieldTrackNames, bias:fieldBias };
   }
   function fieldViewSquares(){ return fieldCurrentSquares(fieldState(), fieldStack); }
   function cssVar(name){
@@ -2080,6 +2082,7 @@
   function fieldApplyStatic(w){
     fieldProfiles   = (w && w.profiles)    || {};
     fieldUnitPools  = (w && w.unit_pools)  || {};
+    fieldTrackUnitPools = (w && w.track_unit_pools) || {};
     fieldTrackNames = (w && w.track_names) || {};
     fieldProfileArmed = !(w && w.profile_armed === false);
     fieldStack = [];                                    // a new world resets the drill

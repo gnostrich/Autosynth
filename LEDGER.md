@@ -1417,3 +1417,20 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/tests/test_eigenpanel.py (2026-07-19T13:13:09+00:00)
 - `Write` cloud/tests/test_field_unit_bias_route.py (2026-07-19T13:13:43+00:00)
 - `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:17:16+00:00)
+
+### at `086b083`
+- `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:33:29+00:00)
+- `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:33:37+00:00)
+
+### at `acf06d2`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T13:47:02+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T13:47:12+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T13:47:28+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-19T13:47:39+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T13:47:56+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T13:48:02+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T13:48:07+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-19T13:48:11+00:00)
+- `Write` cloud/tests/test_track_unit_pool.py (2026-07-19T13:51:04+00:00)
+- `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:52:17+00:00)
+- `Edit` papers/PREREG-field-bias-REV3-unit-grain.md (2026-07-19T13:52:26+00:00)
