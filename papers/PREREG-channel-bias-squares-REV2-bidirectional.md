@@ -1,10 +1,12 @@
 # PREREG revision R2 — channel-bias squares: BIDIRECTIONAL (amplify AND damp)
 
-**Status:** operator-directed 2026-07-19. Extends `PREREG-channel-bias-squares-REV1-soft.md`
+**Status:** **RATIFIED** by operator (2026-07-19) — explicit directive "make it
+bidirectional"; ets-auditor verdict **PASS** (zero notes; no settlement/F/render/root-`ets/`
+edit, byte-identical at neutral, damp exclusion emergent not coded). Cleared for merge + deploy.
+Extends `PREREG-channel-bias-squares-REV1-soft.md`
 (**RATIFIED**); the REV1 record is left intact. This is a **RANGE EXTENSION of an
 already-ratified control**, not a new mechanism: the soft `channel_logbias` addend
-at `fiber_choice_logits` already handles a negative addend mathematically. Awaiting
-ets-auditor PASS on the diff.
+at `fiber_choice_logits` already handles a negative addend mathematically.
 
 ## Why this is not a new mechanism (the physics premise, honored)
 The fiber choice is a **softmax** over the pooled-channel candidate units at each
