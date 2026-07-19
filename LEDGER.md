@@ -1438,3 +1438,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `eb557b9`
 - `Edit` release-manifest.json (2026-07-19T15:16:10+00:00)
 - `Edit` release-manifest.json (2026-07-19T15:16:28+00:00)
+
+### at `fe5c1db`
+- `Write` BACKUPS.md (2026-07-19T15:19:37+00:00)
