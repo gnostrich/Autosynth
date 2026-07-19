@@ -1352,3 +1352,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `1c3b3c0`
 - `Edit` cloud/companion/engine_bridge.py (2026-07-19T09:28:56+00:00)
+
+### at `c553b57`
+- `Edit` papers/PREREG-channel-bias-squares-REV1-soft.md (2026-07-19T09:45:29+00:00)
