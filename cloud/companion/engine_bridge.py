@@ -523,6 +523,11 @@ class StreamPlayer:
         # (single carrier, I-1), assembled ADDITIVELY in produce_one_bar via
         # field_logbias. Default None ⇒ no addend ⇒ byte-identical fiber draw.
         self._unit_bias: Optional[dict] = None
+        # FIELD-BIAS SUB-TRACK GRAIN (PREREG-track-role-bias, prototype): the per-cell
+        # amplify map {(track_id, role_k) -> amplify∈[-1,1]} — lean track T ONLY where
+        # it plays the settled role k. Keyed on an EMERGENT structure (roles). Rides
+        # the SAME ONE TiltTerms; None ⇒ no addend ⇒ byte-identical.
+        self._track_role_bias: Optional[dict] = None
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -1242,6 +1247,37 @@ class StreamPlayer:
         with self._lock:
             self._unit_bias = clean or None
 
+    def set_track_role_bias(self, cell_amp) -> None:
+        """Set the per-(track, role) SUB-TRACK amplify map (PREREG-track-role-bias,
+        prototype). ``cell_amp`` is a mapping {(track_id, role_k) -> amplify∈[-1,1]}:
+        each entry leans track T's candidates SOFTLY, but ONLY inside slots whose
+        settled role is k — the first bias keyed on an EMERGENT structure (roles).
+        It becomes the ``"track_role"`` sub-map of the ONE ``channel_logbias`` datum
+        the writer consumes (single carrier, I-1), summed ADDITIVELY with the track
+        roll-up and unit grains per candidate. POSITIVE up-weights, NEGATIVE soft-
+        damps. It varies within a role-k choice set (via the track key) and so DODGES
+        the pure-role wall. Excluded from ``is_untilted``, so F / the O-block solve /
+        settlement / render stay byte-identical. A None / empty / all-zero map clears
+        the grain ⇒ (with no other bias) byte-identical audio."""
+        if not cell_amp:
+            with self._lock:
+                self._track_role_bias = None
+            return
+        clean: dict = {}
+        for key, a in dict(cell_amp).items():
+            try:
+                tid, role = key
+                av = float(a)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(av):
+                av = 0.0
+            av = max(-1.0, min(1.0, av))
+            if av != 0.0:
+                clean[(int(tid), int(role))] = av
+        with self._lock:
+            self._track_role_bias = clean or None
+
     def channel_info(self) -> dict:
         """Read-only channel roster for the squares FE: channel index → track_id +
         display name. Which channels can actually PULL (vs disarm) is a MEASURED
@@ -1302,10 +1338,13 @@ class StreamPlayer:
         with self._lock:
             bias = None if self._channel_bias is None else self._channel_bias.copy()
             unit_amp = None if self._unit_bias is None else dict(self._unit_bias)
-        from .channel_bias import channel_logbias, grain_logbias, field_logbias
+            cell_amp = None if self._track_role_bias is None else dict(self._track_role_bias)
+        from .channel_bias import (channel_logbias, grain_logbias, field_logbias,
+                                   track_role_logbias)
         track_w = channel_logbias(bias, self._channel_tids) if bias is not None else None
         unit_w = grain_logbias(unit_amp) if unit_amp else None
-        clogbias = field_logbias(track=track_w, unit=unit_w)
+        cell_w = track_role_logbias(cell_amp) if cell_amp else None
+        clogbias = field_logbias(track=track_w, unit=unit_w, track_role=cell_w)
         tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)

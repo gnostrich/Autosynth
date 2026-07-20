@@ -104,14 +104,24 @@ class SigmaPhi:
 A_SHAPE_LO: float = 0.25
 A_SHAPE_HI: float = 4.0
 
-# FIELD-BIAS GRAINS (PREREG-field-bias-REV3). The per-candidate soft fiber lean
-# resolves ADDITIVELY over exactly the candidate attributes that VARY within a
-# fiber choice set: the source track (roll-up) and the unit (the operator's
-# ultimate "channel"). Role is deliberately NOT a fiber grain — within a choice
-# set every candidate shares the settled role, so a role addend is a softmax
-# constant that cancels; role steers through the O-block region lane instead
-# (see PREREG-field-bias-REV3 role wall). Order is fixed for a stable carrier.
-FIELD_GRAINS: Tuple[str, ...] = ("track", "unit")
+# FIELD-BIAS GRAINS (PREREG-field-bias-REV3 + track_role prototype). The per-
+# candidate soft fiber lean resolves ADDITIVELY over exactly the candidate
+# attributes that VARY within a fiber choice set: the source track (roll-up), the
+# unit (the ultimate "channel"), and the (track, slot-role) SUB-TRACK cell. A PURE
+# role is deliberately NOT a fiber grain — within a choice set every candidate
+# shares the settled role, so a pure-role addend is a softmax constant that cancels
+# (the measured role wall); it steers through the O-block region lane instead. But
+# (track, role) varies via track, so it DOES steer (PREREG-track-role-bias). Order
+# is fixed for a stable carrier. Each grain's sub-map key is coerced by _grain_key.
+FIELD_GRAINS: Tuple[str, ...] = ("track", "unit", "track_role")
+
+
+def _grain_key(grain: str, k):
+    """Canonical sub-map key per field grain: track/unit key on an int id; the
+    track_role SUB-TRACK grain keys on a (track_id, role_k) int pair."""
+    if grain == "track_role":
+        return (int(k[0]), int(k[1]))
+    return int(k)
 
 
 @dataclass(frozen=True)
@@ -192,7 +202,7 @@ class TiltTerms:
                 m = tagged.get(g)
                 if not m:
                     continue
-                mm = {int(k): float(v) for k, v in dict(m).items()}
+                mm = {_grain_key(g, k): float(v) for k, v in dict(m).items()}
                 if not all(np.isfinite(v) for v in mm.values()):
                     raise ValueError("channel_logbias weights must be finite")
                 mm = {k: v for k, v in mm.items() if v != 0.0}
