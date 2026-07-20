@@ -1021,12 +1021,24 @@ class StreamPlayer:
         # STEERABLE = a lane that can actually apply a tilt: identifiable AND σ>0.
         # This is the honest arming the scalar force lanes render live vs greyed.
         steerable = [ln for ln in armed if ln not in degenerate]
+        # REGION_CAP (read-only telemetry): the engine's OWN safe-envelope cap on the
+        # transmitted region lean (ets.panel.envelope.SAFE_REGION_MAGNITUDE — the value
+        # set_region clamps to and the pad ring is painted at). The FE mirrors this as its
+        # column-bias REGION_SCALE so amp=±1 maps a single role column linearly onto the
+        # full in-range region envelope with no clamp dead-zone; it is not an invented gain
+        # and it tracks the engine constant. Consumed ONLY by the FE's outbound region
+        # scaling — never an objective, gradient, or settlement input.
+        try:
+            from ets.panel.envelope import SAFE_REGION_MAGNITUDE as _region_cap
+        except Exception:
+            _region_cap = 1.0
         return {"ready": True, "M": self.M, "sr": self.sr,
                 "world": Path(self.world_path).name,
                 "is_trained": self.is_trained,
                 "armed": armed, "disarmed": disarmed,
                 "degenerate": degenerate, "steerable": steerable,
                 "region_armed": ("region" in armed),
+                "region_cap": float(_region_cap),
                 # ANCHOR-PROFILE ARMING (Theorem A corollary): whether the anchor
                 # band-profile observable carries information on THIS world (measured
                 # off B). False on the band-blind fixed point (uniform B) → the FE
