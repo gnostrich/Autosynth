@@ -1501,3 +1501,12 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `85cb96f`
 - `Edit` architecture-v6/ets/writer/tilt.py (2026-07-20T06:30:37+00:00)
 - `Edit` architecture-v6/ets/writer/tilt.py (2026-07-20T06:30:45+00:00)
+
+### at `494b8c5`
+- `Edit` papers/PREREG-track-role-bias.md (2026-07-20T06:36:24+00:00)
+- `Edit` release-manifest.json (2026-07-20T06:36:37+00:00)
+- `Edit` release-manifest.json (2026-07-20T06:37:04+00:00)
+
+### at `f3e4a2d`
+- `Edit` BACKUPS.md (2026-07-20T06:39:49+00:00)
+- `Edit` BACKUPS.md (2026-07-20T06:40:18+00:00)
