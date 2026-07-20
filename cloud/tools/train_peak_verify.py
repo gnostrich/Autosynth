@@ -84,8 +84,10 @@ def main() -> int:
     stop[0] = True
     print("PLAY   peak RSS = %.0f MB  (lazy bank materialised at first produce_one_bar)" % play_peak)
     print("bank delta      = %.0f MB  (playback resident - pre-bank)" % (_rss_mb() - before))
-    print("train ok=%s  M=%s  elapsed=%.0fs" %
-          (res.get("ok"), res.get("M", "?"), time.time() - t0))
+    # M is the emergent role count — read it off the built player (the train result
+    # carries no M key), so the repro can echo the M cited in any live-proof claim.
+    m = getattr(p, "M", "?")
+    print("train ok=%s  M=%s  elapsed=%.0fs" % (res.get("ok"), m, time.time() - t0))
     try:
         os.remove(out)
     except OSError:

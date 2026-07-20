@@ -122,8 +122,8 @@ are gone. So the deployed path has TWO smaller peaks, not one 4× peak:
 
 | deployed regime (20 tracks · 30 min audio · float16) | peak RSS | basis |
 |---|---:|---|
-| **Train** (`build_trained_world`, exact `/api/train` code) | **1351 MB** | [MEASURED 2026-07-20, `f16_fulltrain.py`] |
-| **Playback** (lazy bank materialised, `produce_one_bar`) | **2271 MB** | [MEASURED 2026-07-20] |
+| **Train** (`build_trained_world`, exact `/api/train` code) | **1351 MB** | [MEASURED 2026-07-20 — deployed `build_trained_world` path; repro `cloud/tools/train_peak_verify.py`] |
+| **Playback** (lazy bank materialised, `produce_one_bar`) | **2271 MB** | [MEASURED 2026-07-20 — same run, `produce_one_bar`] |
 
 **LIVE PROOF:** the operator's real 20-track corpus was trained on the live 8 GB
 Hobby `ets-web` box via `/api/train` on 2026-07-20 — HTTP 200 in 283 s, `is_trained:true`,
@@ -138,11 +138,19 @@ reaches 4× bank. The §2 rows remain valid **for the `cap_single` eager-bank se
 (and for any future code that warms the bank inline during train); they do **not**
 bound the deployed lazy-bank + LRU service. Corrected sizing for the deployed path:
 
-> **Deployed train peak ≈ ~1.0 GB base + ~0.7 MB × (total audio seconds)** [MEASURED,
-> ingest-dominated; the bank is NOT resident at train] — a 20-track / 30-min corpus
-> trains at **~1.35 GB** and plays at **~2.3 GB** (float16), both well within 8 GB.
-> An 8 GB box therefore trains + plays a **20-track corpus with headroom**; the
-> earlier "≈4–6 songs" limit applied only to the eager-bank measurement path.
+> **MEASURED point (20 tracks / 30 min / float16):** train peak **~1.35 GB**, playback
+> peak **~2.27 GB** — both well within 8 GB. An 8 GB box therefore trains + plays a
+> **20-track corpus with headroom**; the earlier "≈4–6 songs" limit applied only to the
+> eager-bank measurement path.
+>
+> **Sizing rule — use the PLAYBACK peak, which is the deployed maximum** (train is
+> always *lower*, since the bank is not resident at train):
+> **playback ≈ ~1.0 GB base + 0.7056 MB × (total audio seconds)** — the *base* is
+> [MEASURED here ~1.0 GB] and the slope is the §1-[MEASURED] float16 bank slope; for
+> 1800 s that gives ~2.27 GB, matching the point above. (No per-second *train* slope is
+> asserted: only ONE deployed-path train point was measured, which cannot fit a slope.
+> Train stays below playback by the absence of the resident bank — measured 1.35 vs
+> 2.27 GB here.)
 
 ---
 
