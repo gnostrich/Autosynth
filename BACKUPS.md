@@ -26,6 +26,21 @@ this file is the "how do I get back to X" index.
 | `field-bias-rev3-live-2026-07-19` | `042c274455a878d2f8400f787696621c99cc4f62` | 2026-07-19 | THE FIELD + soft track/unit fiber bias (deployed code at `eb557b9`) |
 | `track-role-drill-live-2026-07-20` | `f3e4a2d9507e45b6861d9237adf061c35b004a77` | 2026-07-20 | **CURRENT LIVE** — track×role drill (emergent sub-track handle; drill re-enabled onto role cells; dodges the role wall) |
 
+## Milestone — track×role GRID (row/column/cell bias, seen-through routing) (2026-07-20)
+- **What it is:** the Play surface as a **track × role grid**. Three bias gestures, each routed to
+  the engine step that WEIGHS its type (the "seen-through" rule): **ROW (track)** → casting/pick
+  (`set_channel_bias`), **CELL (track,role)** → casting/pick (`set_track_role_bias`), **COLUMN
+  (role k)** → **settlement** (`payload.region[k] += amp·SAFE_REGION_MAGNITUDE` → `set_region`).
+  The column is the honest whole-role handle: a pure-role FIBER push is the measured-inert role
+  wall, so it rides the SETTLEMENT lane only, never the fiber. All three lanes coexist (arrange +
+  cast at once); byte-identical when all neutral; column honestly disarms when region σ=0.
+- **Flag:** `FIELD_GRID_ENABLED` (default true) — ONE flag back to the drill field (retained dormant + intact).
+- **Gate (`cloud/tools/track_role_grid_verify.py`, corpus20 M=5 region-armed, PASS):** COLUMN→settlement
+  role-2 share 0.246→1.000 (+1) / →0.018 (−1), ρ=1.000; ROW→pick track-4 0.303→0.984 ρ=0.975;
+  CELL→pick (4,2) 0.083→0.116 ρ=0.900; byte-identical-neutral, honest-disarm, coexistence all True.
+- **Prereg:** `papers/PREREG-track-role-grid.md`. **ets-auditor PASS** (all 8 claims verified; no engine edit). Provenance commit `db3365f` (+ manifest/backups).
+- **Rollback:** `FIELD_GRID_ENABLED=false` (drill field) → or `track-role-drill-live-2026-07-20` (`f3e4a2d`) → or `field-bias-rev3-live-2026-07-19` (`042c274`).
+
 ## Live operational event — 20-track corpus posted (2026-07-20)
 - **Not a code milestone** (no engine/UI change): the operator's real 20-track corpus was
   trained on the live 8 GB Hobby `ets-web` box via `/api/train` and published to Explore as

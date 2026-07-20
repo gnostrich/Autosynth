@@ -1540,3 +1540,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Write` cloud/tools/track_role_grid_verify.py (2026-07-20T18:09:26+00:00)
 - `Write` papers/PREREG-track-role-grid.md (2026-07-20T18:12:12+00:00)
 - `Edit` papers/PREREG-track-role-grid.md (2026-07-20T18:12:44+00:00)
+
+### at `db3365f`
+- `Edit` BACKUPS.md (2026-07-20T18:26:08+00:00)
+- `Edit` release-manifest.json (2026-07-20T18:26:21+00:00)
