@@ -23,11 +23,14 @@ this file is the "how do I get back to X" index.
 | `pre-uiv6-field-2026-07-17` | `5ff6abdbc2ceb047d2143eb6eacca9ee19be6423` | 2026-07-17 | ui-v5 (pads + XY + drill), rollback for the ui-v6 field |
 | `pre-webfab-remediation-2026-07-18` | `b054411ba6336fcd2d14f554b23fb2a6812eae9d` | 2026-07-18 | before the WEBFAB fabrication-surface remediation |
 | `pre-sampler-xy-2026-07-19` | `de40dd87ff7c78c74e14cd7fde41ce2433ae3e2e` | 2026-07-19 | before any sampler/bias steering work (pre-channel-bias) |
-| `field-bias-rev3-live-2026-07-19` | `042c274455a878d2f8400f787696621c99cc4f62` | 2026-07-19 | **CURRENT LIVE** — THE FIELD + soft track/unit fiber bias (deployed code at `eb557b9`) |
+| `field-bias-rev3-live-2026-07-19` | `042c274455a878d2f8400f787696621c99cc4f62` | 2026-07-19 | THE FIELD + soft track/unit fiber bias (deployed code at `eb557b9`) |
+| `track-role-drill-live-2026-07-20` | `f3e4a2d9507e45b6861d9237adf061c35b004a77` | 2026-07-20 | **CURRENT LIVE** — track×role drill (emergent sub-track handle; drill re-enabled onto role cells; dodges the role wall) |
 
-## Current live milestone — field-bias REV3
-- **Deployed code:** `eb557b909c6d6a13455a7a0960b67a468733a238` (`main`, live on `ets-web` / www.autosynth.fun).
-- **Provenance commit (this record + manifest):** `042c274455a878d2f8400f787696621c99cc4f62`.
-- **What it is:** THE FIELD restored as the single Play steering surface (replaces the XY pad, socket-swap); soft `channel_logbias` fiber-choice bias at track (roll-up) + unit (ultimate "channel") grains, bidirectional amplify/damp `[-1,1]`; drill track→units (role internal — a measured fiber no-op); per-track unit pool so every track drills its own units; participation-ratio noise-floor disarm; byte-identical audio at neutral.
-- **Preregs (all RATIFIED):** `PREREG-channel-bias-squares-REV1-soft.md`, `-REV2-bidirectional.md`, `PREREG-field-bias-REV3-unit-grain.md`. ets-auditor PASS across every phase.
-- **Rollback:** `pre-uiv6-field-2026-07-17` (companion pad+XY), or `pre-sampler-xy-2026-07-19` (pre-bias).
+## Current live milestone — track×role drill (2026-07-20)
+- **Deployed code:** `f3e4a2d9507e45b6861d9237adf061c35b004a77` (`main`, live on `ets-web` / www.autosynth.fun).
+- **What it is:** the field drill is re-enabled (`FIELD_DRILL_ENABLED=true`) and re-pointed from units to the **emergent `(track × role)` handle** — a track opens into ROLE cells (noise-floor gated), each damp/amplifying that track's material *within* a role via a third fiber grain `track_role_logbias` (keyed `(track_id, slot-role k)`) on the single carrier. Measured LIVE control (ρ=1.0, strong damp / moderate amp) that **dodges the role wall** (pure-role inert, track-pinned cell moves); byte-identical off; units retained dormant; ONE-FLAG shelve-able (`FIELD_DRILL_ENABLED=false` → track-level-only).
+- **Prereg (PROMOTED + RATIFIED):** `PREREG-track-role-bias.md`; ets-auditor PASS on mechanism (`6f00fff`) + FE drill (`d860937`). Builds on the RATIFIED REV1-soft / REV2-bidirectional / REV3-unit-grain preregs.
+- **Rollback:** `field-bias-rev3-live-2026-07-19` (`042c274`, track/unit drill), or set `FIELD_DRILL_ENABLED=false` for track-level-only, or `pre-sampler-xy-2026-07-19` (pre-bias).
+
+### Prior milestone — field-bias REV3 (2026-07-19)
+- Deployed `eb557b9`; provenance `042c274`. THE FIELD + soft track/unit fiber bias, drill track→units, per-track pool, noise-floor disarm. Preregs RATIFIED: REV1-soft / REV2-bidirectional / REV3-unit-grain.
