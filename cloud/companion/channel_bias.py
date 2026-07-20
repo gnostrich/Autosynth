@@ -129,26 +129,30 @@ def grain_logbias(amp, strength: Optional[float] = None
     return out or None
 
 
-def field_logbias(track=None, unit=None) -> Optional[Dict[str, Dict[int, float]]]:
+def field_logbias(track=None, unit=None, track_role=None
+                  ) -> Optional[Dict[str, Dict]]:
     """Assemble the ONE multi-grain field-bias datum the writer consumes on its
-    single ``TiltTerms.channel_logbias`` (REV3, single carrier / I-1):
+    single ``TiltTerms.channel_logbias`` (REV3 + track_role prototype, single carrier
+    / I-1):
 
-        {"track": {track_id -> β}, "unit": {unit_id -> β}}
+        {"track": {track_id -> β}, "unit": {unit_id -> β},
+         "track_role": {(track_id, role_k) -> β}}
 
-    from the already-built per-grain WEIGHT maps (``track`` from
-    ``channel_logbias``, ``unit`` from ``grain_logbias``). At the fiber choice the
-    writer resolves each candidate's addend ADDITIVELY across the grains present —
-    ``β_track[candidate.track_id] + β_unit[candidate.unit_id]`` — so a candidate
-    biased at BOTH grains gets the SUM (the track roll-up plus the unit-specific
-    lean on top). Empty at EVERY grain ⇒ ``None`` ⇒ no addend ⇒ byte-identical.
+    from the already-built per-grain WEIGHT maps (``track`` from ``channel_logbias``,
+    ``unit`` from ``grain_logbias``, ``track_role`` from ``track_role_logbias``). At the
+    fiber choice the writer resolves each candidate's addend ADDITIVELY over the grains
+    present — ``β_track[c.track_id] + β_unit[c.unit_id] + β_track_role[(c.track_id, k)]``
+    where ``k`` is the slot's settled role — so a candidate biased at several grains
+    gets the SUM. Empty at EVERY grain ⇒ ``None`` ⇒ no addend ⇒ byte-identical.
 
-    Grains carried are exactly those whose key VARIES within a fiber choice set
-    (track_id, unit_id): a per-candidate addend can only steer an attribute that
-    distinguishes candidates. The role of a choice set is FIXED (it IS the choice
-    set's identity, set by the settled O-block), so role is not a fiber grain — it
-    steers through the O-block region lane instead (PREREG-field-bias-REV3, the
-    role wall)."""
-    grains: Dict[str, Dict[int, float]] = {}
+    Grains carried are exactly those whose per-candidate value VARIES within a fiber
+    choice set: the source track (roll-up), the unit (the ultimate "channel"), and the
+    (track, slot-role) SUB-TRACK cell (leans track T only where it plays the settled
+    role k). A per-candidate addend can only steer an attribute that distinguishes
+    candidates; a PURE role of a choice set is fixed (it IS the set's identity), so a
+    pure role is not a fiber grain — but (track, role) varies (via track) and does
+    steer (PREREG-track-role-bias)."""
+    grains: Dict[str, Dict] = {}
     if track:
         m = {int(k): float(v) for k, v in dict(track).items() if float(v) != 0.0}
         if m:
@@ -157,4 +161,32 @@ def field_logbias(track=None, unit=None) -> Optional[Dict[str, Dict[int, float]]
         m = {int(k): float(v) for k, v in dict(unit).items() if float(v) != 0.0}
         if m:
             grains["unit"] = m
+    if track_role:
+        m = {(int(k[0]), int(k[1])): float(v)
+             for k, v in dict(track_role).items() if float(v) != 0.0}
+        if m:
+            grains["track_role"] = m
     return grains or None
+
+
+def track_role_logbias(amp, strength: Optional[float] = None
+                       ) -> Optional[Dict]:
+    """Build a {(track_id, role_k) -> β} soft-lean map from a keyed amplify map
+    {(track_id, role_k) -> amplify∈[-1,1]}, β = strength·amplify (same derived
+    F-scale as every grain). This is the SUB-TRACK grain (PREREG-track-role-bias): it
+    leans track T's candidates ONLY inside slots whose settled role is k — the first
+    bias keyed on an EMERGENT structure (roles are training-emergent, unlike input-
+    level track/unit). Returns ``None`` when nothing is biased (all-zero / empty ⇒
+    byte-identical). The key is the pair (track_id, role_k), matched at the fiber
+    choice against (candidate.track_id, slot_role)."""
+    if not amp:
+        return None
+    if strength is None:
+        strength = default_strength()
+    out: Dict = {}
+    for key, a in dict(amp).items():
+        a = float(a)
+        if a != 0.0:
+            tid, role = key
+            out[(int(tid), int(role))] = float(strength) * a
+    return out or None

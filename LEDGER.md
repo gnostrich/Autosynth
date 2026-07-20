@@ -1464,3 +1464,40 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `ed879ac`
 - `Write` papers/CAPACITY_STUDY.md (2026-07-19T18:05:44+00:00)
+
+### at `5ef2b55`
+- `Edit` cloud/companion/channel_bias.py (2026-07-20T05:55:58+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-20T05:56:09+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-20T05:56:15+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-20T05:56:29+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T05:56:40+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T05:56:52+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T05:57:00+00:00)
+- `Write` cloud/tools/track_role_bias_verify.py (2026-07-20T06:00:00+00:00)
+- `Edit` cloud/tools/track_role_bias_verify.py (2026-07-20T06:01:38+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-20T06:03:52+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-20T06:04:11+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-20T06:04:23+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-20T06:05:21+00:00)
+- `Edit` cloud/tests/test_channel_bias.py (2026-07-20T06:07:06+00:00)
+- `Write` papers/PREREG-track-role-bias.md (2026-07-20T06:08:14+00:00)
+
+### at `6f00fff`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T06:21:07+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T06:21:18+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T06:21:27+00:00)
+- `Edit` cloud/companion/engine_bridge.py (2026-07-20T06:21:32+00:00)
+- `Edit` cloud/companion/app.py (2026-07-20T06:22:11+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:22:26+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:22:52+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:23:22+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:23:30+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:23:35+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:23:41+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:23:49+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-20T06:24:27+00:00)
+- `Edit` cloud/tests/test_field_unit_bias_route.py (2026-07-20T06:25:37+00:00)
+
+### at `85cb96f`
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-20T06:30:37+00:00)
+- `Edit` architecture-v6/ets/writer/tilt.py (2026-07-20T06:30:45+00:00)

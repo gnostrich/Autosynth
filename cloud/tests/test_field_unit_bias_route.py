@@ -86,3 +86,26 @@ def test_api_steer_routes_unit_bias_to_set_unit_bias(tmp_path, monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_api_steer_routes_track_role_bias_to_set_track_role_bias(tmp_path, monkeypatch):
+    """The drill's (track, role) CELL bias: the JSON-safe wire form [[track, role, amp]]
+    must coerce to the {(tid, role) -> amp} tuple-keyed map set_track_role_bias consumes;
+    an absent track_role_bias clears the grain (set_track_role_bias(None))."""
+    httpd, url = _server(tmp_path, monkeypatch)
+    try:
+        rec = _Recorder()
+        httpd.hub.playable_for = lambda session: rec
+        # present -> coerced tuple-keyed map
+        assert _post(url, {"region": [],
+                           "track_role_bias": [[4, 2, 0.7], [1, 0, -0.5]]}) == 200
+        assert rec.calls.get("set_track_role_bias"), "set_track_role_bias never called"
+        assert rec.calls["set_track_role_bias"][-1] == {(4, 2): 0.7, (1, 0): -0.5}, \
+            "[[t,k,amp]] must coerce to the {(tid,role)->amp} map"
+        # absent -> cleared
+        assert _post(url, {"region": []}) == 200
+        assert rec.calls["set_track_role_bias"][-1] is None, \
+            "an absent track_role_bias must clear the grain (set_track_role_bias(None))"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

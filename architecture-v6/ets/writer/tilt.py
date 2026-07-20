@@ -104,14 +104,24 @@ class SigmaPhi:
 A_SHAPE_LO: float = 0.25
 A_SHAPE_HI: float = 4.0
 
-# FIELD-BIAS GRAINS (PREREG-field-bias-REV3). The per-candidate soft fiber lean
-# resolves ADDITIVELY over exactly the candidate attributes that VARY within a
-# fiber choice set: the source track (roll-up) and the unit (the operator's
-# ultimate "channel"). Role is deliberately NOT a fiber grain — within a choice
-# set every candidate shares the settled role, so a role addend is a softmax
-# constant that cancels; role steers through the O-block region lane instead
-# (see PREREG-field-bias-REV3 role wall). Order is fixed for a stable carrier.
-FIELD_GRAINS: Tuple[str, ...] = ("track", "unit")
+# FIELD-BIAS GRAINS (PREREG-field-bias-REV3 + track_role prototype). The per-
+# candidate soft fiber lean resolves ADDITIVELY over exactly the candidate
+# attributes that VARY within a fiber choice set: the source track (roll-up), the
+# unit (the ultimate "channel"), and the (track, slot-role) SUB-TRACK cell. A PURE
+# role is deliberately NOT a fiber grain — within a choice set every candidate
+# shares the settled role, so a pure-role addend is a softmax constant that cancels
+# (the measured role wall); it steers through the O-block region lane instead. But
+# (track, role) varies via track, so it DOES steer (PREREG-track-role-bias). Order
+# is fixed for a stable carrier. Each grain's sub-map key is coerced by _grain_key.
+FIELD_GRAINS: Tuple[str, ...] = ("track", "unit", "track_role")
+
+
+def _grain_key(grain: str, k):
+    """Canonical sub-map key per field grain: track/unit key on an int id; the
+    track_role SUB-TRACK grain keys on a (track_id, role_k) int pair."""
+    if grain == "track_role":
+        return (int(k[0]), int(k[1]))
+    return int(k)
 
 
 @dataclass(frozen=True)
@@ -176,7 +186,7 @@ class TiltTerms:
         if self.channel_logbias is not None:
             # Canonical carrier is the tagged multi-grain field bias
             # {grain -> {key: β}} over the grains that VARY within a fiber choice
-            # set (FIELD_GRAINS = track, unit). A bare int-keyed map is the ratified
+            # set (FIELD_GRAINS = track, unit, track_role). A bare int-keyed map is the ratified
             # REV2 track projection (what channel_logbias() and the frozen track gate
             # emit) — lifted to {"track": ...} here at this single construction
             # boundary (one canonical form downstream; realize reads only the tagged
@@ -192,7 +202,7 @@ class TiltTerms:
                 m = tagged.get(g)
                 if not m:
                     continue
-                mm = {int(k): float(v) for k, v in dict(m).items()}
+                mm = {_grain_key(g, k): float(v) for k, v in dict(m).items()}
                 if not all(np.isfinite(v) for v in mm.values()):
                     raise ValueError("channel_logbias weights must be finite")
                 mm = {k: v for k, v in mm.items() if v != 0.0}
@@ -346,8 +356,10 @@ def fiber_choice_logits(energies: np.ndarray, is_continuation: np.ndarray,
     `reuse` is each candidate's recency weight (Δφ_novelty contribution);
     `channel_bias` (optional, per-choice) is the SOFT field lean β(c) — the
     candidate's ADDITIVE log-weight resolved from `tilt.channel_logbias` across the
-    field grains, β(c) = β_track[c.track_id] + β_unit[c.unit_id] (PREREG-field-bias-
-    REV3; track = roll-up, unit = the ultimate "channel", summed). None ⇒ zero addend.
+    field grains, β(c) = β_track[c.track_id] + β_unit[c.unit_id] + β_track_role[(c.track_id, k)]
+    (PREREG-field-bias-REV3 + PREREG-track-role-bias; track = roll-up, unit = the ultimate
+    "channel", track_role = the emergent sub-track handle at the slot's settled role k,
+    summed). None ⇒ zero addend.
 
         log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c) + β(c)
 

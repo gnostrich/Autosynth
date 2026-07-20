@@ -1,0 +1,48 @@
+{
+  "world": "corpus20.etsworld",
+  "M": 5,
+  "n_tracks": 20,
+  "target_cell": {
+    "track_id": 4,
+    "role_k": 2
+  },
+  "seeds": 2,
+  "bars": 40,
+  "strength_LAMBDA_T1p": 8.758101446990384,
+  "amplifies": [
+    -1.0,
+    -0.6,
+    -0.3,
+    0.0,
+    0.3,
+    0.6,
+    1.0
+  ],
+  "cell_frac_curve": [
+    0.00078125,
+    0.008984375,
+    0.0251953125,
+    0.0677734375,
+    0.0775390625,
+    0.096875,
+    0.1009765625
+  ],
+  "baseline_frac": 0.0677734375,
+  "amp1_frac": 0.1009765625,
+  "damp1_frac": 0.00078125,
+  "pull_gain": 0.033203125,
+  "damp_drop": -0.06699218750000001,
+  "role_total_frac": 0.2482421875,
+  "spearman_rho": 1.0,
+  "rho_min": 0.7,
+  "role_assignment": "slot role k (the _choose arg = place_slot argmax(col.B[:,b])); same k the addend keys on (consistent with the mechanism)",
+  "byte_identity_at_zero": true,
+  "control_pure_role_inert": true,
+  "control_cell_moves": true,
+  "TRACK_ROLE_PULL": true,
+  "pull_verdict": "PULL_HOLDS",
+  "TRACK_ROLE_DAMP": true,
+  "damp_verdict": "DAMP_HOLDS",
+  "DODGES_ROLE_WALL": true,
+  "magnitude_note": "whole-track pull ~0.2->0.95; single-unit ~0.2%; this (track,role) cell: 0.068->0.101 (amp+1), 0.068->0.001 (amp-1)"
+}

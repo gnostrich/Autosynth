@@ -111,6 +111,55 @@ def nowplaying_unit_activity(rows) -> dict:
     return {uid: energy[uid] / peak for uid in energy}
 
 
+def track_role_activity(rows, O, B, s_phase) -> dict:
+    """READ-ONLY per-(TRACK, ROLE) mass reduction of a produced bar — the role-cell glow.
+
+    ``role`` is the SLOT role k the (track, role) bias mechanism keys on. ``place_slot``
+    realizes output slot ``s`` from its settled column ``O[:, s_local]``: for each band b
+    with energy ``e[b] = (col @ B)[b] > 0`` it emits ONE row of mass ``sqrt(e[b])`` under
+    role ``k = argmax(col * B[:, b])`` (the same k ``_choose(k, b)`` keys the addend on).
+    Rows within a slot are in band order, so this matches each row to its band by mass
+    (two-pointer; a band that placed no unit is simply skipped) and credits the mass to
+    ``(row.track_id, k)``. Faithfully reconstructs the mechanism's k from the committed O
+    — no settlement / writer / render / F — so audio is byte-identical whether it runs.
+
+    ``rows`` carry the GLOBAL slot ``s = bar*s_phase + s_local``; ``O`` is indexed by the
+    LOCAL slot, so ``s_local = s % s_phase``. Returns ``{(track_id, role_k) -> summed mass}``."""
+    O = np.asarray(O, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    n_bands = B.shape[1]
+    sp = int(s_phase)
+    by_slot: dict = {}
+    for row in rows:
+        by_slot.setdefault(int(row[0]), []).append(row)
+    energy: dict = {}
+    for sg, rs in by_slot.items():
+        s_local = (sg % sp) if sp > 0 else int(sg)
+        if s_local < 0 or s_local >= O.shape[1]:
+            continue
+        col = O[:, s_local]
+        e = col @ B                                   # (n_bands,) settled band energy
+        bands = [b for b in range(n_bands) if e[b] > 0.0]
+        if not bands:
+            continue
+        bmass = [float(np.sqrt(e[b])) for b in bands]
+        bk = [int(np.argmax(col * B[:, b])) for b in bands]
+        bi = 0
+        for row in rs:                                # rows in band order (subseq of bands)
+            m = float(row[4])
+            tid = int(row[1])
+            while bi < len(bands) and abs(bmass[bi] - m) > 1e-6:
+                bi += 1
+            if bi < len(bands):
+                k = bk[bi]
+                bi += 1
+            else:
+                k = int(np.argmax(col))               # fallback: slot's dominant role
+            key = (tid, k)
+            energy[key] = energy.get(key, 0.0) + m
+    return energy
+
+
 def track_unit_pool(world, top_n: int = 48) -> dict:
     """READ-ONLY static PER-TRACK unit POOL for the field's TRACK -> UNITS drill.
 
@@ -523,6 +572,11 @@ class StreamPlayer:
         # (single carrier, I-1), assembled ADDITIVELY in produce_one_bar via
         # field_logbias. Default None ⇒ no addend ⇒ byte-identical fiber draw.
         self._unit_bias: Optional[dict] = None
+        # FIELD-BIAS SUB-TRACK GRAIN (PREREG-track-role-bias, prototype): the per-cell
+        # amplify map {(track_id, role_k) -> amplify∈[-1,1]} — lean track T ONLY where
+        # it plays the settled role k. Keyed on an EMERGENT structure (roles). Rides
+        # the SAME ONE TiltTerms; None ⇒ no addend ⇒ byte-identical.
+        self._track_role_bias: Optional[dict] = None
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -531,6 +585,9 @@ class StreamPlayer:
         # telemetry; see _NP_UNIT_ALPHA). {unit_id -> smoothed 0..1 activity}, updated
         # each produced bar, pruned below _NP_UNIT_EPS. Display-only; never touches audio.
         self._nowplaying_unit_ema: dict = {}
+        # PER-(TRACK, ROLE) nowplaying EMA state (the drill role-cell glow; same display
+        # smoothing as the per-unit map). {(track_id, role_k) -> smoothed 0..1 activity}.
+        self._nowplaying_track_role_ema: dict = {}
         # WARMED (OPEN_ENDS #21d): has the produce loop rendered its FIRST bar yet?
         # False until the loop emits (the bank build + first render is the multi-
         # minute cold window a listener would otherwise sit through in silence).
@@ -1242,6 +1299,37 @@ class StreamPlayer:
         with self._lock:
             self._unit_bias = clean or None
 
+    def set_track_role_bias(self, cell_amp) -> None:
+        """Set the per-(track, role) SUB-TRACK amplify map (PREREG-track-role-bias,
+        prototype). ``cell_amp`` is a mapping {(track_id, role_k) -> amplify∈[-1,1]}:
+        each entry leans track T's candidates SOFTLY, but ONLY inside slots whose
+        settled role is k — the first bias keyed on an EMERGENT structure (roles).
+        It becomes the ``"track_role"`` sub-map of the ONE ``channel_logbias`` datum
+        the writer consumes (single carrier, I-1), summed ADDITIVELY with the track
+        roll-up and unit grains per candidate. POSITIVE up-weights, NEGATIVE soft-
+        damps. It varies within a role-k choice set (via the track key) and so DODGES
+        the pure-role wall. Excluded from ``is_untilted``, so F / the O-block solve /
+        settlement / render stay byte-identical. A None / empty / all-zero map clears
+        the grain ⇒ (with no other bias) byte-identical audio."""
+        if not cell_amp:
+            with self._lock:
+                self._track_role_bias = None
+            return
+        clean: dict = {}
+        for key, a in dict(cell_amp).items():
+            try:
+                tid, role = key
+                av = float(a)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(av):
+                av = 0.0
+            av = max(-1.0, min(1.0, av))
+            if av != 0.0:
+                clean[(int(tid), int(role))] = av
+        with self._lock:
+            self._track_role_bias = clean or None
+
     def channel_info(self) -> dict:
         """Read-only channel roster for the squares FE: channel index → track_id +
         display name. Which channels can actually PULL (vs disarm) is a MEASURED
@@ -1302,10 +1390,13 @@ class StreamPlayer:
         with self._lock:
             bias = None if self._channel_bias is None else self._channel_bias.copy()
             unit_amp = None if self._unit_bias is None else dict(self._unit_bias)
-        from .channel_bias import channel_logbias, grain_logbias, field_logbias
+            cell_amp = None if self._track_role_bias is None else dict(self._track_role_bias)
+        from .channel_bias import (channel_logbias, grain_logbias, field_logbias,
+                                   track_role_logbias)
         track_w = channel_logbias(bias, self._channel_tids) if bias is not None else None
         unit_w = grain_logbias(unit_amp) if unit_amp else None
-        clogbias = field_logbias(track=track_w, unit=unit_w)
+        cell_w = track_role_logbias(cell_amp) if cell_amp else None
+        clogbias = field_logbias(track=track_w, unit=unit_w, track_role=cell_w)
         tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
@@ -1348,6 +1439,25 @@ class StreamPlayer:
             else:
                 ema.pop(uid, None)
         nowplaying_unit = {int(uid): float(v) for uid, v in ema.items()}
+        # READ-ONLY per-(TRACK, ROLE) nowplaying: the drill role-cell glow. Reduce the bar
+        # by (track_id, slot-role k) — the SAME emergent slot role the (track,role) bias
+        # mechanism keys on, reconstructed from the committed O (track_role_activity).
+        # Normalize by the bar's peak cell mass to 0..1, EMA-smoothed like the per-unit
+        # glow. Reads produced rows + O only; audio byte-identical. Keyed "tid,k" for JSON.
+        tr_energy = track_role_activity(r.rows, r.O, self.world.fstate.B, self.s_phase)
+        tr_peak = max(tr_energy.values()) if tr_energy else 0.0
+        raw_tr = ({cell: v / tr_peak for cell, v in tr_energy.items()} if tr_peak > 0.0
+                  else {cell: 0.0 for cell in tr_energy})
+        tr_ema = self._nowplaying_track_role_ema
+        for cell in set(tr_ema) | set(raw_tr):
+            v = (_NP_UNIT_ALPHA * raw_tr.get(cell, 0.0)
+                 + (1.0 - _NP_UNIT_ALPHA) * tr_ema.get(cell, 0.0))
+            if v >= _NP_UNIT_EPS:
+                tr_ema[cell] = v
+            else:
+                tr_ema.pop(cell, None)
+        nowplaying_track_role = {("%d,%d" % (t, k)): float(v)
+                                 for (t, k), v in tr_ema.items()}
         self._bar_index = int(r.bar)
         lanes = self._lane_readouts(r)
         loop_val, slide_val = self._gauge_meters(r)
@@ -1355,6 +1465,7 @@ class StreamPlayer:
                           "t": float(r.bar * self.engine.writer.bar_seconds),
                           "nowplaying": nowplaying,
                           "nowplaying_unit": nowplaying_unit,
+                          "nowplaying_track_role": nowplaying_track_role,
                           "lanes": lanes, "loop": loop_val, "slide": slide_val}
         pcm = _to_int16(audio)
         return pcm, roles
