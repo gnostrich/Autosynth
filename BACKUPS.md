@@ -26,6 +26,20 @@ this file is the "how do I get back to X" index.
 | `field-bias-rev3-live-2026-07-19` | `042c274455a878d2f8400f787696621c99cc4f62` | 2026-07-19 | THE FIELD + soft track/unit fiber bias (deployed code at `eb557b9`) |
 | `track-role-drill-live-2026-07-20` | `f3e4a2d9507e45b6861d9237adf061c35b004a77` | 2026-07-20 | **CURRENT LIVE** — track×role drill (emergent sub-track handle; drill re-enabled onto role cells; dodges the role wall) |
 
+## Live operational event — 20-track corpus posted (2026-07-20)
+- **Not a code milestone** (no engine/UI change): the operator's real 20-track corpus was
+  trained on the live 8 GB Hobby `ets-web` box via `/api/train` and published to Explore as
+  set **`set-c0e8cdfabd`** ("20-track field (my corpus, M=5)"). Train: HTTP 200 in 283 s,
+  `is_trained:true`, M=5, `/api/health` green throughout; a fresh anonymous listener streamed
+  real audio (RMS 1483, 99.9 % non-zero). Bank dtype = float32 (service `ETS_BANK_DTYPE` unset;
+  float16 is a one-redeploy flip that also touches the demo).
+- **Faithfulness correction shipped alongside** (this commit): `papers/CAPACITY_STUDY.md` §2/§5
+  carried a mis-applied "3.5-4× bank ⇒ 20 tracks OOM 8 GB / need 32 GB" number. That model
+  measured the `cap_single` *eager-bank* path; the DEPLOYED `/api/train` is *lazy-bank*
+  (`build_trained_world` never calls `build_bank`; the bank materialises at first playback).
+  MEASURED deployed peaks (20 tracks / 30 min / float16): train **1.35 GB**, play **2.27 GB** —
+  both well within 8 GB, proven by the live train above. Repro tool: `cloud/tools/train_peak_verify.py`.
+
 ## Current live milestone — track×role drill (2026-07-20)
 - **Deployed code:** `f3e4a2d9507e45b6861d9237adf061c35b004a77` (`main`, live on `ets-web` / www.autosynth.fun).
 - **What it is:** the field drill is re-enabled (`FIELD_DRILL_ENABLED=true`) and re-pointed from units to the **emergent `(track × role)` handle** — a track opens into ROLE cells (noise-floor gated), each damp/amplifying that track's material *within* a role via a third fiber grain `track_role_logbias` (keyed `(track_id, slot-role k)`) on the single carrier. Measured LIVE control (ρ=1.0, strong damp / moderate amp) that **dodges the role wall** (pure-role inert, track-pinned cell moves); byte-identical off; units retained dormant; ONE-FLAG shelve-able (`FIELD_DRILL_ENABLED=false` → track-level-only).

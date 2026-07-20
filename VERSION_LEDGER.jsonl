@@ -1127,3 +1127,15 @@
 {"head": "6f00fff", "path": "cloud/tests/test_field_unit_bias_route.py", "tool": "Edit", "ts": "2026-07-20T06:25:37+00:00"}
 {"head": "85cb96f", "path": "architecture-v6/ets/writer/tilt.py", "tool": "Edit", "ts": "2026-07-20T06:30:37+00:00"}
 {"head": "85cb96f", "path": "architecture-v6/ets/writer/tilt.py", "tool": "Edit", "ts": "2026-07-20T06:30:45+00:00"}
+{"head": "494b8c5", "path": "papers/PREREG-track-role-bias.md", "tool": "Edit", "ts": "2026-07-20T06:36:24+00:00"}
+{"head": "494b8c5", "path": "release-manifest.json", "tool": "Edit", "ts": "2026-07-20T06:36:37+00:00"}
+{"head": "494b8c5", "path": "release-manifest.json", "tool": "Edit", "ts": "2026-07-20T06:37:04+00:00"}
+{"head": "f3e4a2d", "path": "BACKUPS.md", "tool": "Edit", "ts": "2026-07-20T06:39:49+00:00"}
+{"head": "f3e4a2d", "path": "BACKUPS.md", "tool": "Edit", "ts": "2026-07-20T06:40:18+00:00"}
+{"head": "5719233", "path": "papers/CAPACITY_STUDY.md", "tool": "Edit", "ts": "2026-07-20T14:24:19+00:00"}
+{"head": "5719233", "path": "papers/CAPACITY_STUDY.md", "tool": "Edit", "ts": "2026-07-20T14:24:30+00:00"}
+{"head": "5719233", "path": "cloud/tools/train_peak_verify.py", "tool": "Write", "ts": "2026-07-20T14:24:57+00:00"}
+{"head": "5719233", "path": "BACKUPS.md", "tool": "Edit", "ts": "2026-07-20T14:25:31+00:00"}
+{"head": "3dc05ad", "path": "papers/CAPACITY_STUDY.md", "tool": "Edit", "ts": "2026-07-20T14:31:04+00:00"}
+{"head": "3dc05ad", "path": "papers/CAPACITY_STUDY.md", "tool": "Edit", "ts": "2026-07-20T14:31:18+00:00"}
+{"head": "3dc05ad", "path": "cloud/tools/train_peak_verify.py", "tool": "Edit", "ts": "2026-07-20T14:31:27+00:00"}

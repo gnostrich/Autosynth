@@ -107,6 +107,51 @@ that motivated the LRU cap). Four full songs ≈ 960 s total → resident bank �
 → at the ~3.8× multiplier that is ≈ 5.2 GB. **The model reproduces the historical
 Railway OOM point.** Confidence: good.
 
+### CORRECTION (2026-07-20) — the §2 model measured a NON-DEPLOYED path; the real ceiling is ~4× lower  **[MEASURED — LIVE PROOF]**
+
+The §2 table above (and its §5 conclusion "≈4–6 songs max, a 20-track train will
+OOM 8 GB") measures `cap_single.py`, whose sequence is
+`ingest → build_world → build_index → save_world → build_bank` **in one process** —
+so `build_bank` materialises the full audio bank **while the ingest/STFT transients
+are still resident**. That co-residency is what produces the 3.5–4× multiplier. **The
+deployed `/api/train` path does NOT do this.** `cloud/companion/train_local.build_trained_world`
+runs `ingest → stage3 → cloud_fit → verify → build_index → sigma_φ → save` and **never
+calls `build_bank`** — the audio bank is built **lazily at first playback**
+(`StreamPlayer.produce_one_bar`), a separate, later moment when the ingest transients
+are gone. So the deployed path has TWO smaller peaks, not one 4× peak:
+
+| deployed regime (20 tracks · 30 min audio · float16) | peak RSS | basis |
+|---|---:|---|
+| **Train** (`build_trained_world`, exact `/api/train` code) | **1351 MB** | [MEASURED 2026-07-20 — deployed `build_trained_world` path; repro `cloud/tools/train_peak_verify.py`] |
+| **Playback** (lazy bank materialised, `produce_one_bar`) | **2271 MB** | [MEASURED 2026-07-20 — same run, `produce_one_bar`] |
+
+**LIVE PROOF:** the operator's real 20-track corpus was trained on the live 8 GB
+Hobby `ets-web` box via `/api/train` on 2026-07-20 — HTTP 200 in 283 s, `is_trained:true`,
+M=5, `/api/health` **green throughout the entire train** (polled every 15 s), and a
+fresh anonymous listener streamed **real audio** (RMS 1483, 99.9 % non-zero). No OOM.
+Published as Explore set `set-c0e8cdfabd`.
+
+**What was wrong:** an earlier estimate (this agent's) applied the §2 "3.5–4× bank ⇒
+~8.4 GB for 20 tracks ⇒ upgrade or compress" model to the deployed path. That was a
+**mis-applied model, not a measurement** — the deployed path is lazy-bank and never
+reaches 4× bank. The §2 rows remain valid **for the `cap_single` eager-bank sequence**
+(and for any future code that warms the bank inline during train); they do **not**
+bound the deployed lazy-bank + LRU service. Corrected sizing for the deployed path:
+
+> **MEASURED point (20 tracks / 30 min / float16):** train peak **~1.35 GB**, playback
+> peak **~2.27 GB** — both well within 8 GB. An 8 GB box therefore trains + plays a
+> **20-track corpus with headroom**; the earlier "≈4–6 songs" limit applied only to the
+> eager-bank measurement path.
+>
+> **Sizing rule — use the PLAYBACK peak, which is the deployed maximum** (train is
+> always *lower*, since the bank is not resident at train):
+> **playback ≈ ~1.0 GB base + 0.7056 MB × (total audio seconds)** — the *base* is
+> [MEASURED here ~1.0 GB] and the slope is the §1-[MEASURED] float16 bank slope; for
+> 1800 s that gives ~2.27 GB, matching the point above. (No per-second *train* slope is
+> asserted: only ONE deployed-path train point was measured, which cannot fit a slope.
+> Train stays below playback by the absence of the resident bank — measured 1.35 vs
+> 2.27 GB here.)
+
 ---
 
 ## 3. Train / anchor-fit TIME vs track count  **[MEASURED, sandbox]**
@@ -155,6 +200,13 @@ fiber threading → schedule → render → soft cap), steady-state:
 ---
 
 ## 5. Bottom line — how big can ONE corpus be, and is an upgrade needed?
+
+> **⚠ SUPERSEDED for the deployed service — see the CORRECTION in §2 (2026-07-20).**
+> The "≈4–6 songs / 20-track OOM / need 32 GB" numbers below were derived from the
+> `cap_single` eager-bank path. The DEPLOYED `/api/train` is lazy-bank: a 20-track /
+> 30-min corpus was trained + played LIVE on the 8 GB box (train ~1.35 GB, play
+> ~2.3 GB, health green throughout). **An 8 GB box handles a 20-track corpus.** The
+> section below is retained as the (correct) analysis of the eager-bank sizing model.
 
 **The single binding constraint is TRAIN-TIME PEAK RAM.** Not CPU (30–113×
 realtime), not train time (seconds), not steady-state playback RAM (bank only).
