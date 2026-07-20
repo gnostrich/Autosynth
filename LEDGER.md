@@ -1510,3 +1510,9 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `f3e4a2d`
 - `Edit` BACKUPS.md (2026-07-20T06:39:49+00:00)
 - `Edit` BACKUPS.md (2026-07-20T06:40:18+00:00)
+
+### at `5719233`
+- `Edit` papers/CAPACITY_STUDY.md (2026-07-20T14:24:19+00:00)
+- `Edit` papers/CAPACITY_STUDY.md (2026-07-20T14:24:30+00:00)
+- `Write` cloud/tools/train_peak_verify.py (2026-07-20T14:24:57+00:00)
+- `Edit` BACKUPS.md (2026-07-20T14:25:31+00:00)

@@ -1132,3 +1132,7 @@
 {"head": "494b8c5", "path": "release-manifest.json", "tool": "Edit", "ts": "2026-07-20T06:37:04+00:00"}
 {"head": "f3e4a2d", "path": "BACKUPS.md", "tool": "Edit", "ts": "2026-07-20T06:39:49+00:00"}
 {"head": "f3e4a2d", "path": "BACKUPS.md", "tool": "Edit", "ts": "2026-07-20T06:40:18+00:00"}
+{"head": "5719233", "path": "papers/CAPACITY_STUDY.md", "tool": "Edit", "ts": "2026-07-20T14:24:19+00:00"}
+{"head": "5719233", "path": "papers/CAPACITY_STUDY.md", "tool": "Edit", "ts": "2026-07-20T14:24:30+00:00"}
+{"head": "5719233", "path": "cloud/tools/train_peak_verify.py", "tool": "Write", "ts": "2026-07-20T14:24:57+00:00"}
+{"head": "5719233", "path": "BACKUPS.md", "tool": "Edit", "ts": "2026-07-20T14:25:31+00:00"}
