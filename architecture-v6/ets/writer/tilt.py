@@ -186,7 +186,7 @@ class TiltTerms:
         if self.channel_logbias is not None:
             # Canonical carrier is the tagged multi-grain field bias
             # {grain -> {key: β}} over the grains that VARY within a fiber choice
-            # set (FIELD_GRAINS = track, unit). A bare int-keyed map is the ratified
+            # set (FIELD_GRAINS = track, unit, track_role). A bare int-keyed map is the ratified
             # REV2 track projection (what channel_logbias() and the frozen track gate
             # emit) — lifted to {"track": ...} here at this single construction
             # boundary (one canonical form downstream; realize reads only the tagged
@@ -356,8 +356,10 @@ def fiber_choice_logits(energies: np.ndarray, is_continuation: np.ndarray,
     `reuse` is each candidate's recency weight (Δφ_novelty contribution);
     `channel_bias` (optional, per-choice) is the SOFT field lean β(c) — the
     candidate's ADDITIVE log-weight resolved from `tilt.channel_logbias` across the
-    field grains, β(c) = β_track[c.track_id] + β_unit[c.unit_id] (PREREG-field-bias-
-    REV3; track = roll-up, unit = the ultimate "channel", summed). None ⇒ zero addend.
+    field grains, β(c) = β_track[c.track_id] + β_unit[c.unit_id] + β_track_role[(c.track_id, k)]
+    (PREREG-field-bias-REV3 + PREREG-track-role-bias; track = roll-up, unit = the ultimate
+    "channel", track_role = the emergent sub-track handle at the slot's settled role k,
+    summed). None ⇒ zero addend.
 
         log w(c) = −E_F(c)/T_s + λ_cont·1[cont](c) + λ_novelty·reuse(c) + β(c)
 
