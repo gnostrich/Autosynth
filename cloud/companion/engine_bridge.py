@@ -111,6 +111,55 @@ def nowplaying_unit_activity(rows) -> dict:
     return {uid: energy[uid] / peak for uid in energy}
 
 
+def track_role_activity(rows, O, B, s_phase) -> dict:
+    """READ-ONLY per-(TRACK, ROLE) mass reduction of a produced bar — the role-cell glow.
+
+    ``role`` is the SLOT role k the (track, role) bias mechanism keys on. ``place_slot``
+    realizes output slot ``s`` from its settled column ``O[:, s_local]``: for each band b
+    with energy ``e[b] = (col @ B)[b] > 0`` it emits ONE row of mass ``sqrt(e[b])`` under
+    role ``k = argmax(col * B[:, b])`` (the same k ``_choose(k, b)`` keys the addend on).
+    Rows within a slot are in band order, so this matches each row to its band by mass
+    (two-pointer; a band that placed no unit is simply skipped) and credits the mass to
+    ``(row.track_id, k)``. Faithfully reconstructs the mechanism's k from the committed O
+    — no settlement / writer / render / F — so audio is byte-identical whether it runs.
+
+    ``rows`` carry the GLOBAL slot ``s = bar*s_phase + s_local``; ``O`` is indexed by the
+    LOCAL slot, so ``s_local = s % s_phase``. Returns ``{(track_id, role_k) -> summed mass}``."""
+    O = np.asarray(O, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    n_bands = B.shape[1]
+    sp = int(s_phase)
+    by_slot: dict = {}
+    for row in rows:
+        by_slot.setdefault(int(row[0]), []).append(row)
+    energy: dict = {}
+    for sg, rs in by_slot.items():
+        s_local = (sg % sp) if sp > 0 else int(sg)
+        if s_local < 0 or s_local >= O.shape[1]:
+            continue
+        col = O[:, s_local]
+        e = col @ B                                   # (n_bands,) settled band energy
+        bands = [b for b in range(n_bands) if e[b] > 0.0]
+        if not bands:
+            continue
+        bmass = [float(np.sqrt(e[b])) for b in bands]
+        bk = [int(np.argmax(col * B[:, b])) for b in bands]
+        bi = 0
+        for row in rs:                                # rows in band order (subseq of bands)
+            m = float(row[4])
+            tid = int(row[1])
+            while bi < len(bands) and abs(bmass[bi] - m) > 1e-6:
+                bi += 1
+            if bi < len(bands):
+                k = bk[bi]
+                bi += 1
+            else:
+                k = int(np.argmax(col))               # fallback: slot's dominant role
+            key = (tid, k)
+            energy[key] = energy.get(key, 0.0) + m
+    return energy
+
+
 def track_unit_pool(world, top_n: int = 48) -> dict:
     """READ-ONLY static PER-TRACK unit POOL for the field's TRACK -> UNITS drill.
 
@@ -536,6 +585,9 @@ class StreamPlayer:
         # telemetry; see _NP_UNIT_ALPHA). {unit_id -> smoothed 0..1 activity}, updated
         # each produced bar, pruned below _NP_UNIT_EPS. Display-only; never touches audio.
         self._nowplaying_unit_ema: dict = {}
+        # PER-(TRACK, ROLE) nowplaying EMA state (the drill role-cell glow; same display
+        # smoothing as the per-unit map). {(track_id, role_k) -> smoothed 0..1 activity}.
+        self._nowplaying_track_role_ema: dict = {}
         # WARMED (OPEN_ENDS #21d): has the produce loop rendered its FIRST bar yet?
         # False until the loop emits (the bank build + first render is the multi-
         # minute cold window a listener would otherwise sit through in silence).
@@ -1387,6 +1439,25 @@ class StreamPlayer:
             else:
                 ema.pop(uid, None)
         nowplaying_unit = {int(uid): float(v) for uid, v in ema.items()}
+        # READ-ONLY per-(TRACK, ROLE) nowplaying: the drill role-cell glow. Reduce the bar
+        # by (track_id, slot-role k) — the SAME emergent slot role the (track,role) bias
+        # mechanism keys on, reconstructed from the committed O (track_role_activity).
+        # Normalize by the bar's peak cell mass to 0..1, EMA-smoothed like the per-unit
+        # glow. Reads produced rows + O only; audio byte-identical. Keyed "tid,k" for JSON.
+        tr_energy = track_role_activity(r.rows, r.O, self.world.fstate.B, self.s_phase)
+        tr_peak = max(tr_energy.values()) if tr_energy else 0.0
+        raw_tr = ({cell: v / tr_peak for cell, v in tr_energy.items()} if tr_peak > 0.0
+                  else {cell: 0.0 for cell in tr_energy})
+        tr_ema = self._nowplaying_track_role_ema
+        for cell in set(tr_ema) | set(raw_tr):
+            v = (_NP_UNIT_ALPHA * raw_tr.get(cell, 0.0)
+                 + (1.0 - _NP_UNIT_ALPHA) * tr_ema.get(cell, 0.0))
+            if v >= _NP_UNIT_EPS:
+                tr_ema[cell] = v
+            else:
+                tr_ema.pop(cell, None)
+        nowplaying_track_role = {("%d,%d" % (t, k)): float(v)
+                                 for (t, k), v in tr_ema.items()}
         self._bar_index = int(r.bar)
         lanes = self._lane_readouts(r)
         loop_val, slide_val = self._gauge_meters(r)
@@ -1394,6 +1465,7 @@ class StreamPlayer:
                           "t": float(r.bar * self.engine.writer.bar_seconds),
                           "nowplaying": nowplaying,
                           "nowplaying_unit": nowplaying_unit,
+                          "nowplaying_track_role": nowplaying_track_role,
                           "lanes": lanes, "loop": loop_val, "slide": slide_val}
         pcm = _to_int16(audio)
         return pcm, roles

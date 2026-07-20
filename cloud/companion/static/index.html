@@ -1693,8 +1693,9 @@
     // EXPLICITLY — no stale lean lingers. Empty at both grains ⇒ bridge None for each
     // ⇒ no fiber addend ⇒ byte-identical audio (the hard invariant).
     var fb = fieldBiasPayload(fieldState());
-    payload.channel_bias = fb.channel_bias;   // track roll-up grain (vector; all-zero ⇒ None)
-    payload.unit_bias    = fb.unit_bias;      // unit grain ({uid->amplify}; empty ⇒ None)
+    payload.channel_bias    = fb.channel_bias;    // TRACK roll-up (vector; all-zero ⇒ None)
+    payload.track_role_bias = fb.track_role_bias; // (TRACK, ROLE) cells ([[t,k,amp]]; [] ⇒ None)
+    payload.unit_bias       = fb.unit_bias;       // DORMANT unit grain ({uid->amp}; empty ⇒ None)
     sendSteer(payload);
   }
 
@@ -1709,15 +1710,15 @@
      (commit 16a8f53^) and adapted: role removed from the drill/bias, region-send
      replaced by the two soft-lean grains. */
   /* ---------- pure logic (no DOM / no telemetry writes) — FIELD PURE LOGIC ---- */
-  // Operator decision 2026-07-19: unit-level drill is not practically steerable
-  // (single-unit bias ~0.2%, beat-normalized counts are uniform) and 192 units don't
-  // fit; the field interacts at TRACK level only. All unit infra (fieldTrackUnits, unit
-  // squares, per-unit glow nowplaying_unit, track_unit_pool, unit_bias routing,
-  // channel_logbias unit grain) is retained DORMANT for future re-enable — flip this
-  // flag true to restore the drill. While false: the field renders TRACK squares only,
-  // a track scroll/drag/arrow just BIASES the track (amplify/damp), and the drill-in
-  // gesture (Ctrl+scroll / pinch / click) is a no-op; no unit squares ever appear.
-  var FIELD_DRILL_ENABLED = false;
+  // DRILL = track -> ROLES (operator, 2026-07-19). A track opens into its (track x role)
+  // SUB-TRACK cells — the EMERGENT handle proven live (PREREG-track-role-bias: ρ=1.0,
+  // strong damp, byte-identical off, dodges the role wall) — NOT units. The UNIT infra
+  // (fieldTrackUnits, unit squares, per-unit glow nowplaying_unit, track_unit_pool,
+  // unit_bias routing, channel_logbias unit grain) is retained DORMANT (defined but
+  // unreached) for future re-enable. Still ONE-FLAG shelve-able: set this false to
+  // restore TRACK-LEVEL-ONLY (no drill; a track scroll/drag/arrow just biases the track,
+  // and the drill-in gesture Ctrl+scroll / pinch / click is a no-op).
+  var FIELD_DRILL_ENABLED = true;
   var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
   var FIELD_HEADER = 22;          // top strip reserved for the breadcrumb (grid below)
   var FIELD_BIAS_LIMIT = 1.0;     // soft-saturation stop (matches amplify's [-1,1])
@@ -1819,12 +1820,33 @@
     });
     return out;
   }
+  // JSON-safe key for the per-(track, role) glow map (nowplaying_track_role: "tid,k").
+  function fieldTRKey(t, k){ return (t|0) + "," + (k|0); }
+  // A TRACK's drill-in ROLE cells (the proven (track x role) SUB-TRACK handle). One cell
+  // per role k the track covers, self-sized by the participation-ratio noise floor: a
+  // mushy track (profile below the floor) shows NO cells (honest disarm), and only the
+  // top-round(PR(profile)) covered roles are shown so a broad track stays navigable.
+  // Each cell's key is ["role", t, k] -> a (track, role) bias (set_track_role_bias); its
+  // glow is the cell's OWN live share (nowplaying_track_role). Units stay dormant.
+  function fieldTrackRoles(st, t){
+    var p = st.profiles && st.profiles[t];
+    if(!p || !fieldClearsFloor(p)) return [];           // mushy/uncovered track disarms
+    var kEff = Math.min(p.length, Math.round(fieldParticipationRatio(p)));
+    var order = p.map(function(v,i){ return i; })
+                 .sort(function(a,b){ return p[b] - p[a]; })
+                 .slice(0, kEff).sort(function(a,b){ return a - b; });
+    return order.map(function(k){
+      var key = ["role", t|0, k|0];                     // (track t, role k) cell
+      var glow = (st.nowplayingTrackRole && st.nowplayingTrackRole[fieldTRKey(t, k)]) || 0;
+      return fieldMkSquare("role", key, "R"+k, t|0, glow,
+        st.bias[fieldKeyStr(key)] || 0, false, 0);      // role cells are ATOMIC
+    });
+  }
   function fieldTrackSquares(st){
     return fieldTrackIds(st).map(function(t){
-      // DORMANT DRILL (FIELD_DRILL_ENABLED=false): tracks are non-expandable, so no
-      // `▸n` affordance and no drill — a track square only biases. Flip the flag true
-      // to restore the unit child count + drill (all infra retained).
-      var kids = FIELD_DRILL_ENABLED ? fieldTrackUnits(st, t).length : 0;
+      // DRILL (FIELD_DRILL_ENABLED): a track drills into its ROLE cells (the (track x
+      // role) handle). Flag false => non-expandable (no `▸n`, no drill), track-level only.
+      var kids = FIELD_DRILL_ENABLED ? fieldTrackRoles(st, t).length : 0;
       var key = ["track", t];
       return fieldMkSquare("track", key, fieldTrackName(st, t), t,
         (st.nowplaying && st.nowplaying[t]) || 0,
@@ -1832,8 +1854,8 @@
     });
   }
   function fieldChildren(st, key){
-    if(key[0] === "track") return fieldTrackUnits(st, key[1]);
-    return [];                                           // unit: atomic (no deeper drill)
+    if(key[0] === "track") return fieldTrackRoles(st, key[1]);   // drill -> ROLE cells
+    return [];                                           // role cell / unit: atomic
   }
   // the squares of the CURRENT view. Root = TRACK squares (role hidden); a drilled
   // track shows its units. Depth is at most 1 (units are atomic). While the drill is
@@ -1884,15 +1906,16 @@
     if(Math.abs(b) < 1e-9) delete bias[keyStr]; else bias[keyStr] = b;
     return b;
   }
-  // Resolve st.bias into the two engine grains: a per-CHANNEL amplify VECTOR (the track
-  // roll-up, indexed by channel = source track) and a {unit_id -> amplify} MAP (the unit
-  // grain). This REPLACES the old region-vector send: track bias -> channel_bias,
-  // unit bias -> unit_bias. All-zero channel vector / empty unit map ⇒ bridge None ⇒
-  // byte-identical. Both are ALWAYS returned (explicit-empty), never omitted.
+  // Resolve st.bias into the field's engine grains: a per-CHANNEL amplify VECTOR (the
+  // TRACK roll-up, indexed by channel = source track -> channel_bias), a JSON-safe
+  // (TRACK, ROLE) cell list [[t, k, amp], ...] (the drilled role cells -> track_role_bias),
+  // and a {unit_id -> amplify} MAP (the DORMANT unit grain -> unit_bias, currently never
+  // populated since the drill opens roles not units). All EXPLICIT-EMPTY when unbiased ⇒
+  // bridge None per grain ⇒ byte-identical. All THREE always returned, never omitted.
   function fieldBiasPayload(st){
     var chans = world.channels || [], idxByTid = {};
     for(var i=0;i<chans.length;i++) idxByTid[chans[i].track_id|0] = i;
-    var cb = new Array(chans.length).fill(0), ub = {};
+    var cb = new Array(chans.length).fill(0), ub = {}, tr = [];
     var bias = st.bias || {};
     for(var ks in bias){
       if(!bias.hasOwnProperty(ks)) continue;
@@ -1901,11 +1924,13 @@
       if(key[0] === "track"){
         var idx = idxByTid[key[1]|0];
         if(idx !== undefined) cb[idx] = fieldClamp1(b);   // track roll-up grain
+      } else if(key[0] === "role"){
+        tr.push([key[1]|0, key[2]|0, fieldClamp1(b)]);    // (track, role) cell grain
       } else if(key[0] === "unit"){
-        ub[key[2]|0] = fieldClamp1(b);                    // key[2] = unit_id (setter key)
+        ub[key[2]|0] = fieldClamp1(b);                    // DORMANT unit grain (uid)
       }
     }
-    return { channel_bias: cb, unit_bias: ub };
+    return { channel_bias: cb, unit_bias: ub, track_role_bias: tr };
   }
   function fieldHexToHsl(hex){
     var n = parseInt(String(hex).replace("#", ""), 16);
@@ -1947,6 +1972,7 @@
   var fieldSettled    = [];  // per-role settled activity (glow) — WRITTEN ONLY by fieldApplySettled
   var fieldNowPlaying = {};  // track_id -> live activity (glow)  — WRITTEN ONLY by fieldApplySettled
   var fieldNowPlayingUnit = {}; // unit_id -> OWN live activity (glow) — WRITTEN ONLY by fieldApplySettled
+  var fieldNowPlayingTrackRole = {}; // "tid,k" -> (track,role) cell OWN live activity — WRITTEN ONLY by fieldApplySettled
   var fieldProfiles   = {};  // track_id -> anchor profile (static) — WRITTEN ONLY by fieldApplyStatic
   var fieldUnitPools  = {};  // role -> unit pool (static)          — WRITTEN ONLY by fieldApplyStatic
   var fieldTrackUnitPools = {}; // track_id -> per-track unit pool (static) — WRITTEN ONLY by fieldApplyStatic
@@ -1969,7 +1995,8 @@
 
   function fieldState(){
     return { roleact:fieldSettled, nowplaying:fieldNowPlaying,
-             nowplayingUnit:fieldNowPlayingUnit, profiles:fieldProfiles,
+             nowplayingUnit:fieldNowPlayingUnit,
+             nowplayingTrackRole:fieldNowPlayingTrackRole, profiles:fieldProfiles,
              unitPools:fieldUnitPools, trackUnitPools:fieldTrackUnitPools,
              names:fieldTrackNames, bias:fieldBias };
   }
@@ -2096,6 +2123,11 @@
     var npu = (d && d.nowplaying_unit) || {}, mu = {};
     for(var uk in npu){ if(npu.hasOwnProperty(uk)) mu[uk] = fieldClamp01(npu[uk]); }
     fieldNowPlayingUnit = mu;
+    // per-(track,role) cell glow: each ["role", t, k] cell glows by its OWN live share
+    // (nowplaying_track_role, keyed "tid,k"), NOT the track's or a unit's.
+    var npr = (d && d.nowplaying_track_role) || {}, mr = {};
+    for(var rk in npr){ if(npr.hasOwnProperty(rk)) mr[rk] = fieldClamp01(npr[rk]); }
+    fieldNowPlayingTrackRole = mr;
     fieldDraw();
   }
   // the STATIC per-world section (/api/world): per-track profiles + per-role unit pools
@@ -2164,11 +2196,11 @@
     if(!FIELD_DRILL_ENABLED) return false;
     if(!sq) return false;
     if(!sq.expandable){
-      // a track is non-expandable because its unit sub-structure is below the noise
-      // floor OR the server withheld the pools under a uniform B: name the unit-grain
-      // wall specifically in the arming-off case, else the generic atomic refusal.
-      if(sq.kind === "track" && !fieldProfileArmed){ fieldRefuseUnitGrain(); return false; }
-      fieldSetStatus("atomic — nothing distinct inside above the noise floor", false);
+      // non-expandable: a track whose per-role coverage is below the participation-ratio
+      // noise floor (no (track,role) cell clears it) — honest disarm — or a role cell
+      // (a leaf). Role cells don't route through the anchor pools, so the old unit-grain
+      // wall (fieldRefuseUnitGrain, retained dormant) does not apply here.
+      fieldSetStatus("atomic — no sub-parts above the noise floor", false);
       return false;
     }
     fieldStack.push(sq.key); fieldHover = null; fieldSetStatus("", false); fieldDraw();

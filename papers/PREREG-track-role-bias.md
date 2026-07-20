@@ -85,3 +85,37 @@ The (track × role) handle is a **LIVE control**, not mush: a clean monotone ran
 bearing point — it **genuinely dodges the role wall** (the pure-role control is measured
 inert while the cell moves). It is the first field handle that steers through an
 emergent (training-derived) structure. Prototype only; no FE, no merge/deploy.
+
+## FE WIRING (2026-07-20) — the field drill re-enabled onto ROLE cells
+The field drill (`FIELD_DRILL_ENABLED`, `index.html`) is re-enabled and **repointed from
+units to the (track × role) cells** — the proven emergent handle above. FE + engine_bridge
+telemetry + app.py routing ONLY; the bias mechanism (`channel_bias.py`/`tilt.py`/
+`realize.py`/engine) is FROZEN this phase; no root `ets/`. Byte-identical audio at neutral.
+
+- **Drill:** a TRACK opens into its ROLE cells (`fieldTrackRoles(st, t)`): one cell per
+  role `k` the track covers, self-sized by the participation-ratio noise floor
+  (`fieldClearsFloor(profile)` gates the track; the top-`round(PR(profile))` covered roles
+  are shown). A mushy/uncovered track drills to nothing — honest disarm. Role cells are
+  atomic (no deeper level). The UNIT infra (`fieldTrackUnits`, `track_unit_pool`,
+  per-unit glow, `unit_bias`) is retained **DORMANT** (defined but unreached). Still
+  **one-flag shelve-able**: `FIELD_DRILL_ENABLED=false` restores track-level-only.
+- **Bias:** a role cell (`["role", t, k]`) scroll/drag/arrow → a `(track, role)` amplify
+  in [−1,1] → the JSON-safe wire form `track_role_bias = [[t, k, amp], …]`, coerced in
+  `app.py` (`/api/steer`) to the `{(tid, role) → amp}` map `set_track_role_bias` consumes.
+  Track squares still bias the whole track via `set_channel_bias` (additive roll-up,
+  unchanged). Every publish sends all grains explicit-empty when unbiased ⇒ bridge None
+  per grain ⇒ byte-identical.
+- **Glow:** each cell glows by its OWN live share — `engine_bridge.track_role_activity`
+  reduces the produced bar by `(track_id, slot-role k)`, the SAME emergent `k` the
+  mechanism keys on, reconstructed from the committed `O` (for slot `s`, band `b`:
+  `k = argmax(O[:,s]·B[:,b])`, mass `sqrt((O[:,s]@B)[b])`; rows matched to bands by mass).
+  Read-only (no settle/write/render) ⇒ byte-identical. Normalized by peak cell mass to
+  0..1, EMA-smoothed like the per-unit glow, emitted as `nowplaying_track_role` (`"tid,k"`);
+  the FE reads it into each cell's `settled`. Glow (telemetry) stays separate from the bias
+  ring (WEBFAB split). Label: `R{k}` + its live share % (an abstract emergent part; no
+  invented human name).
+- **Verified:** mass-conserving reduction (`sum track_role_activity == sum row mass`),
+  per-cell divergence across bars; node drive of the FE pure logic (root=tracks →
+  drill=role cells, cell bias → `track_role_bias`, own-glow, mushy-track disarm, neutral
+  payload empty); app-route test coerces `[[t,k,amp]]` → `{(t,k):amp}` and clears on
+  absent; `test_channel_bias` mechanism byte-identity unchanged.

@@ -54,3 +54,37 @@ def test_absent_unit_reads_dark():
 
 def test_empty_bar_is_empty_map():
     assert nowplaying_unit_activity([]) == {}
+
+
+# --- per-(track, role) glow (track_role_activity) --------------------------------
+import numpy as _np
+from cloud.companion.engine_bridge import track_role_activity
+
+
+def test_track_role_activity_reconstructs_slot_role_and_conserves_mass():
+    """The role-cell glow reduces a bar by (track_id, slot-role k). For slot s, band b:
+    k = argmax(O[:,s]*B[:,b]) and the placed row carries mass sqrt((O[:,s]@B)[b]) — the
+    SAME k the (track,role) bias keys on. One slot, two bands, two tracks."""
+    B = _np.array([[1.0, 0.2], [0.1, 1.0]])          # M=2 anchors, n_bands=2
+    O = _np.array([[1.0], [1.0]])                    # one slot, col=[1,1]
+    e = O[:, 0] @ B                                  # [1.1, 1.2]
+    m0, m1 = float(_np.sqrt(e[0])), float(_np.sqrt(e[1]))
+    # band 0: k=argmax([1.0,0.1])=0 (track 3);  band 1: k=argmax([0.2,1.0])=1 (track 7)
+    rows = [(0, 3, 100, 0, m0), (0, 7, 200, 0, m1)]
+    act = track_role_activity(rows, O, B, s_phase=1)
+    assert act == {(3, 0): m0, (7, 1): m1}, f"slot-role reconstruction wrong: {act}"
+    # MASS CONSERVED: every placed row's mass is credited to exactly one (track, role)
+    assert abs(sum(act.values()) - (m0 + m1)) < 1e-9
+
+
+def test_track_role_activity_empty_and_distinct():
+    assert track_role_activity([], _np.zeros((2, 2)), _np.ones((2, 2)), 1) == {}
+    # two rows, same track, DIFFERENT slot-role -> two distinct cells (the point:
+    # a track's roles diverge, they don't share one glow)
+    B = _np.array([[1.0, 0.1], [0.1, 1.0]])
+    O = _np.array([[1.0], [1.0]])
+    e = O[:, 0] @ B
+    m0, m1 = float(_np.sqrt(e[0])), float(_np.sqrt(e[1]))
+    rows = [(0, 5, 1, 0, m0), (0, 5, 2, 0, m1)]      # same track 5, bands 0 and 1
+    act = track_role_activity(rows, O, B, s_phase=1)
+    assert set(act) == {(5, 0), (5, 1)}, f"one track's roles must be distinct cells: {act}"

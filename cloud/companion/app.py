@@ -1443,6 +1443,22 @@ class _Handler(BaseHTTPRequestHandler):
             # byte-identical audio. Track and unit are the only two bias grains — role
             # is internal to training and steers via the region lane, never here.
             p.set_unit_bias(data.get("unit_bias"))
+            # FIELD (TRACK, ROLE) CELL BIAS (PREREG-track-role-bias): the drill's role
+            # cell — track T's candidates leaned SOFTLY but only inside slots whose
+            # settled role is k (an EMERGENT sub-track handle; dodges the role wall). The
+            # wire form is JSON-safe [[track, role, amp], ...] (tuple keys can't be JSON);
+            # coerced here to the {(tid, role) -> amp} map set_track_role_bias consumes.
+            # Absent / empty => set_track_role_bias(None/{}) => no addend => byte-identical.
+            trb = data.get("track_role_bias")
+            cells = None
+            if trb:
+                cells = {}
+                for item in trb:
+                    try:
+                        cells[(int(item[0]), int(item[1]))] = float(item[2])
+                    except (TypeError, ValueError, IndexError):
+                        continue
+            p.set_track_role_bias(cells)
             self._json(200, {"ok": True})
             return
         if path == "/api/play":
