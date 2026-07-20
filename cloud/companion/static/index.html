@@ -1382,6 +1382,11 @@
         world.ready = true; world.M = w.M|0; world.sr = w.sr || world.sr;
         world.isTrained = !!w.is_trained;
         world.regionArmed = (w.region_armed !== false);   // default armed if absent
+        // REGION_SCALE for the grid's COLUMN (role) bias — the engine's OWN safe-envelope
+        // cap (bridge region_cap = ets.panel.envelope.SAFE_REGION_MAGNITUDE), so amp=±1 maps
+        // a single role column onto the full in-range region tilt. Fallback 1.0 (the same
+        // measured cap) on older payloads; never an invented gain.
+        world.regionCap = (typeof w.region_cap === "number" && w.region_cap > 0) ? w.region_cap : 1.0;
         // WARMING (OPEN_ENDS #21d): the bridge's REAL first-bar-produced flag and
         // the produce loop's recorded failure. warmed is claimed cold ONLY when
         // the backend explicitly says warmed:false — never inferred client-side.
@@ -1693,9 +1698,16 @@
     // EXPLICITLY — no stale lean lingers. Empty at both grains ⇒ bridge None for each
     // ⇒ no fiber addend ⇒ byte-identical audio (the hard invariant).
     var fb = fieldBiasPayload(fieldState());
-    payload.channel_bias    = fb.channel_bias;    // TRACK roll-up (vector; all-zero ⇒ None)
-    payload.track_role_bias = fb.track_role_bias; // (TRACK, ROLE) cells ([[t,k,amp]]; [] ⇒ None)
+    payload.channel_bias    = fb.channel_bias;    // ROW: TRACK roll-up (vector; all-zero ⇒ None)
+    payload.track_role_bias = fb.track_role_bias; // CELL: (TRACK, ROLE) cells ([[t,k,amp]]; [] ⇒ None)
     payload.unit_bias       = fb.unit_bias;       // DORMANT unit grain ({uid->amp}; empty ⇒ None)
+    // COLUMN (role): the settlement/region lane. The grid's role-column bias is an ADDEND onto
+    // the same zero-init region base the KNOBS fold into — routed to region (settlement), never
+    // to the fiber (the role wall). All-zero when no column is biased ⇒ region base unchanged ⇒
+    // set_region(zeros) ⇒ neutral tilt ⇒ byte-identical audio (the hard invariant, unchanged).
+    for(var ri = 0; ri < payload.region.length && ri < fb.region_add.length; ri++){
+      payload.region[ri] += fb.region_add[ri];
+    }
     sendSteer(payload);
   }
 
@@ -1719,6 +1731,15 @@
   // restore TRACK-LEVEL-ONLY (no drill; a track scroll/drag/arrow just biases the track,
   // and the drill-in gesture Ctrl+scroll / pinch / click is a no-op).
   var FIELD_DRILL_ENABLED = true;
+  // TRACK × ROLE GRID (PREREG-track-role-grid): the field laid out as a labeled matrix —
+  // rows = source tracks, columns = roles k=0..M-1, interior = (track, role) cells. Each
+  // grain rides the SEEN-THROUGH jack: a ROW header leans the track roll-up on the CASTING
+  // (fiber pick) lane (channel_bias), a CELL leans the (track, role) sub-track on the SAME
+  // pick lane (track_role_bias), and a COLUMN header rides the SETTLEMENT lane (region) —
+  // a pure role can't ride the fiber (the measured-inert role wall), so it steers occupancy
+  // through region only. All three lanes are independent and COEXIST. ONE-FLAG reversible:
+  // set false to restore today's drill field (FIELD_DRILL_ENABLED / drill infra untouched).
+  var FIELD_GRID_ENABLED = true;
   var TRACK_COLORS = ["#4FE0AE","#E8A24C","#7CA8FF","#E86A6A","#C58CF0","#F2D06B","#6BE0D2","#F09CC5"];
   var FIELD_HEADER = 22;          // top strip reserved for the breadcrumb (grid below)
   var FIELD_BIAS_LIMIT = 1.0;     // soft-saturation stop (matches amplify's [-1,1])
@@ -1915,7 +1936,13 @@
   function fieldBiasPayload(st){
     var chans = world.channels || [], idxByTid = {};
     for(var i=0;i<chans.length;i++) idxByTid[chans[i].track_id|0] = i;
-    var cb = new Array(chans.length).fill(0), ub = {}, tr = [];
+    var M = world.M || 0;
+    var cb = new Array(chans.length).fill(0), ub = {}, tr = [], ra = new Array(M).fill(0);
+    // COLUMN (role) bias rides the SETTLEMENT lane (region). Honest disarm: on a
+    // region-DISARMED corpus the column emits NO region force (it settles no differently),
+    // so a stale column bias can never push — the header is dimmed AND inert.
+    var regionArmed = !fieldRegionDisarmed();
+    var scale = (typeof world.regionCap === "number" && world.regionCap > 0) ? world.regionCap : 1.0;
     var bias = st.bias || {};
     for(var ks in bias){
       if(!bias.hasOwnProperty(ks)) continue;
@@ -1923,15 +1950,91 @@
       var key = JSON.parse(ks);
       if(key[0] === "track"){
         var idx = idxByTid[key[1]|0];
-        if(idx !== undefined) cb[idx] = fieldClamp1(b);   // track roll-up grain
+        if(idx !== undefined) cb[idx] = fieldClamp1(b);   // ROW: track roll-up (CASTING/pick)
       } else if(key[0] === "role"){
-        tr.push([key[1]|0, key[2]|0, fieldClamp1(b)]);    // (track, role) cell grain
+        tr.push([key[1]|0, key[2]|0, fieldClamp1(b)]);    // CELL: (track, role) sub-track (CASTING/pick)
+      } else if(key[0] === "col"){
+        var k = key[1]|0;                                 // COLUMN: role occupancy (SETTLEMENT/region)
+        if(regionArmed && k >= 0 && k < M) ra[k] += fieldClamp1(b) * scale;
       } else if(key[0] === "unit"){
         ub[key[2]|0] = fieldClamp1(b);                    // DORMANT unit grain (uid)
       }
     }
-    return { channel_bias: cb, unit_bias: ub, track_role_bias: tr };
+    // region_add is a length-M ADDEND onto the zero-init region base (folded in sendSteerNow).
+    // All-zero when no column is biased (or region disarmed) ⇒ no settlement tilt ⇒ byte-identical.
+    return { channel_bias: cb, unit_bias: ub, track_role_bias: tr, region_add: ra };
   }
+  // Region honest-disarm predicate: region is the SETTLEMENT lane the columns ride; when the
+  // corpus's σ_φ.region is unidentifiable the lane applies the exact identity tilt (taps settle
+  // no differently), so the column headers must render as steer-INACTIVE rather than pretend.
+  function fieldRegionDisarmed(){ return !world.regionArmed; }
+  /* ---------- TRACK × ROLE GRID (PREREG-track-role-grid) — pure logic ---------- */
+  // COLUMN glow + share by a client-side, mass-conserving reduction of the per-(track,role)
+  // telemetry: role-k glow = Σ_tracks nowplaying_track_role[*,k] (clamped for display); role-k
+  // SHARE = that sum / the total over all cells (a genuine partition of live placements). Same
+  // (track,role) telemetry the cells glow by — one source, reduced, never a fabricated pulse.
+  function fieldColShares(st, M){
+    var glow = new Array(M).fill(0), tot = 0;
+    var npr = (st && st.nowplayingTrackRole) || {};
+    for(var rk in npr){
+      if(!npr.hasOwnProperty(rk)) continue;
+      var k = (rk.split(",")[1]) | 0, v = +npr[rk] || 0;
+      if(k >= 0 && k < M){ glow[k] += v; tot += v; }
+    }
+    var share = new Array(M).fill(0);
+    for(var j = 0; j < M; j++){ share[j] = tot > 0 ? glow[j] / tot : 0; }
+    return { glow: glow.map(function(g){ return g > 1 ? 1 : g; }), share: share };
+  }
+  // Lay out the grid over the canvas box: row-header column (track names) on the left, a
+  // column-header strip (roles) across the top under the breadcrumb, the (track × role) cells
+  // filling the interior. Returns each biasable square with its hit RECT and its telemetry.
+  function fieldGridPlace(st, W, H){
+    var tracks = fieldTrackIds(st), T = tracks.length, M = world.M || 0;
+    var top = FIELD_HEADER;
+    var rhW = Math.max(56, Math.min(160, Math.floor(W * 0.22)));
+    var chH = 30;
+    var x0 = rhW, y0 = top + chH;
+    var cellW = M > 0 ? (W - rhW) / M : (W - rhW);
+    var cellH = T > 0 ? (H - y0) / T : (H - y0);
+    var shares = fieldColShares(st, M), disarmed = fieldRegionDisarmed();
+    var placed = [];
+    for(var k = 0; k < M; k++){                            // COLUMN headers (roles)
+      var ckey = ["col", k];
+      placed.push({ kind:"col", key:ckey, label:"R"+k, track:null,
+        settled:fieldClamp01(shares.glow[k]), share:shares.share[k],
+        bias:st.bias[fieldKeyStr(ckey)] || 0, disarmed:disarmed,
+        rect:{ x:x0 + k*cellW, y:top, w:cellW, h:chH } });
+    }
+    for(var r = 0; r < T; r++){
+      var t = tracks[r], tkey = ["track", t];
+      placed.push({ kind:"track", key:tkey, label:fieldTrackName(st, t), track:t,  // ROW header (track)
+        settled:fieldClamp01((st.nowplaying && st.nowplaying[t]) || 0),
+        bias:st.bias[fieldKeyStr(tkey)] || 0,
+        rect:{ x:0, y:y0 + r*cellH, w:rhW, h:cellH } });
+      for(var kk = 0; kk < M; kk++){                       // interior (track, role) CELLS
+        var rkey = ["role", t, kk];
+        var glow = (st.nowplayingTrackRole && st.nowplayingTrackRole[fieldTRKey(t, kk)]) || 0;
+        placed.push({ kind:"cell", key:rkey, label:"", track:t,
+          settled:fieldClamp01(glow), bias:st.bias[fieldKeyStr(rkey)] || 0,
+          rect:{ x:x0 + kk*cellW, y:y0 + r*cellH, w:cellW, h:cellH } });
+      }
+    }
+    return { placed:placed, layout:{ rhW:rhW, chH:chH, x0:x0, y0:y0, top:top,
+             cellW:cellW, cellH:cellH, T:T, M:M } };
+  }
+  // Hit-test the grid by rect containment (row header / column header / interior cell).
+  function fieldGridSquareAt(x, y){
+    if(!fieldCanvas) return null;
+    var g = fieldGridPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
+    for(var i = 0; i < g.placed.length; i++){
+      var rc = g.placed[i].rect;
+      if(x >= rc.x && x < rc.x + rc.w && y >= rc.y && y < rc.y + rc.h) return g.placed[i];
+    }
+    return null;
+  }
+  // Column (role) header colour: a cool STEEL family, deliberately distinct from the saturated
+  // per-track row/cell colours so a column never reads as a track. Glow rides its alpha.
+  function fieldRoleColor(k){ return "hsl(210,16%," + (46 + ((k | 0) % 3) * 8) + "%)"; }
   function fieldHexToHsl(hex){
     var n = parseInt(String(hex).replace("#", ""), 16);
     var r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
@@ -2025,6 +2128,7 @@
     fieldStatus.classList.toggle("settling", !!settling);
   }
   function fieldSquareAt(x, y){
+    if(FIELD_GRID_ENABLED) return fieldGridSquareAt(x, y);
     var sqs = fieldViewSquares();
     var idx = fieldHitIndex(x, y - FIELD_HEADER, fieldCanvas.clientWidth,
                             fieldCanvas.clientHeight - FIELD_HEADER, sqs.length);
@@ -2067,6 +2171,7 @@
     fieldCtx.clearRect(0, 0, W, H);
     fieldRenderLegend();
     var st = fieldState();
+    if(FIELD_GRID_ENABLED){ fieldDrawGrid(st, W, H); return; }
     fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
     fieldCtx.fillText(fieldBreadcrumb(st, fieldStack) +
       (fieldStack.length ? "   (click header / Ctrl+scroll out)" : ""), 8, 15);
@@ -2109,6 +2214,71 @@
         fieldCtx.fillText("▸"+sq.nChildren, x+cw-24, y+ch-10);
       }
     }
+  }
+  // Draw the TRACK × ROLE grid: a labeled matrix (rows = tracks, cols = roles, interior =
+  // cells). Every square keeps the field's look — GLOW (fill alpha) = live telemetry, the
+  // bias RING = operator input (kept honestly distinct, the WEBFAB split). Column headers on
+  // a region-DISARMED corpus render DIM + tagged "off" (steer-inactive), never a fake control.
+  function fieldDrawGrid(st, W, H){
+    var g = fieldGridPlace(st, W, H), lay = g.layout;
+    fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
+    fieldCtx.fillText("TRACK × ROLE  (scroll / drag a row, column or cell to bias · up=amplify)",
+                      8, 15);
+    if(lay.T === 0 || lay.M === 0){
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field",
+                        14, FIELD_HEADER + 20);
+      return;
+    }
+    // corner cell (axis legend, non-interactive)
+    fieldCtx.fillStyle = "rgba(255,255,255,.03)";
+    fieldCtx.fillRect(1, lay.top + 1, lay.rhW - 2, lay.chH - 2);
+    fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "10px " + cssVar("--font-mono");
+    fieldCtx.fillText("track ↓ role →", 6, lay.top + lay.chH - 10);
+    var disarmed = fieldRegionDisarmed();
+    g.placed.forEach(function(sq){
+      var rc = sq.rect, x = rc.x, y = rc.y, w = rc.w, h = rc.h;
+      var col = (sq.kind === "track") ? fieldTrackColor(sq.track)
+              : (sq.kind === "col")   ? fieldRoleColor(sq.key[1] | 0)
+              : fieldFamilyShade(fieldTrackColor(sq.track), sq.key[2] | 0);   // cell = track family
+      var dim = (sq.kind === "col") && sq.disarmed;
+      // GLOW fill = settled telemetry ONLY (dimmed further on a disarmed column header)
+      fieldCtx.globalAlpha = (0.14 + 0.86 * sq.settled) * (dim ? 0.4 : 1);
+      fieldCtx.fillStyle = col; fieldCtx.fillRect(x + 2, y + 2, w - 4, h - 4);
+      fieldCtx.globalAlpha = 1;
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
+      if(fieldKeyEq(sq.key, fieldHover)){
+        fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 1;
+        fieldCtx.strokeRect(x + 3.5, y + 3.5, w - 7, h - 7);
+      }
+      // bias RING (separate from glow): accent = amplify, damp hue = damp; width by |bias|.
+      // Never drawn on a disarmed column (no bias is possible there — honest, not a fake ring).
+      if(!dim && Math.abs(sq.bias) > 1e-9){
+        fieldCtx.strokeStyle = sq.bias > 0 ? cssVar("--accent") : cssVar("--damp");
+        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(sq.bias));
+        fieldCtx.strokeRect(x + 5, y + 5, w - 10, h - 10);
+      }
+      // labels
+      fieldCtx.fillStyle = dim ? cssVar("--faint") : cssVar("--ink");
+      fieldCtx.font = "10px " + cssVar("--font-mono");
+      if(sq.kind === "track"){
+        fieldCtx.fillText(fieldTruncMiddle(sq.label, Math.max(6, Math.floor(w / 7))), x + 6, y + 14);
+        fieldCtx.fillStyle = cssVar("--muted");
+        fieldCtx.fillText(Math.round(sq.settled * 100) + "", x + 6, y + h - 7);
+      } else if(sq.kind === "col"){
+        fieldCtx.fillText(sq.label, x + 5, y + 12);
+        fieldCtx.fillStyle = cssVar("--muted");
+        fieldCtx.fillText(Math.round(sq.share * 100) + "%", x + 5, y + h - 8);
+        if(sq.disarmed){
+          fieldCtx.fillStyle = cssVar("--faint");
+          fieldCtx.fillText("off", x + w - 20, y + 12);
+        }
+      } else if(w > 26 && h > 20){                       // cell: settled % if it fits
+        fieldCtx.fillStyle = cssVar("--muted");
+        fieldCtx.fillText(Math.round(sq.settled * 100) + "", x + 4, y + h - 6);
+      }
+    });
   }
   // ---- THE TELEMETRY APPLIERS: the SOLE writers of the glow stores. Input handlers
   // never call these. Empty telemetry -> empty field (no fabrication).
@@ -2160,13 +2330,18 @@
     var rect = fieldCanvas.getBoundingClientRect();
     var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
     var px = fieldWheelPx(ev.deltaY, ev.deltaMode);
-    if(ev.ctrlKey){                                      // Ctrl+scroll / trackpad pinch = drill
+    if(ev.ctrlKey && !FIELD_GRID_ENABLED){               // Ctrl+scroll = drill (grid mode: no drill)
       var g = fieldZoomGate(fieldZoomWheelState, -px, performance.now());
       fieldZoomWheelState = { acc: g.acc, lastStepMs: g.lastStepMs };
       if(g.step) fieldZoom(sq, g.step);
       return;
     }
     if(!sq || !px) return;
+    // COLUMN honest disarm: a role column on a region-disarmed corpus takes no bias (it would
+    // settle no differently) — refuse the gesture rather than accumulate an inert lean.
+    if(sq.kind === "col" && sq.disarmed){
+      fieldSetStatus("region DISARMED — column steer inactive on this corpus", false); return;
+    }
     // BIAS: one FIELD_BIAS_STEP per FIELD_WHEEL_BIAS_PX of travel (wheel up = amplify),
     // remainder kept; retargeting drops the old square's sub-step remainder.
     var ks = fieldKeyStr(sq.key);
@@ -2190,6 +2365,9 @@
     if(amount > 0){ fieldZoomInto(sq); } else if(amount < 0){ fieldZoomOut(); }
   }
   function fieldZoomInto(sq){
+    // GRID MODE: the whole matrix is visible at once, so drill is off (the grid IS the
+    // (track × role) view the drill used to reach) — the gesture is a silent no-op.
+    if(FIELD_GRID_ENABLED) return false;
     // DORMANT DRILL (operator, track-level-only): the drill-in gesture is a silent
     // no-op while FIELD_DRILL_ENABLED is false — a track scroll/drag/arrow only biases,
     // never descends to units. Retained (not deleted) for future re-enable.
@@ -2230,7 +2408,8 @@
     return Math.sqrt(dx*dx + dy*dy);
   }
   function fieldTouchStart(ev){
-    if(ev.touches && ev.touches.length === 2){           // two fingers = pinch drill
+    if(ev.touches && ev.touches.length === 2){           // two fingers = pinch drill (off in grid mode)
+      if(FIELD_GRID_ENABLED){ fieldTouch = null; return; }
       fieldPinch = fieldTouchDist(ev); fieldTouch = null;
       fieldPinchState = { acc: 0, lastStepMs: fieldPinchState.lastStepMs };
       return;
@@ -2238,12 +2417,16 @@
     if(!(ev.touches && ev.touches.length === 1)) return;
     var t = ev.touches[0], rect = fieldCanvas.getBoundingClientRect();
     var x = t.clientX - rect.left, y = t.clientY - rect.top;
-    var sq = (world.ready && y >= FIELD_HEADER) ? fieldSquareAt(x, y) : null;
-    fieldTouch = { key: sq ? sq.key : null, header: y < FIELD_HEADER,
+    // GRID MODE: the whole box is the matrix (row headers sit BELOW the breadcrumb, columns
+    // are hit like any cell), so target from the full box; today's field keeps its header band.
+    var sq = world.ready ? ((FIELD_GRID_ENABLED || y >= FIELD_HEADER) ? fieldSquareAt(x, y) : null) : null;
+    fieldTouch = { key: sq ? sq.key : null, header: (!FIELD_GRID_ENABLED && y < FIELD_HEADER),
+                   disarmedCol: !!(sq && sq.kind === "col" && sq.disarmed),
                    x: x, y: y, lastY: t.clientY, acc: 0, moved: 0 };
   }
   function fieldTouchMove(ev){
-    if(ev.touches && ev.touches.length === 2){           // two-finger pinch = drill
+    if(ev.touches && ev.touches.length === 2){           // two-finger pinch = drill (off in grid mode)
+      if(FIELD_GRID_ENABLED){ ev.preventDefault(); return; }
       ev.preventDefault();
       fieldTouch = null;
       var d = fieldTouchDist(ev), delta = d - fieldPinch; fieldPinch = d;
@@ -2263,6 +2446,10 @@
     var dist = Math.sqrt(dx*dx + dy*dy);
     if(dist > fieldTouch.moved) fieldTouch.moved = dist;
     if(!world.ready || fieldTouch.key === null){ fieldTouch.lastY = t.clientY; return; }
+    if(fieldTouch.disarmedCol){                          // COLUMN honest disarm (region off): inert
+      fieldTouch.lastY = t.clientY;
+      fieldSetStatus("region DISARMED — column steer inactive on this corpus", false); return;
+    }
     fieldTouch.acc += (fieldTouch.lastY - t.clientY);    // +up = amplify (wheel-up analog)
     fieldTouch.lastY = t.clientY;
     var s = fieldDragSteps(fieldTouch.acc);
@@ -2281,9 +2468,12 @@
     if(g.header){ fieldZoomOut(); return; }              // header tap = drill out
     if(!world.ready || g.key === null) return;
     // TAP on a square: show its hover highlight + tooltip only — no drill, no emit.
-    var trk = (g.key[0] === "unit") ? g.key[g.key.length - 1] : g.key[1];
     fieldHover = g.key;
-    if(fieldCanvas) fieldCanvas.title = fieldTrackName(fieldState(), trk);
+    if(fieldCanvas){
+      fieldCanvas.title = (g.key[0] === "col")
+        ? ("role R" + (g.key[1] | 0))                    // column header: the role, not a track
+        : fieldTrackName(fieldState(), (g.key[0] === "unit") ? g.key[g.key.length - 1] : g.key[1]);
+    }
     fieldDraw();
   }
   function fieldInit(){
