@@ -1,7 +1,10 @@
 # PREREG (PROTOTYPE) — (track × role) SUB-TRACK field bias
 
-**Status:** PROTOTYPE / exploratory (operator-directed 2026-07-19). Build the
-mechanism + a gate, MEASURE, report — **do NOT merge/deploy**. Extends the field-bias
+**Status:** **PROMOTED + RATIFIED** (operator-directed 2026-07-20 "do autonomous... run it").
+The prototype MEASURED as a LIVE control (ρ=1.0, strong damp, byte-identical off, provably
+dodges the role wall), so per operator direction the drill is re-pointed onto it and it ships.
+ets-auditor **PASS** on the mechanism (6f00fff) and **PASS** on the FE drill (d860937). Cleared
+for merge + deploy. (Originally: PROTOTYPE / exploratory, operator-directed 2026-07-19.) Extends the field-bias
 carrier (`PREREG-channel-bias-squares-REV2` track grain + `PREREG-field-bias-REV3`
 unit grain, both left intact). Additive, byte-identical when off, single carrier
 (I-1). **Awaiting ets-auditor PASS.**
