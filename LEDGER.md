@@ -1544,3 +1544,6 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `db3365f`
 - `Edit` BACKUPS.md (2026-07-20T18:26:08+00:00)
 - `Edit` release-manifest.json (2026-07-20T18:26:21+00:00)
+
+### at `844b81c`
+- `Write` papers/TECH-SPEC-steering-instrument.md (2026-07-23T16:21:21+00:00)
