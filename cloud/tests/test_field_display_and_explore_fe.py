@@ -150,14 +150,24 @@ def test_fullscreen_plan_branches():
 
 # --- MINE : owner-only Remove gate ------------------------------------------
 
-def test_explore_removable_is_owner_only():
+def test_explore_removable_owner_or_keyed_operator():
+    """Removable = MY set, or ANY set when this session is the keyed OPERATOR
+    (world.canTrain) — the operator curates the catalog (2026-07-24, requested:
+    'i dont even see remove button for the other sets'). Server-enforced either
+    way (owner-gated /api/share; owner-session-gated /api/admin/unshare)."""
     driver = _explore_block() + """
+    var world = {};                              // visitor: strict owner flag only
     if(exploreRemovable({ mine:true, id:'x' })  !== true){  console.log('FAIL mine'); process.exit(1); }
     if(exploreRemovable({ mine:false, id:'x' }) !== false){ console.log('FAIL notmine'); process.exit(1); }
     if(exploreRemovable({ id:'x' })             !== false){ console.log('FAIL absent'); process.exit(1); }
     if(exploreRemovable(null)                   !== false){ console.log('FAIL null'); process.exit(1); }
     // a truthy-but-not-true `mine` (e.g. 1) must NOT unlock removal (strict owner flag).
     if(exploreRemovable({ mine:1 })             !== false){ console.log('FAIL loose'); process.exit(1); }
+    // keyed OPERATOR (canTrain) may remove ANY set; strict-true only.
+    world = { canTrain: true };
+    if(exploreRemovable({ mine:false, id:'x' }) !== true){ console.log('FAIL op'); process.exit(1); }
+    world = { canTrain: 1 };
+    if(exploreRemovable({ mine:false, id:'x' }) !== false){ console.log('FAIL oploose'); process.exit(1); }
     if(exploreRemoveMsg('My Set') !== 'Remove My Set from Explore?'){ console.log('FAIL msg'); process.exit(1); }
     console.log('OK');
     """

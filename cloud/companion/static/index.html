@@ -970,6 +970,24 @@
 
     <!-- ================= TRAIN PANE (build MY world; owner-only) ================= -->
     <div class="pane" id="paneTrain" data-pane="train" role="tabpanel" aria-labelledby="tabTrain">
+    <!-- LOADED SET (Set-tab flow): when a shared set is OPEN from Explore, the Set
+         tab shows THAT — name, owner, actions — and the corpus/train sections hide
+         (no drop-box clutter under someone else's set). Close returns Play to your
+         own world and reveals the corpus flow again. Remove (owner) delists it. -->
+    <section class="block panel" id="loadedSetCard" style="display:none">
+      <div class="sec-h">
+        <span class="lbl">Loaded set</span><span class="rule"></span>
+      </div>
+      <div class="row" style="align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="min-width:200px">
+          <div id="loadedSetName" style="font-size:15px;font-weight:600">shared set</div>
+          <div class="note" id="loadedSetMeta">opened from Explore</div>
+        </div>
+        <span class="rule"></span>
+        <button class="act ghost" id="loadedSetClose" style="padding:7px 14px;font-size:12px" title="Return Play to your own world">Close set</button>
+        <button class="act ghost" id="loadedSetRemove" style="padding:7px 14px;font-size:12px;display:none" title="Delist this set from Explore">Remove from Explore</button>
+      </div>
+    </section>
     <!-- THE TRAINED OBJECT — a PLAIN TRACKLIST (item 3, de-stylized, operator
          decision): just the song names, playlist style, + a lean receipt beside
          it. No tiles, no weight bars, no numbers, no colour, no role squares —
@@ -1474,6 +1492,7 @@
       world.keyed = !!w.keyed;
       applyTabVisibility(!world.canTrain);
       applyTrainGating();   // POSTING controls (ingest/train/publish) owner-only
+      updateSetPane();      // Set-tab flow: loaded shared set vs own-corpus sections
       // UNLOCK affordance (OPEN_ENDS #16): a keyless VISITOR on a KEYED deploy can
       // enter a key to become an owner. Shown only when there is a key to enter
       // (keyed) AND this session is not already an owner (!canTrain).
@@ -1678,6 +1697,65 @@
       world.ready = false; world.isTrained = false; world.openedSetId = null;
       worldLoadStart = Date.now(); setOverlayLoading(); loadWorld();
     }).catch(noop);
+  });
+
+  /* ===== SET-TAB FLOW (operator spec): when a shared set is OPEN, the Set tab
+     shows THAT (name + Close + owner Remove) and the corpus/train sections hide —
+     no drop-box clutter under someone else's set. Close reverts Play to your own
+     world and reveals the corpus flow again. Display-only toggling; every action
+     rides an existing server-gated route. ===== */
+  var loadedSetCache = {};   // set_id -> {name, owner, mine} (from /api/explore)
+  function updateSetPane(){
+    var card = $("loadedSetCard"), src = $("sourceSection"), trn = $("trainSection");
+    if(!card || !src || !trn) return;
+    var sid = world.openedSetId;
+    if(sid){
+      card.style.display = "";
+      src.style.display = "none";
+      trn.style.display = "none";
+      var e = loadedSetCache[sid];
+      $("loadedSetName").textContent = (e && e.name) || "shared set";
+      $("loadedSetMeta").textContent = "opened from Explore" + ((e && e.owner) ? " · by " + e.owner : "");
+      $("loadedSetRemove").style.display = (world.canTrain === true) ? "" : "none";
+      if(!e){
+        fetch("/api/explore").then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+          ((j && j.sets) || []).forEach(function(s){ loadedSetCache[s.id] = { name:s.name, owner:s.owner, mine:!!s.mine }; });
+          var e2 = loadedSetCache[sid];
+          if(e2 && world.openedSetId === sid){
+            $("loadedSetName").textContent = e2.name || "shared set";
+            $("loadedSetMeta").textContent = "opened from Explore" + (e2.owner ? " · by " + e2.owner : "");
+          }
+        }).catch(noop);
+      }
+    } else {
+      card.style.display = "none";
+      src.style.display = "";
+      trn.style.display = "";
+    }
+  }
+  $("loadedSetClose").addEventListener("click", function(){
+    fetch("/api/open", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ set_id:null }) })
+      .then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+      .then(function(j){
+        if(j === null) return;
+        if(state !== "idle") stopPlayback();
+        world.ready = false; world.openedSetId = null;
+        worldLoadStart = Date.now(); setOverlayLoading(); loadWorld();
+      }).catch(noop);
+  });
+  $("loadedSetRemove").addEventListener("click", function(){
+    var sid = world.openedSetId; if(!sid) return;
+    var e = loadedSetCache[sid] || {};
+    if(!window.confirm(exploreRemoveMsg(e.name))) return;
+    var req = (e.mine === true)
+      ? fetch("/api/share", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ on:false, set_id:sid }) })
+      : fetch("/api/admin/unshare", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ set_id:sid }) });
+    req.then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+      .then(function(){
+        if(state !== "idle") stopPlayback();
+        world.ready = false; world.openedSetId = null;
+        worldLoadStart = Date.now(); setOverlayLoading(); loadWorld(); loadExplore();
+      }).catch(noop);
   });
 
   /* ================= TRAIN ================= */
@@ -4244,7 +4322,13 @@
      owner-gated unshare (POST /api/share {on:false, set_id}); the backend enforces
      owner-only (a foreign set_id -> 403), so this is a display gate over an already
      authorized path — no new unauth route. */
-  function exploreRemovable(entry){ return !!(entry && entry.mine === true); }
+  function exploreRemovable(entry){
+    // A set is removable when it is YOURS — or when this session is the keyed
+    // OPERATOR (can_train): the operator curates the whole catalog. The backend
+    // enforces both paths (owner-gated /api/share; owner-session-gated
+    // /api/admin/unshare) — this stays a display gate over authorized routes.
+    return !!(entry && (entry.mine === true || (world && world.canTrain === true)));
+  }
   function exploreRemoveMsg(name){ return "Remove " + (name || "this set") + " from Explore?"; }
   /* ===== END EXPLORE PURE LOGIC ===== */
   function renderExplore(sets){
@@ -4259,6 +4343,7 @@
       var removeBtn = exploreRemovable(s)
         ? '<button class="act ghost exp-remove" data-remove="'+escapeHtml(s.id)+'" '+
           'data-name="'+escapeHtml(s.name || "shared set")+'" '+
+          'data-mine="'+(s.mine ? "1" : "0")+'" '+
           'style="padding:7px 12px;font-size:12px">Remove</button>'
         : '';
       card.innerHTML =
@@ -4275,21 +4360,29 @@
       b.addEventListener("click", function(){ openSet(b.getAttribute("data-open")); });
     });
     exploreList.querySelectorAll("[data-remove]").forEach(function(b){
-      b.addEventListener("click", function(){ removeMySet(b.getAttribute("data-remove"), b.getAttribute("data-name")); });
+      b.addEventListener("click", function(){
+        removeMySet(b.getAttribute("data-remove"), b.getAttribute("data-name"),
+                    b.getAttribute("data-mine") === "1");
+      });
     });
   }
   // OWNER-ONLY REMOVE: confirm, then the SAME owner-gated unshare the publish toggle
   // uses (POST /api/share {on:false, set_id}). A non-owner never sees this button, and
   // the backend 403s a foreign set_id regardless — no new unauth path. Refresh the list.
-  function removeMySet(id, name){
+  function removeMySet(id, name, mine){
     if(!id) return;
     if(!window.confirm(exploreRemoveMsg(name))) return;
-    fetch("/api/share", { method:"POST", headers:{ "Content-Type":"application/json" },
-                          body:JSON.stringify({ on:false, set_id:id }) })
-      .then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+    // MY set delists via the owner-gated unshare; ANY OTHER set (operator
+    // curation) via the owner-SESSION-gated admin unshare. Both server-enforced.
+    var req = (mine === false)
+      ? fetch("/api/admin/unshare", { method:"POST", headers:{ "Content-Type":"application/json" },
+                                      body:JSON.stringify({ set_id:id }) })
+      : fetch("/api/share", { method:"POST", headers:{ "Content-Type":"application/json" },
+                              body:JSON.stringify({ on:false, set_id:id }) });
+    req.then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
       .then(function(j){
         if(j === null) return;
-        if(j.ok && typeof setShareUI === "function") setShareUI(false);  // sync the Train publish toggle
+        if(j.ok && mine !== false && typeof setShareUI === "function") setShareUI(false);  // sync the Train publish toggle
         loadExplore();
       })
       .catch(function(){ loadExplore(); });
