@@ -141,6 +141,13 @@ class Companion:
         # and is never durably tracked (its files already persist in the base dir).
         self._store_hash: Optional[str] = None
         self._store_kind: Optional[str] = None
+        # ASYNC TRAIN state (hosted deploys): the background train thread + its
+        # outcome, read by /api/status so the FE reconciles across dropped
+        # requests / reloads instead of wedging on a gateway timeout.
+        self.train_thread: Optional[threading.Thread] = None
+        self.train_result: Optional[dict] = None
+        self.train_error: Optional[dict] = None
+        self._train_lock = threading.Lock()
 
     def player(self):
         """Lazily construct/resolve the LOCAL render bridge. Import is deferred so the
@@ -240,6 +247,53 @@ class Companion:
         finally:
             if reg is not None:
                 reg.end_train()
+
+    def start_train_async(self, seed: int = 0, sweeps: int = 8,
+                          sigma: Optional[float] = None, on_done=None) -> dict:
+        """Kick run_train in a BACKGROUND thread and return immediately — the hosted
+        deploy's train entry. A long train no longer rides a single HTTP request
+        (which the edge gateway kills at its timeout, wedging the FE while the
+        server keeps training blind): the FE gets {training:true} now and follows
+        the REAL state via /api/status (training / train_result / train_error).
+
+        Re-entrant by design: a second call while a train is already running (a
+        re-click, a reloaded page) ATTACHES to the running train instead of
+        starting another — the accidental-double-train fix. ``on_done`` (the
+        handler's persist seam) runs after success OR failure, never both paths."""
+        with self._train_lock:
+            if self.train_thread is not None and self.train_thread.is_alive():
+                return {"ok": True, "training": True, "already_running": True,
+                        "train_stages": list(self.train_stages)}
+            self.train_result = None
+            self.train_error = None
+
+            def _worker():
+                try:
+                    self.train_result = self.run_train(seed=seed, sweeps=sweeps,
+                                                       sigma=sigma)
+                except TrainBusy as exc:
+                    self.train_error = {"busy": True, "error": str(exc)}
+                except SystemExit as exc:      # ingest guidance (e.g. no audio)
+                    self.train_error = {"error": str(exc)}
+                except Exception as exc:
+                    log.exception("background train failed")
+                    self.train_error = {"error": f"{type(exc).__name__}: {exc}"}
+                finally:
+                    if on_done is not None:
+                        try:
+                            on_done()
+                        except Exception:
+                            log.exception("train on_done persist failed")
+
+            t = threading.Thread(target=_worker, daemon=True, name="ets-train")
+            self.train_thread = t
+            t.start()
+        return {"ok": True, "training": True, "started": True}
+
+    @property
+    def training(self) -> bool:
+        t = self.train_thread
+        return t is not None and t.is_alive()
 
     def _run_train(self, seed: int = 0, sweeps: int = 8,
                    sigma: Optional[float] = None, progress=None) -> dict:
@@ -504,10 +558,14 @@ class SessionStore:
     lived only in memory and were wiped on every redeploy, forcing a full retrain +
     re-share. This persists exactly those pointers + metadata, and NOTHING else.
 
-    Three JSON maps under ``<base>/_store``:
+    Four JSON maps under ``<base>/_store``:
       * keyed.json   : sha256(token) -> session record   (owner sessions)
       * anon.json    : sha256(token) -> session record   (anon visitors, LRU order)
       * catalog.json : set_id        -> shared-set record
+      * owners.json  : sha256(KEY)   -> session record   (durable per-KEY identity:
+        every login with the same access key re-lands on the SAME session/corpus,
+        instead of minting a fresh empty dir per token — the "my trained set
+        vanished after re-login" fix. Hash only; the raw key never lands on disk.)
 
     A record is POINTERS + METADATA only (dir path, is_trained + trained world path,
     opened_set_id, set_id/name, shared flag, last_receipt) — never audio, never a raw
@@ -523,6 +581,7 @@ class SessionStore:
     KEYED = "keyed.json"
     ANON = "anon.json"
     CATALOG = "catalog.json"
+    OWNERS = "owners.json"
 
     def __init__(self, base_dir) -> None:
         self.root = Path(base_dir) / "_store"
@@ -530,6 +589,7 @@ class SessionStore:
         self.keyed: "dict" = {}
         self.anon: "OrderedDict" = OrderedDict()   # LRU order (oldest first)
         self.catalog: "dict" = {}
+        self.owners: "dict" = {}
         self.skipped = 0
         self._restore()
 
@@ -566,6 +626,11 @@ class SessionStore:
                 self.catalog[sid] = rec
             else:
                 self.skipped += 1
+        for h, rec in (self._read(self.OWNERS) or {}).items():
+            if _valid_session_rec(rec):
+                self.owners[h] = rec
+            else:
+                self.skipped += 1
         if self.skipped:
             log.error("session store: skipped %d unreadable/invalid entr%s on restore",
                       self.skipped, "y" if self.skipped == 1 else "ies")
@@ -586,6 +651,9 @@ class SessionStore:
 
     def save_catalog(self) -> None:
         self._write(self.CATALOG, self.catalog)
+
+    def save_owners(self) -> None:
+        self._write(self.OWNERS, self.owners)
 
 
 class Hub:
@@ -633,6 +701,9 @@ class Hub:
         # (in-memory, known #17), not about engine RAM.
         self.max_anon = int(os.environ.get("ETS_MAX_ANON_SESSIONS", "1024"))
         self.anon_sessions: "OrderedDict[str, Companion]" = OrderedDict()
+        # DURABLE PER-KEY owner sessions: sha256(key) -> the ONE resident Companion
+        # for that key (all of a key's tokens resolve to the same object).
+        self.owner_sessions: "dict[str, Companion]" = {}
         self.catalog: "dict[str, CatalogEntry]" = {}
         self._lock = threading.Lock()
         # DURABLE STORE (OPEN_ENDS #17): the token->dir mappings + share catalog live
@@ -664,25 +735,174 @@ class Hub:
         return comp
 
     def authenticate(self, key: str):
-        """Validate a key against ETS_ACCESS_KEYS; on success mint a token + a fresh
-        per-visitor session, and DURABLY record its hash->dir mapping + state
-        (OPEN_ENDS #17). Returns the token, or None for a bad key. The session dir and
-        set_id are named from the token HASH / an independent random id — never from
-        the token — so no token material lands on the volume."""
+        """Validate a key against ETS_ACCESS_KEYS; on success mint a token bound to
+        the DURABLE PER-KEY owner session (OPEN_ENDS #17 + the re-login fix).
+
+        One key = ONE session, forever. Every login with the same key re-lands on
+        the same session dir (corpus + trained world + pointers), resolved in order:
+          1. the RESIDENT owner session for this key (a second login while the
+             first is live shares the object — no divergent pointer state);
+          2. the durable owners.json record (survives redeploys);
+          3. ADOPTION of the most recent orphaned trained/ingested session dir on
+             the volume (a corpus trained under the OLD per-token scheme, before
+             this fix — recovered instead of stranded);
+          4. a fresh empty owner dir (a truly first-ever login).
+        The dir and set_id are named from HASHES / random ids — no key or token
+        material ever lands on the volume. Returns the token, or None on bad key."""
         if not key or key not in self.access_keys:
             return None
+        kh = _hash_token(key)
         token = secrets.token_urlsafe(24)
         h = _hash_token(token)
-        sess = self._make_session(self._base / ("visitor_" + h[:16]))
-        sess.set_id = "set-" + secrets.token_hex(5)
-        sess.owner_label = "you"
-        sess._store_hash = h
-        sess._store_kind = "keyed"
         with self._lock:
+            sess = self._resolve_owner_locked(kh, h)
+            sess._store_hash = h            # newest token owns the keyed record
+            sess._store_kind = "keyed"
             self.sessions[token] = sess
-            self.store.keyed[h] = self._session_record(sess, "keyed")
+            rec = self._session_record(sess, "keyed")
+            rec["owner"] = kh
+            self.store.keyed[h] = rec
+            self.store.owners[kh] = rec
             self.store.save_keyed()
+            self.store.save_owners()
+        # a recovered trained world should be WARM before the owner hits Play.
+        if sess._is_trained and sess.play_world:
+            self._warm_async(sess.play_world)
         return token
+
+    def _resolve_owner_locked(self, kh: str, h: str):
+        """The ONE per-key owner session, resolved resident -> durable record ->
+        orphan adoption -> fresh dir. Caller holds the Hub lock."""
+        sess = self.owner_sessions.get(kh)
+        if sess is not None:
+            sess._owner_hash = kh
+            return sess
+        rec = self.store.owners.get(kh)
+        if rec is not None and Path(rec.get("dir", "")).is_dir():
+            sess = self._restore_session(rec, "keyed", h)
+        else:
+            # ADOPTION is gated to SINGLE-key deploys, exactly like legacy-token
+            # migration: with one key configured, an orphaned corpus on the volume
+            # unambiguously belongs to that key's owner. With multiple keys the
+            # orphan's owner is UNKNOWABLE — adopting would alias two owners onto
+            # one dir (auditor finding B1) — so multi-key first logins start fresh
+            # and recovery stays a deliberate, explicit /api/recover action.
+            adopted = None
+            if len(self.access_keys) == 1:
+                adopted = self._adopt_orphan_dir_locked()
+            sess = self._make_session(adopted or
+                                      (self._base / ("owner_" + kh[:16])))
+            sess._store_hash = h
+            sess._store_kind = "keyed"
+            if adopted is not None:
+                trained = sess.trained_world_path
+                if trained.exists():
+                    sess.play_world = str(trained)
+                    sess._is_trained = True
+                log.info("owner login: ADOPTED orphaned session dir %s "
+                         "(trained=%s)", adopted, trained.exists())
+        sess.set_id = sess.set_id or ("set-" + secrets.token_hex(5))
+        sess.owner_label = sess.owner_label or "you"
+        sess._owner_hash = kh
+        self.owner_sessions[kh] = sess
+        return sess
+
+    def _adopt_orphan_dir_locked(self):
+        """Best orphaned session dir to adopt for a first-ever owner login: the most
+        recently MODIFIED visitor_*/anon_* dir that holds a trained world (preferred)
+        or ingested audio. Read-only scan; returns a Path or None."""
+        best, best_key = None, None
+        claimed = {r.get("dir") for r in self.store.owners.values()}
+        try:
+            for d in self._base.iterdir():
+                if not d.is_dir() or not (d.name.startswith("visitor_")
+                                          or d.name.startswith("anon_")):
+                    continue
+                if str(d) in claimed:
+                    continue           # already another owner's session — never alias
+                trained = d / "trained.etsworld"
+                audio = [p for p in d.iterdir() if p.is_file()
+                         and p.suffix.lower() in _AUDIO_EXTS]
+                if not trained.exists() and not audio:
+                    continue
+                mtime = trained.stat().st_mtime if trained.exists() else \
+                    max(p.stat().st_mtime for p in audio)
+                key = (1 if trained.exists() else 0, mtime)
+                if best_key is None or key > best_key:
+                    best, best_key = d, key
+        except OSError as exc:
+            log.error("orphan scan failed: %s", exc)
+        return best
+
+    def recover_candidates(self):
+        """READ-ONLY inventory of every session dir on the volume that holds a
+        trained world and/or ingested audio — so a corpus can never silently
+        disappear again. Key-gated at the route layer."""
+        out = []
+        for d in sorted(self._base.iterdir()):
+            if not d.is_dir() or d.name.startswith("_"):
+                continue
+            try:
+                trained = d / "trained.etsworld"
+                audio = sorted(p.name for p in d.iterdir() if p.is_file()
+                               and p.suffix.lower() in _AUDIO_EXTS)
+                if not trained.exists() and not audio:
+                    continue
+                out.append({
+                    "dir": str(d),
+                    "trained": trained.exists(),
+                    "trained_mtime": trained.stat().st_mtime if trained.exists() else None,
+                    "n_tracks": len(audio),
+                    "tracks": audio,
+                })
+            except OSError:
+                continue
+        return out
+
+    def rebind_session_dir(self, session, dir_path: str):
+        """Repoint an OWNER session at another on-volume session dir (the recovery
+        lever behind /api/recover). Pointers only — no file is moved or deleted.
+        Refuses: dirs outside the session base; infrastructure dirs (``_store`` —
+        rebinding there would let a later reset() unlink the durable store, auditor
+        finding B3); and dirs claimed by a DIFFERENT owner (auditor finding B2 —
+        recover must never be a cross-tenant seize)."""
+        d = Path(dir_path).resolve()
+        if not d.is_dir() or self._base.resolve() not in d.parents:
+            return {"ok": False, "error": "not a session dir on this volume"}
+        if d.name.startswith("_"):
+            return {"ok": False, "error": "not a session dir"}
+        me = getattr(session, "_owner_hash", None)
+        for okh, orec in self.store.owners.items():
+            if orec.get("dir") == str(d) and okh != me:
+                return {"ok": False, "error": "that dir belongs to another owner"}
+        session.session_dir = d
+        session.world_path = d / "world.npz"
+        session.trained_world_path = d / "trained.etsworld"
+        session._player = None
+        session.opened_set_id = None
+        trained = session.trained_world_path
+        session._is_trained = trained.exists()
+        session.play_world = str(trained) if trained.exists() else session._demo_world
+        self._persist_session(session)
+        if session._is_trained:
+            self._warm_async(session.play_world)
+        return {"ok": True, "dir": str(d), "trained": session._is_trained,
+                "tracks": session.ingested_track_names()}
+
+    def _warm_async(self, world_path: str) -> None:
+        """Background-warm ONE world (bank + first bars) so the next Play/stream on
+        it starts hot instead of blocking minutes on the bank build. Rides the same
+        LRU-capped registry path as any listener (never exceeds the memory bound);
+        a warm failure is logged, never raised into the caller."""
+        if self.registry is None or not world_path or not Path(world_path).exists():
+            return
+        def _w():
+            try:
+                p = self.registry.trained_player(world_path, self.seed)
+                _prewarm_engine(self.registry, world_path, p)
+            except Exception:
+                log.exception("background warm failed for %s", world_path)
+        threading.Thread(target=_w, daemon=True, name="ets-warm").start()
 
     def session_for_token(self, token):
         if not token:
@@ -698,8 +918,29 @@ class Hub:
             rec = self.store.keyed.get(h)
             if rec is None:
                 return None
-            sess = self._restore_session(rec, "keyed", h)
+            # PER-KEY identity: a token resolves to its key's ONE owner session.
+            # LEGACY tokens (minted before the per-key fix) carry no owner tag; on
+            # a SINGLE-key deploy that key is unambiguous, so the legacy token is
+            # migrated onto the owner identity in place — the operator's already-
+            # open browser snaps to the recovered session without a re-login.
+            kh = rec.get("owner")
+            if kh is None and len(self.access_keys) == 1:
+                kh = _hash_token(next(iter(self.access_keys)))
+            if kh:
+                sess = self._resolve_owner_locked(kh, h)
+                rec2 = self._session_record(sess, "keyed")
+                rec2["owner"] = kh
+                self.store.keyed[h] = rec2
+                self.store.owners[kh] = rec2
+                self.store.save_keyed()
+                self.store.save_owners()
+            else:
+                sess = self._restore_session(rec, "keyed", h)
             self.sessions[token] = sess
+            # a restored/migrated trained world should be WARM before Play is hit
+            # (spawns a daemon thread; never blocks this request).
+            if sess._is_trained and sess.play_world:
+                self._warm_async(sess.play_world)
             return sess
 
     # --- per-visitor ANONYMOUS sessions (shared deploys only) ----------------
@@ -856,6 +1097,9 @@ class Hub:
         session.opened_set_id = set_id
         session.play_world = entry.world_path
         self._persist_session(session)
+        # WARM ON OPEN: pay the bank build in the background NOW, so Play on a
+        # just-opened set streams hot instead of sitting silent for minutes.
+        self._warm_async(entry.world_path)
         return entry
 
     # --- durable store: records, restore, persist (OPEN_ENDS #17) ----------
@@ -897,7 +1141,13 @@ class Hub:
             return
         with self._lock:
             if kind == "keyed":
-                self.store.keyed[h] = self._session_record(session, "keyed")
+                rec = self._session_record(session, "keyed")
+                kh = getattr(session, "_owner_hash", None)
+                if kh:
+                    rec["owner"] = kh
+                    self.store.owners[kh] = rec
+                    self.store.save_owners()
+                self.store.keyed[h] = rec
                 self.store.save_keyed()
             else:
                 self.store.anon[h] = self._session_record(session, "anon")
@@ -1081,6 +1331,11 @@ class _Handler(BaseHTTPRequestHandler):
                 # PROG (design §4A): the REAL ordered stage transitions of the last/
                 # running train — the FE renders the staged indicator from THESE only.
                 "train_stages": list(session.train_stages),
+                # ASYNC TRAIN reconcile: the live truth about a background train,
+                # so a reloaded/timed-out FE re-attaches instead of wedging.
+                "training": session.training,
+                "train_result": session.train_result,
+                "train_error": session.train_error,
             })
             return
         if path == "/api/world":
@@ -1242,6 +1497,45 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(400, {"ok": False, "error": "set_id required"})
                 return
             self._json(200, self.hub.admin_unshare(sid))
+            return
+
+        # /api/recover — the "a corpus can never silently disappear" lever. Key-gated
+        # (same secret that authorizes training). {key} -> READ-ONLY inventory of
+        # every on-volume session dir holding a trained world / ingested audio;
+        # {key, dir} -> repoint the key's OWNER session at that dir (pointers only,
+        # nothing moved or deleted) and background-warm its trained world.
+        if path == "/api/recover":
+            key = ""; target = None
+            if body:
+                try:
+                    j = json.loads(body.decode())
+                    key = str(j.get("key", ""))
+                    target = j.get("dir")
+                except Exception:
+                    pass
+            if not self.hub.access_keys or key not in self.hub.access_keys:
+                self._json(401, {"ok": False, "error": "invalid access key"})
+                return
+            if len(self.hub.access_keys) != 1:
+                # SINGLE-key deploys only (auditor finding B2): with multiple keys
+                # the volume-wide inventory/rebind would let any key holder
+                # enumerate and seize another owner's corpus. Per-owner scoping is
+                # a follow-up; until then the lever honestly refuses.
+                self._json(403, {"ok": False, "error": "recover is available on "
+                                 "single-key deploys only (per-owner scoping not "
+                                 "yet built)"})
+                return
+            if not target:
+                self._json(200, {"ok": True,
+                                 "candidates": self.hub.recover_candidates()})
+                return
+            kh = _hash_token(key)
+            sess = self.hub.owner_sessions.get(kh)
+            if sess is None:
+                self._json(409, {"ok": False, "error":
+                                 "no owner session — unlock (login) first, then recover"})
+                return
+            self._json(200, self.hub.rebind_session_dir(sess, target))
             return
 
         # /api/admin/upload_sweep — inject a pre-measured modes-by-temperature table for a
@@ -1522,6 +1816,19 @@ class _Handler(BaseHTTPRequestHandler):
                     params = json.loads(body.decode())
                 except Exception:
                     params = {}
+            if self.hub.keyed:
+                # HOSTED path: train in the BACKGROUND and answer now — a long
+                # train must never ride one HTTP request past the edge gateway's
+                # timeout (observed live: gateway 502 while the server kept
+                # training, FE wedged, re-click double-trained). The FE follows
+                # /api/status; a re-click ATTACHES to the running train.
+                out = session.start_train_async(
+                    seed=int(params.get("seed", 0)),
+                    sweeps=int(params.get("sweeps", 8)),
+                    sigma=params.get("sigma", None),
+                    on_done=lambda: self.hub._persist_session(session))
+                self._json(200, out)
+                return
             try:
                 out = session.run_train(
                     seed=int(params.get("seed", 0)),

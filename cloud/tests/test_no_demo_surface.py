@@ -163,7 +163,7 @@ def test_public_keyed_owner_world_is_empty_until_train(tmp_path, monkeypatch):
 def test_opening_a_shared_set_makes_the_world_ready(tmp_path, monkeypatch):
     monkeypatch.setattr(app, "_build_stream_player",
                         lambda path, seed, is_trained: _FakeReadyPlayer(path, seed, is_trained))
-    hub = Hub(session_dir=str(tmp_path), access_keys=["k"], public=True)
+    hub = Hub(session_dir=str(tmp_path), access_keys=["k", "k2"], public=True)
     # owner trains (simulate its post-state) + shares
     owner = hub.session_for_token(hub.authenticate("k"))
     tw = Path(owner.session_dir) / "trained.etsworld"; tw.write_bytes(b"world")
@@ -171,7 +171,7 @@ def test_opening_a_shared_set_makes_the_world_ready(tmp_path, monkeypatch):
     owner.play_world = str(tw)
     hub.share(owner, True)
 
-    visitor = hub.session_for_token(hub.authenticate("k"))
+    visitor = hub.session_for_token(hub.authenticate("k2"))
     # fresh visitor is EMPTY (public, no demo) until it opens something
     assert hub.playable_for(visitor) is None
     assert hub.open_set(visitor, owner.set_id) is not None
@@ -182,7 +182,7 @@ def test_opening_a_shared_set_makes_the_world_ready(tmp_path, monkeypatch):
 def test_keyed_train_post_state_makes_the_world_ready(tmp_path, monkeypatch):
     monkeypatch.setattr(app, "_build_stream_player",
                         lambda path, seed, is_trained: _FakeReadyPlayer(path, seed, is_trained))
-    hub = Hub(session_dir=str(tmp_path), access_keys=["k"], public=True)
+    hub = Hub(session_dir=str(tmp_path), access_keys=["k", "k2"], public=True)
     owner = hub.session_for_token(hub.authenticate("k"))
     # fresh keyed session starts EMPTY (no founding demo)
     assert hub.playable_for(owner) is None
