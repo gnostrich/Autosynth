@@ -173,8 +173,40 @@ def _jsonable_receipt(receipt) -> dict:
 TRAIN_STAGES = ("ingest", "stage3", "cloud_fit", "verify", "build", "sigma_phi", "save")
 
 
+def _seed_torch_hub_cache(audio_paths: List[str]) -> None:
+    """CACHE-SEED for the beat_this checkpoint (OUTAGE fix, 2026-07-24): ingest's
+    beat tracker downloads ``beat_this-final0.ckpt`` from cloud.cp.jku.at on first
+    use, and that host was observed returning 503 — a fresh container then cannot
+    train AT ALL. If the checkpoint file has been staged next to the session's
+    audio (uploaded once through the normal ingest channel; it is not an audio
+    extension so training never consumes it as a track), copy it into torch's hub
+    cache so the loader finds it locally and never needs the network.
+
+    Strictly a cache seed: when the file is absent, behavior is byte-identical
+    (the loader downloads as before). The checkpoint content itself is the same
+    published artifact the loader would have fetched (same file name/format);
+    torch.load still validates it — a corrupt stage fails the train honestly."""
+    import shutil
+    import torch.hub
+    for a in audio_paths[:1]:
+        d = Path(a).parent
+        src = d / "beat_this-final0.ckpt"
+        if not src.is_file():
+            return
+        dst_dir = Path(torch.hub.get_dir()) / "checkpoints"
+        dst = dst_dir / "beat_this-final0.ckpt"
+        if dst.is_file():
+            return
+        try:
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        except OSError:
+            pass                       # seed is best-effort; loader will surface
+
+
 def _stage_ingest(audio_paths: List[str], seed: int):
     """LOCAL ingest: raw audio -> Track (recipes/provenance stay on device)."""
+    _seed_torch_hub_cache(audio_paths)
     from ets.ingestion.pipeline import ingest
     return [ingest(path, i, sr=44100) for i, path in enumerate(audio_paths)]
 

@@ -309,3 +309,32 @@ def test_recover_route_refuses_multikey(tmp_path, demo, monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+# ---------------- beat_this checkpoint cache seed (outage fix) ----------------
+
+def test_seed_torch_hub_cache(tmp_path, monkeypatch):
+    """The 2026-07-24 outage fix: cloud.cp.jku.at 503s, so a staged
+    beat_this-final0.ckpt beside the session audio is copied into torch's hub
+    cache pre-ingest; absent -> exact no-op; already-cached -> untouched."""
+    torch_hub = pytest.importorskip("torch.hub")
+    from cloud.companion.train_local import _seed_torch_hub_cache
+    cache = tmp_path / "torchhome"
+    monkeypatch.setattr(torch_hub, "get_dir", lambda: str(cache / "hub"))
+    sess = tmp_path / "sess"
+    sess.mkdir()
+    (sess / "a.wav").write_bytes(b"x")
+    dst = cache / "hub" / "checkpoints" / "beat_this-final0.ckpt"
+    # absent -> no-op (no cache dir even created)
+    _seed_torch_hub_cache([str(sess / "a.wav")])
+    assert not dst.exists()
+    # staged -> copied into the exact path the loader probes
+    (sess / "beat_this-final0.ckpt").write_bytes(b"CKPT-BYTES")
+    _seed_torch_hub_cache([str(sess / "a.wav")])
+    assert dst.read_bytes() == b"CKPT-BYTES"
+    # already cached -> not overwritten (torch cache is authoritative)
+    (sess / "beat_this-final0.ckpt").write_bytes(b"OTHER")
+    _seed_torch_hub_cache([str(sess / "a.wav")])
+    assert dst.read_bytes() == b"CKPT-BYTES"
+    # empty audio list -> no-op, no crash
+    _seed_torch_hub_cache([])

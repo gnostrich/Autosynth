@@ -191,7 +191,8 @@ class Companion:
         # on — run_train selects by audio extension off iterdir(), not this list).
         return sorted(p.name for p in self.session_dir.iterdir()
                       if p.is_file() and p.name != "world.npz"
-                      and not p.name.startswith("trained.etsworld"))
+                      and not p.name.startswith("trained.etsworld")
+                      and not p.name.endswith(".ckpt"))
 
     def ingested_track_names(self):
         """The REAL ingested audio filenames of this session's corpus, in the same
@@ -1490,7 +1491,15 @@ class _Handler(BaseHTTPRequestHandler):
                     sid = j.get("set_id")
                 except Exception:
                     pass
-            if not self.hub.access_keys or key not in self.hub.access_keys:
+            # Authorized by the operator's secret EITHER way: the raw key in the
+            # body (curl/tooling), or a session whose bearer token was minted FROM
+            # that key (the browser after Unlock) — the same single owner
+            # predicate the corpus surfaces use. No keyless path.
+            key_ok = bool(self.hub.access_keys) and key in self.hub.access_keys
+            sess_ok = False
+            if not key_ok and self.hub.keyed:
+                sess_ok = self._can_train(self._session())
+            if not (key_ok or sess_ok):
                 self._json(401, {"ok": False, "error": "invalid access key"})
                 return
             if not sid:
@@ -1801,6 +1810,17 @@ class _Handler(BaseHTTPRequestHandler):
                     sid = json.loads(body.decode()).get("set_id")
                 except Exception:
                     sid = None
+            if sid is None:
+                # CLOSE the opened shared set (Set-tab flow): revert Play to the
+                # session's own world (trained if any, else the empty/demo state).
+                session.opened_set_id = None
+                session.play_world = (str(session.trained_world_path)
+                                      if session._is_trained
+                                      and session.trained_world_path.exists()
+                                      else session._demo_world)
+                self.hub._persist_session(session)
+                self._json(200, {"ok": True, "closed": True})
+                return
             entry = self.hub.open_set(session, sid)
             if entry is None:
                 self._json(404, {"ok": False, "error": "set not available"})
