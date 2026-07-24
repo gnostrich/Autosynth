@@ -1632,11 +1632,31 @@
   }
   function handleFiles(list){
     var arr = Array.prototype.slice.call(list); if(!arr.length) return;
+    // Bulk-robust: upload each file sequentially, render the list AS each lands
+    // (live progress), and NEVER let one failed file abort the whole batch — a
+    // per-file catch collects failures so the rest still upload and the user is
+    // told which ones failed (the old single .catch(noop) on the chain made ANY
+    // mid-batch error swallow the entire selection silently -> "bulk not working").
+    var total = arr.length, done = 0, failed = [];
+    if(trainNote) trainNote.textContent = "uploading 0/" + total + " …";
     var chain = Promise.resolve();
-    arr.forEach(function(f){ chain = chain.then(function(){ return upload(f); }); });
-    chain.then(function(last){
-      var files = (last && last.files) || null;
-      if(files){ renderIngestFiles(files); renderLibrary(files); }
+    arr.forEach(function(f){
+      chain = chain.then(function(){
+        return upload(f).then(function(res){
+          done++;
+          var files = (res && res.files) || null;
+          if(files){ renderIngestFiles(files); renderLibrary(files); }   // live: appears as it lands
+          if(trainNote && done < total) trainNote.textContent = "uploading " + done + "/" + total + " …";
+        }).catch(function(){ done++; failed.push(f.name); });            // keep going; don't abort batch
+      });
+    });
+    chain.then(function(){
+      return fetch("/api/status").then(function(r){ return r.json(); }).then(function(s){
+        if(s && s.files){ renderIngestFiles(s.files); renderLibrary(s.files); }   // final truth from server
+        if(failed.length && trainNote){
+          trainNote.textContent = (total - failed.length) + "/" + total + " uploaded — failed: " + failed.join(", ");
+        }
+      });
     }).catch(noop);
   }
 
