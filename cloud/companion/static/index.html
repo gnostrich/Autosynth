@@ -119,13 +119,36 @@
   .pill{
     display:inline-flex; align-items:center; gap: 7px;
     padding: 5px 11px; border-radius: 999px;
-    background: var(--panel-inset);
-    border: 1px solid var(--line);
+    background: var(--glass-inset);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--edge);
     font-size: var(--fs-micro); letter-spacing:.13em; text-transform:uppercase;
     color: var(--ink-2); font-weight:600;
   }
+  .pill[hidden]{ display:none; }
   .pill .tick{ width:6px; height:6px; border-radius:50%; background: var(--faint); }
   .pill.live .tick{ background: var(--accent); box-shadow:0 0 8px var(--accent); }
+  /* owner chip: shown once the session is unlocked (keyed && canTrain) in place
+     of the Unlock button — an indicator, not a control. */
+  .pill.owner-pill .tick{ background: var(--accent); box-shadow:0 0 8px var(--accent); }
+  .pill.owner-pill{ color: var(--ink); }
+
+  /* HEADER UNLOCK — the login affordance, discoverable on every tab. A quiet
+     accent chip (matches the pill/tab glass system) that opens the existing key
+     modal; reuses /api/auth, exposes no secret. */
+  .hd-unlock{
+    display:inline-flex; align-items:center; gap:7px;
+    height:32px; padding:0 14px; border-radius:999px; cursor:pointer;
+    background: var(--accent-soft); color: var(--accent);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border:1px solid var(--accent-deep);
+    font: inherit; font-size: var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; font-weight:700;
+    box-shadow: 0 0 18px -6px var(--accent-glow);
+  }
+  .hd-unlock:hover{ background: rgba(79,224,174,.20); color: var(--ink); }
+  .hd-unlock:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .hd-unlock svg{ width:14px; height:14px; flex:0 0 auto; }
+  .hd-unlock[hidden]{ display:none; }
   .conn{
     display:inline-flex; align-items:center; gap:8px;
     font-size: var(--fs-micro); letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600;
@@ -257,7 +280,7 @@
 
   /* ---------- COMPONENT 1 — the pad hero (translucent black-glass chromatic field) */
   .pad-hero{ padding: var(--sp-5); display:flex; flex-direction:column; }
-  .pad-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom: var(--sp-3); gap: var(--sp-3); }
+  .pad-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom: var(--sp-3); gap: var(--sp-3); flex-wrap:wrap; }
   .pad-title{ font-family: var(--font-serif); font-size:15px; color: var(--ink-2); font-weight:400; }
   .pad-meta{ font-family: var(--font-mono); font-size:10px; color: var(--faint); letter-spacing:.08em; }
   /* ---------- THE FIELD (canvas steering surface — replaces the XY pad) --------
@@ -617,15 +640,28 @@
   @media (max-width: 620px){
     #ets{ padding: var(--sp-4) var(--sp-3) 100px; }
     .lane{ grid-template-columns: 78px 1fr 44px; }
-    header.hd{ padding: var(--sp-3) var(--sp-4); }
+    header.hd{ padding: var(--sp-3) var(--sp-4); gap: var(--sp-3); }
+    /* the segmented tabs lose their desktop left-margin so the header wraps cleanly. */
+    .tabs{ margin-left:0; }
+    /* Explore cards stack one-per-row; the card footer WRAPS so Open + owner-only
+       Remove both stay visible and tappable at phone widths (~390px). */
+    .exp-list{ grid-template-columns:1fr; }
+    .exp-card .foot{ flex-wrap:wrap; }
+    button.exp-remove{ padding:9px 14px; }   /* comfortable tap target */
   }
 
-/* ===== TABS (Play / Train / Explore) ===== */
-  .tabs{ display:flex; gap:4px; margin-left:14px; }
-  .tab{ appearance:none; background:transparent; border:1px solid var(--line);
-        color:var(--muted); border-radius:9px; padding:7px 14px; font-size:12.5px;
-        font-weight:600; letter-spacing:.02em; cursor:pointer; }
-  .tab:hover{ color:var(--ink); border-color:var(--accent-deep); }
+/* ===== TABS (Play / Set / Explore) — ONE segmented control =====
+   A translucent glass container groups the three tabs; inactive tabs read at
+   --ink-2 (clearly legible, NOT the accidental half-fade), the active tab is the
+   accent fill — a deliberate filled-vs-quiet treatment, uniform padding/font/radius. */
+  .tabs{ display:inline-flex; gap:3px; margin-left:14px; padding:3px;
+        background: var(--glass-inset); border:1px solid var(--edge); border-radius:11px;
+        -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+  .tab{ appearance:none; background:transparent; border:1px solid transparent;
+        color:var(--ink-2); border-radius:8px; padding:7px 15px; font-size:12.5px;
+        font-weight:600; letter-spacing:.02em; cursor:pointer;
+        transition:color .15s, background .15s; }
+  .tab:hover{ color:var(--ink); background:rgba(255,255,255,.05); }
   .tab.active{ color:#06110d; background:var(--accent); border-color:var(--accent);
                box-shadow:0 0 16px -6px var(--accent-glow); }
   .tab[hidden]{ display:none; }
@@ -902,7 +938,17 @@
       <div class="spacer"></div>
       <span class="pill" id="cloudPill"><span class="tick"></span><span id="cloudTag">cloud —</span></span>
       <span class="conn"><span class="dot" id="connDot"></span><span id="connText">connecting…</span></span>
-      <button class="act ghost" id="unlockBtn" hidden style="padding:6px 12px;font-size:11px;" title="Enter your access key to unlock training and publishing">Unlock training</button>
+      <!-- UNLOCK / OWNER (OPEN_ENDS #16, header edition): the login affordance now
+           lives in the header so it is discoverable on EVERY tab. refreshUnlock()
+           shows Unlock when the deploy is keyed and this session is still a visitor
+           (world.keyed && !canTrain); once unlocked it is replaced by the owner
+           chip. It opens the EXISTING #keyModal and posts the EXISTING /api/auth —
+           no new auth path, no secret in the page source. -->
+      <button class="hd-unlock" id="unlockBtn" hidden title="Enter your access key to unlock training and publishing" aria-label="Unlock training">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <span>Unlock</span>
+      </button>
+      <span class="pill owner-pill" id="ownerPill" hidden title="You are unlocked as the owner — Train and Share are available"><span class="tick"></span>unlocked</span>
     </header>
 
     <!-- UNLOCK-TRAINING modal: the access-key entry moved INSIDE the app (OPEN_ENDS
@@ -1259,7 +1305,7 @@
       TABBTN[k].setAttribute("aria-selected", on ? "true" : "false");
     });
     if(name === "explore") loadExplore();
-    refreshUnlock();   // the Unlock affordance lives ONLY on the Object tab
+    refreshUnlock();   // the Unlock affordance is header-level (discoverable on every tab)
   }
   Object.keys(TABBTN).forEach(function(k){
     TABBTN[k].addEventListener("click", function(){ switchTab(k); });
@@ -1282,13 +1328,17 @@
   }
 
   /* ===== UNLOCK TRAINING — the access-key entry, moved INSIDE the app (#16) ===== */
-  var unlockBtn = $("unlockBtn"), keyModal = $("keyModal"), keyForm = $("keyForm");
+  var unlockBtn = $("unlockBtn"), ownerPill = $("ownerPill"), keyModal = $("keyModal"), keyForm = $("keyForm");
   var keyInput = $("keyInput"), keyErr = $("keyErr"), keySubmit = $("keySubmit"), keyCancel = $("keyCancel");
   function refreshUnlock(){
-    // Offer the affordance only when a key WOULD do something AND the user is on the
-    // Object tab: the deploy is keyed and this session is still a visitor. Owners
-    // (and keyless deploys) never see it; nor does any tab other than the Object one.
-    if(unlockBtn) unlockBtn.hidden = !(currentTab === "train" && world.keyed && !world.canTrain);
+    // HEADER affordance, discoverable on EVERY tab. Offer Unlock only when a key
+    // WOULD do something: the deploy is keyed and this session is still a visitor
+    // (world.keyed && !canTrain). Once unlocked (keyed owner) swap to the owner
+    // chip. Keyless deploys (nothing to unlock) show neither.
+    var visitor = !!(world.keyed && !world.canTrain);
+    var owner   = !!(world.keyed && world.canTrain);
+    if(unlockBtn) unlockBtn.hidden = !visitor;
+    if(ownerPill) ownerPill.hidden = !owner;
   }
   function openKeyModal(){
     if(!keyModal) return;
@@ -1310,8 +1360,13 @@
         if(res.ok && res.j && res.j.ok){
           // the server set the session cookie; UPGRADE IN PLACE — re-read state so
           // can_train flips true and Train appears. No page/access-wall navigation.
+          // loadWorld() runs applyTrainGating() (Set-tab controls) + refreshUnlock()
+          // (header swaps Unlock -> owner chip); when the Explore tab is open, re-list
+          // it so owned sets (mine === true, now recognized) render their Remove
+          // button without a manual reload.
           closeKeyModal();
-          loadStatus(); loadWorld();
+          loadStatus();
+          loadWorld().then(function(){ if(currentTab === "explore") loadExplore(); });
         } else {
           keyErr.textContent = (res.j && res.j.error) || "access denied";
           try{ keyInput.focus(); keyInput.select(); }catch(e){}

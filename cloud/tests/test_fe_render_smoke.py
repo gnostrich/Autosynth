@@ -292,11 +292,13 @@ def test_fe_public_empty_state_no_demo_surfaced(tmp_path):
 
 
 def test_fe_keyed_public_visitor_sees_unlock_affordance(tmp_path):
-    """OPEN_ENDS #16 render smoke (updated 2026-07-18, operator Task 3): a keyless
-    visitor on a KEYED+PUBLIC deploy lands on the app (no access wall). The Object
-    (Train) tab is now ALWAYS visible (read-only tracklist for visitors); the in-app
-    "Unlock training" affordance is scoped to the Object tab only. Switching to the
-    Object tab reveals it, and clicking it opens the key prompt."""
+    """OPEN_ENDS #16 render smoke (updated 2026-07-24, header Unlock edition): a
+    keyless visitor on a KEYED+PUBLIC deploy lands on the app (no access wall). The
+    Object (Train) tab is ALWAYS visible (read-only tracklist for visitors). The
+    Unlock affordance now lives in the HEADER and is discoverable on EVERY tab
+    whenever the deploy is keyed and the session is not yet unlocked (world.keyed &&
+    !can_train); the owner chip stays hidden for a visitor. Clicking Unlock opens the
+    EXISTING key prompt (no navigation, no new auth path)."""
     server = _ServerProc(tmp_path, public=True, keys=["k1"])
     try:
         server.wait_healthy()
@@ -311,17 +313,23 @@ def test_fe_keyed_public_visitor_sees_unlock_affordance(tmp_path):
             # the Object tab is always visible (even for a keyless visitor).
             assert not page.query_selector("#tabTrain").is_hidden(), \
                 "Object (Train) tab must always be visible"
-            # on the Play tab, the unlock affordance is hidden (scoped to Object tab).
-            page.wait_for_function(
-                "() => { const b = document.getElementById('unlockBtn');"
-                " return b && b.hidden; }", timeout=20000)
 
-            # switching to the Object tab reveals the unlock affordance for a keyed
-            # visitor (world.keyed && !canTrain, polled in from /api/world).
-            page.click("#tabTrain")
+            # HEADER Unlock is discoverable on the Play tab (all tabs), once /api/world
+            # reports keyed && !can_train.
             page.wait_for_function(
                 "() => { const b = document.getElementById('unlockBtn');"
                 " return b && !b.hidden; }", timeout=20000)
+            # the owner chip stays hidden until the session actually unlocks.
+            assert page.query_selector("#ownerPill").is_hidden(), \
+                "owner chip must be hidden for a not-yet-unlocked visitor"
+
+            # it stays discoverable after switching tabs (header-level, not per-tab).
+            page.click("#tabExplore")
+            assert not page.query_selector("#unlockBtn").is_hidden(), \
+                "header Unlock must remain visible on Explore too"
+            page.click("#tabTrain")
+            assert not page.query_selector("#unlockBtn").is_hidden(), \
+                "header Unlock must remain visible on the Object tab too"
 
             # clicking the affordance opens the in-app key prompt (no navigation).
             page.click("#unlockBtn")
