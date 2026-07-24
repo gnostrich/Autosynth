@@ -896,7 +896,7 @@
       </div>
       <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
         <button class="tab active" id="tabPlay" role="tab" data-tab="play" aria-selected="true">Play</button>
-        <button class="tab" id="tabTrain" role="tab" data-tab="train" aria-selected="false">Object</button>
+        <button class="tab" id="tabTrain" role="tab" data-tab="train" aria-selected="false">Set</button>
         <button class="tab" id="tabExplore" role="tab" data-tab="explore" aria-selected="false">Explore</button>
       </nav>
       <div class="spacer"></div>
@@ -1049,7 +1049,7 @@
                 <!-- The FILL of every square is LIVE settled telemetry (fieldApplySettled,
                      from d.roles/nowplaying) — the engine's answer, never your input
                      echoed back. Scroll/drag biases it; the engine re-settles. -->
-                <span class="hint">scroll or drag &#8597; = bias · Ctrl+scroll / pinch = drill · fill = settled telemetry</span>
+                <span class="hint">rows = tracks · columns = roles · scroll or drag &#8597; = bias (up amplify / down damp) · fill = live settled telemetry</span>
                 <!-- HONEST DISARM READOUT (Theorem A arming corollary; measured off the
                      world's anchor band-profile B, /api/world profile_armed). Hidden
                      until shown on a refused drill; a real-state caption (registered with
@@ -1081,7 +1081,7 @@
                 <div class="field-legend" id="fieldLegend" style="display:none" aria-label="Track legend — colour and name of each source track"></div>
                 <div class="field-scroll" id="fieldScroll">
                   <canvas id="fieldCanvas" class="field-canvas" role="application"
-                    aria-label="The field — every square glows by its live settled weight (the engine's answer, never your input echoed back). Scroll or drag to bias a track or unit; Ctrl+scroll or pinch to drill a track into its units."></canvas>
+                    aria-label="The field — every square glows by its live settled weight (the engine's answer, never your input echoed back). Rows are tracks, columns are roles. Scroll or drag a row, column, or cell to bias it (up amplifies, down damps)."></canvas>
                 </div>
                 <div class="field-status" id="fieldStatus" aria-live="polite"></div>
               </div>
