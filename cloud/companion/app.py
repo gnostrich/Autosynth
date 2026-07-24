@@ -177,8 +177,14 @@ class Companion:
         return {"name": name, "bytes": len(data), "stored": str(dest)}
 
     def session_files(self):
+        # Show the user's DROPPED corpus files only — never the build artifacts the
+        # train seam writes into the same dir (trained.etsworld + its .eigen.json
+        # cache) or the legacy world.npz. Those are outputs, not source audio;
+        # listing them under "Source Audio" is confusing (and they're never trained
+        # on — run_train selects by audio extension off iterdir(), not this list).
         return sorted(p.name for p in self.session_dir.iterdir()
-                      if p.is_file() and p.name != "world.npz")
+                      if p.is_file() and p.name != "world.npz"
+                      and not p.name.startswith("trained.etsworld"))
 
     def ingested_track_names(self):
         """The REAL ingested audio filenames of this session's corpus, in the same
