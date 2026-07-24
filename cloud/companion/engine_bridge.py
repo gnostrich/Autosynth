@@ -367,16 +367,24 @@ def _eigen_run_mean(world, sigma, u, seed: int, n_bar: int, M: int) -> np.ndarra
 
 
 def _eigen_node_means(world, sigma, builder, M: int, seed0: int, n_seed: int,
-                      n_bar: int) -> np.ndarray:
-    return np.stack([_eigen_run_mean(world, sigma, builder(), seed0 + i, n_bar, M)
-                     for i in range(n_seed)])
+                      n_bar: int, defer=None) -> np.ndarray:
+    # ``defer`` (optional callable) is invoked BEFORE each seed's settlement run —
+    # the audio-defer seam (same contract as the sweep worker's per-temperature
+    # park): heavy measurement yields to live playback at run granularity. None
+    # (tests / CLI) computes exactly as before.
+    runs = []
+    for i in range(n_seed):
+        if defer is not None:
+            defer()
+        runs.append(_eigen_run_mean(world, sigma, builder(), seed0 + i, n_bar, M))
+    return np.stack(runs)
 
 
 def compute_eigenmodes(world, sigma, M: int, n_seed: int = _EIGEN_N_SEED,
                        n_bar: int = _EIGEN_N_BAR, h: float = _EIGEN_H,
                        n_boot: int = _EIGEN_N_BOOT, n_null: int = _EIGEN_N_NULL,
                        floor_pct: float = _EIGEN_FLOOR_PCT,
-                       rng_seed: int = 20260718) -> dict:
+                       rng_seed: int = 20260718, defer=None) -> dict:
     """The object's native control eigenbasis (E1/E2; see the module-level
     doctring above for the full derivation and the two walls it resolves).
     Read-only: builds fresh ``StreamWriter`` instances at probe leans (never
@@ -419,8 +427,10 @@ def compute_eigenmodes(world, sigma, M: int, n_seed: int = _EIGEN_N_SEED,
     R = np.zeros((D, D))
     node_data = []          # (mp, mm) per column, each (n_seed, D) -- for null + bootstrap
     for j, (up, um) in enumerate(builders):
-        mp = _eigen_node_means(world, sigma, up, M, 70000 + j * 1000, n_seed, n_bar)
-        mm = _eigen_node_means(world, sigma, um, M, 70000 + j * 1000 + 500, n_seed, n_bar)
+        mp = _eigen_node_means(world, sigma, up, M, 70000 + j * 1000, n_seed, n_bar,
+                               defer=defer)
+        mm = _eigen_node_means(world, sigma, um, M, 70000 + j * 1000 + 500, n_seed,
+                               n_bar, defer=defer)
         node_data.append((mp, mm))
         R[:, j] = (mp.mean(0) - mm.mean(0)) / (2.0 * h)
 
@@ -952,8 +962,23 @@ class StreamPlayer:
         `compute_eigenmodes` documents). A computation failure is recorded
         honestly (pending clears, k stays 0) rather than left silently stuck."""
         try:
+            # AUDIO-DEFER (2026-07-24, measured live: the un-deferred ensemble
+            # starved the realtime produce loop to 0.06x delivery on a full-length
+            # 10-track corpus): the eigen worker now parks at seed-run granularity
+            # while playback is live — the SAME defer contract the sweep worker
+            # already carries ("runs in idle windows only"). A set played nonstop
+            # honestly shows eigen pending until the first pause.
+            import time as _t
+
+            def _park():
+                while (getattr(self, "_playing", None) is not None
+                       and self._playing.is_set()):
+                    _t.sleep(_SWEEP_DEFER_POLL)
+
+            _park()
             result = compute_eigenmodes(self.world, sigma, self.M,
-                                        n_seed=eigen_n_seed, n_bar=eigen_n_bar)
+                                        n_seed=eigen_n_seed, n_bar=eigen_n_bar,
+                                        defer=_park)
             result["pending"] = False
             self._eigen = result
             self._write_eigen_cache(result, eigen_n_seed, eigen_n_bar)
