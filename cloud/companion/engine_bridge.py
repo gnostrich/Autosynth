@@ -1612,7 +1612,26 @@ class StreamPlayer:
         kicked_sweep = False                       # modes-by-temperature: kicked once the
                                                    # eigen is done (cached or landed), so a
                                                    # cache-hit-eigen world still auto-sweeps
+        # IDLE-STOP (2026-07-24, measured live): a warm loop with NO listeners on a
+        # corpus whose render is SLOWER than realtime can never catch its pace lead —
+        # it burns a full core forever and (same process) degrades every OTHER
+        # world's playback. Warm therefore has a BOUNDED unlistened window: after
+        # ETS_WARM_IDLE_S seconds with zero subscribers the loop parks itself
+        # (start() on the next subscribe resumes it; bars already produced stay
+        # buffered). Pacing/render behavior for LISTENED playback is unchanged.
+        idle_stop_s = float(os.environ.get("ETS_WARM_IDLE_S", "120"))
+        last_subscribed = _time.monotonic()
         while self._playing.is_set():
+            with self._sub_lock:
+                n_subs = len(self._subscribers)
+            now_idle = _time.monotonic()
+            if n_subs > 0:
+                last_subscribed = now_idle
+            elif now_idle - last_subscribed > idle_stop_s:
+                logger.info("produce loop idle-stopped after %.0fs with no "
+                            "listeners (warm window closed)", idle_stop_s)
+                self._playing.clear()
+                break
             try:
                 pcm, _ = self.produce_one_bar()
             except Exception as exc:

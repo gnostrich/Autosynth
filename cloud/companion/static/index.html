@@ -260,6 +260,20 @@
     border:1px solid var(--edge); border-radius: var(--r-lg);
     box-shadow: 0 1px 0 var(--edge-strong) inset, 0 18px 40px -20px rgba(0,0,0,.75);
   }
+  /* TAB CONSISTENCY (operator, 2026-07-24): the Set + Explore panes share the SAME
+     translucent black-glass surface as the Play chrome — one skin on every tab.
+     Overrides the older opaque .panel gradient for sections inside any pane. */
+  .pane section.panel, .pane .panel{
+    background: var(--glass-2);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border:1px solid var(--edge);
+    box-shadow: 0 1px 0 var(--edge-strong) inset, 0 18px 40px -20px rgba(0,0,0,.75);
+  }
+  .exp-card{
+    background: var(--glass-inset) !important;
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border:1px solid var(--edge) !important;
+  }
 
   /* ---------- PLAY LAYOUT: pad hero + right rail (desktop) / stacked (mobile) --
      Desktop: a two-column grid, pad on the left (the star, most of the width),
@@ -4346,13 +4360,20 @@
           'data-mine="'+(s.mine ? "1" : "0")+'" '+
           'style="padding:7px 12px;font-size:12px">Remove</button>'
         : '';
+      // RENAME (own set only): re-lists via the SAME owner-gated /api/share
+      // {on:true, name} — same set_id, refreshed name. No new route.
+      var renameBtn = (s.mine === true)
+        ? '<button class="act ghost" data-rename="'+escapeHtml(s.id)+'" '+
+          'data-name="'+escapeHtml(s.name || "shared set")+'" '+
+          'style="padding:7px 12px;font-size:12px">Rename</button>'
+        : '';
       card.innerHTML =
         '<h4>'+escapeHtml(s.name || "shared set")+'</h4>'+
         '<div class="meta">by '+escapeHtml(s.owner || "owner")+'</div>'+
         '<div class="foot">'+badges+'<span class="rule"></span>'+
           (avail ? '<button class="act" data-open="'+escapeHtml(s.id)+'" style="padding:7px 14px;font-size:12px">Open in Play</button>'
                  : '<span class="note">owner offline / unavailable</span>')+
-          removeBtn+
+          renameBtn+removeBtn+
         '</div>';
       exploreList.appendChild(card);
     });
@@ -4363,6 +4384,18 @@
       b.addEventListener("click", function(){
         removeMySet(b.getAttribute("data-remove"), b.getAttribute("data-name"),
                     b.getAttribute("data-mine") === "1");
+      });
+    });
+    exploreList.querySelectorAll("[data-rename]").forEach(function(b){
+      b.addEventListener("click", function(){
+        var cur = b.getAttribute("data-name") || "";
+        var name = window.prompt("New name for this set:", cur);
+        if(!name || name === cur) return;
+        fetch("/api/share", { method:"POST", headers:{ "Content-Type":"application/json" },
+                              body:JSON.stringify({ on:true, name:name }) })
+          .then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+          .then(function(j){ if(j !== null) loadExplore(); })
+          .catch(function(){ loadExplore(); });
       });
     });
   }
