@@ -63,3 +63,9 @@ this file is the "how do I get back to X" index.
 
 ### Prior milestone — field-bias REV3 (2026-07-19)
 - Deployed `eb557b9`; provenance `042c274`. THE FIELD + soft track/unit fiber bias, drill track→units, per-track pool, noise-floor disarm. Preregs RATIFIED: REV1-soft / REV2-bidirectional / REV3-unit-grain.
+
+## Milestone — session recovery once-and-for-all (2026-07-24)
+- **Deployed code:** `faf0c02a8b7493b1fb606e53167cfaba585d5d75` (`main`, live on ets-web / www.autosynth.fun; env: `ETS_ACCESS_KEYS` rotated to the operator's key, `ETS_BANK_DTYPE=float16`, `ETS_MAX_LOADED_WORLDS=2`).
+- **What it is:** durable per-KEY owner identity (`owners.json`; one key = one session across logins AND redeploys), orphan ADOPTION on first login (single-key deploys; recovered the operator's real 10-track set live), legacy-token in-place migration, key-gated `/api/recover` (inventory + explicit rebind; refuses `_store`/foreign-owner/outside-base), ASYNC `/api/train` with FE status-reconcile (gateway timeouts/reloads/re-clicks can no longer wedge or double-train), background bank warm on open/restore. NO engine/steering edit — audio byte-identical.
+- **Gate:** 280 cloud tests green incl. 15 new (`cloud/tests/test_owner_identity_recover.py`); ets-auditor FAIL (B1/B2/B3, all reproduced) → fixed + pinned → PASS-WITH-NOTES → notes fixed. Runtime-verified on a live server AND on production: 10-track auto-recovered under the operator's key, streams RMS ~2400.
+- **Prereg:** `papers/PREREG-session-recovery.md`. **Rollback:** `5cfb041` (pre-recovery main).
