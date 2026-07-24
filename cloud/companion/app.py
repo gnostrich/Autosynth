@@ -191,7 +191,8 @@ class Companion:
         # on — run_train selects by audio extension off iterdir(), not this list).
         return sorted(p.name for p in self.session_dir.iterdir()
                       if p.is_file() and p.name != "world.npz"
-                      and not p.name.startswith("trained.etsworld"))
+                      and not p.name.startswith("trained.etsworld")
+                      and not p.name.endswith(".ckpt"))
 
     def ingested_track_names(self):
         """The REAL ingested audio filenames of this session's corpus, in the same

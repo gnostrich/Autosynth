@@ -1227,3 +1227,5 @@
 {"head": "5cfb041", "path": "papers/PREREG-session-recovery.md", "tool": "Edit", "ts": "2026-07-24T12:23:47+00:00"}
 {"head": "5cfb041", "path": "cloud/tests/test_owner_identity_recover.py", "tool": "Edit", "ts": "2026-07-24T12:27:10+00:00"}
 {"head": "5cfb041", "path": "papers/PREREG-session-recovery.md", "tool": "Edit", "ts": "2026-07-24T12:27:14+00:00"}
+{"head": "bbbbce4", "path": "cloud/companion/train_local.py", "tool": "Edit", "ts": "2026-07-24T13:41:42+00:00"}
+{"head": "bbbbce4", "path": "cloud/companion/app.py", "tool": "Edit", "ts": "2026-07-24T13:41:56+00:00"}
