@@ -178,6 +178,21 @@ One-time per train (÷ ~100 for real hardware):
 
 ---
 
+## 4b. LIVE CORRECTION (2026-07-24) — the ×realtime conversion was WRONG for the deployed box  **[MEASURED, live]**
+
+Measured on the LIVE ets-web box (Railway Pro, post-train, single produce loop, eigen worker
+parked by the audio-defer, no other engines resident): a **10-track full-length DJ corpus
+(M=4, ~70 min total audio) delivers 0.49× real-time**, steady over 90 s, identical under
+`ETS_BANK_DTYPE=float16` and `float32` (dtype is NOT the bottleneck). The §4 sandbox rows
+scale consistently (8 tracks/8.9k units → 0.3× sandbox); the live box is only ~1.5-2× faster
+per core than this sandbox — the disclosed "~100×" sandbox→hardware factor (and therefore the
+"30-113× realtime / CPU is a non-issue" conclusion) does NOT hold on Railway-class shared
+vCPU. **CPU is the binding constraint for full-length corpora on the current host.**
+Corpora at the 20-track/30-min-clips scale DO play ≥1× live (verified). Options, none
+applied without operator sign-off: (a) producer pipelining in the bridge (≤2× bound),
+(b) preregistered engine-path optimization guided by an on-box per-stage profile,
+(c) corpus guidance (clip-length sources), (d) faster single-core host.
+
 ## 4. Per-bar playback CPU vs corpus size  **[MEASURED, sandbox]**
 
 `StreamPlayer.produce_one_bar` (the exact live path: settle → temperature sample →
