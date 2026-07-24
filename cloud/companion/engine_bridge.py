@@ -1409,10 +1409,20 @@ class StreamPlayer:
 
     def produce_one_bar(self):
         """Produce ONE bar of capped PCM + role telemetry, exactly as the engine's
-        live loop does. Returns (pcm_int16_bytes, roles_list)."""
-        from ets.engine.engine import (bar_schedule, _playback_soft_limit,
-                                        bar_role_activity, nowplaying_activity)
-        from ets.render import render as render_schedule
+        live loop does. Returns (pcm_int16_bytes, roles_list).
+
+        Split into COMPOSE (settle/choose/schedule — mutates writer state, strictly
+        serial) and FINISH (pure render + telemetry from the composed bar) so the
+        produce loop can PIPELINE them (compose bar N+1 while bar N renders,
+        ETS_PIPELINE) without changing WHAT is composed or rendered: this method
+        remains the exact serial composition of the two halves."""
+        r, sched = self._compose_bar()
+        return self._finish_bar(r, sched)
+
+    def _compose_bar(self):
+        """COMPOSE one bar: tilt → write_bar (settlement + fiber choice; MUTATES
+        the writer/tape — the strictly-serial half) → schedule. Returns (r, sched)."""
+        from ets.engine.engine import bar_schedule
         self._ensure_bank()
         u = self._current_lane()
         with self._lock:                                     # second-moment shape (PREREG):
@@ -1437,6 +1447,17 @@ class StreamPlayer:
         tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
         r = self.engine.writer.write_bar(tilt=tilt)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
+        return r, sched
+
+    def _finish_bar(self, r, sched):
+        """FINISH one composed bar: pure render from (sched, bank) + the read-only
+        telemetry reductions + PCM conversion. Reads the writer's committed result
+        only — never mutates writer/tape state — so it may overlap the NEXT bar's
+        compose. EMA/telemetry mutations stay bar-ordered because the pipeline
+        executes finishes on ONE worker in submission order."""
+        from ets.engine.engine import (_playback_soft_limit,
+                                        bar_role_activity, nowplaying_activity)
+        from ets.render import render as render_schedule
         audio, _prov = render_schedule(sched, self._bank)
         audio = _playback_soft_limit(audio)                  # LIVE-only eardrum cap
         # STREAM MONO CONTRACT (live-only, like the soft limit): `wav_header` declares
