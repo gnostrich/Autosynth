@@ -116,6 +116,39 @@ def test_public_keyed_owner_keeps_train(tmp_path, monkeypatch):
         httpd.shutdown(); httpd.server_close()
 
 
+# --- owner-only unshare : the 403 the FE "Remove my set" leans on -----------
+
+def test_share_unshare_foreign_set_is_403(tmp_path, monkeypatch):
+    """The Explore owner-only "Remove my set" control (FE) relies on the request-layer
+    guard: an authenticated owner may unshare ONLY its OWN set_id — targeting another
+    session's set_id is a hard 403 (app.py ~1489). This is the backend the Remove
+    button leans on; it adds NO new unauth path. Two keyed owners prove it: the button
+    is never shown to a non-owner, and the server 403s a foreign set_id regardless."""
+    httpd, url = _server(tmp_path, public=True, keys=["k1", "k2"], monkeypatch=monkeypatch)
+    try:
+        owner = _auth(url, "k1")
+        stranger = _auth(url, "k2")
+        # owner's own set_id (assigned at auth), read from status.
+        code, sb = _req(url + "/api/status", token=owner)
+        assert code == 200, code
+        owner_sid = json.loads(sb)["set_id"]
+        assert owner_sid, "owner must have a set_id"
+        # the stranger is a valid OWNER too (clears the owner gate), so it reaches the
+        # ownership check — and unsharing the OWNER's set is a hard 403 (not your set).
+        code, body = _req(url + "/api/share", method="POST", token=stranger,
+                          body={"on": False, "set_id": owner_sid})
+        assert code == 403, (code, body)
+        # targeting its OWN set_id passes the ownership guard (no 403); it resolves to
+        # the honest untrained outcome, never a cross-owner delist.
+        code2, sb2 = _req(url + "/api/status", token=stranger)
+        stranger_sid = json.loads(sb2)["set_id"]
+        code3, body3 = _req(url + "/api/share", method="POST", token=stranger,
+                            body={"on": False, "set_id": stranger_sid})
+        assert code3 == 200 and code3 != 403, (code3, body3)
+    finally:
+        httpd.shutdown(); httpd.server_close()
+
+
 # --- P alone : public, keyless (the R6 demo-only regression pin) ------------
 
 def test_public_keyless_stays_gated_503(tmp_path, monkeypatch):

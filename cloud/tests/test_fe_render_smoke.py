@@ -146,6 +146,16 @@ def test_fe_renders_no_css_leak_tabs_and_field(tmp_path):
             assert page.query_selector("#fieldCanvas") is not None, "field canvas missing"
             assert page.query_selector("#fieldLegend") is not None, "field legend missing"
             assert page.query_selector("#fieldStatus") is not None, "field status missing"
+            # DISPLAY changes (PREREG-field-fullscreen-remove-set): the field lives in a
+            # scroll container (pan when oversized) and has a fullscreen expand control;
+            # the legend is REMOVED in grid mode (rows=tracks, cols=roles are labeled) —
+            # the element is retained (non-grid code path) but rendered display:none.
+            assert page.query_selector("#fieldScroll") is not None, "field scroll container missing"
+            assert page.query_selector("#fieldExpandBtn") is not None, "field expand control missing"
+            legend_disp = page.eval_on_selector(
+                "#fieldLegend", "el => getComputedStyle(el).display")
+            assert legend_disp == "none", \
+                f"legend must be removed (hidden) in grid mode, got display={legend_disp!r}"
             for gone_id in ("radialWrap", "channelSquares", "padModeToggle",
                             "steerSurface", "fieldExpand", "fieldTut",
                             "padRow", "xyPad", "puck", "drillBack"):

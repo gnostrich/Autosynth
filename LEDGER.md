@@ -1547,3 +1547,24 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `844b81c`
 - `Write` papers/TECH-SPEC-steering-instrument.md (2026-07-23T16:21:21+00:00)
+
+### at `9ea244f`
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:33:14+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:33:20+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:33:27+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:33:36+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:33:52+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:34:01+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:34:11+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:34:15+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:34:27+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:35:04+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:35:30+00:00)
+- `Write` cloud/tests/test_field_display_and_explore_fe.py (2026-07-24T09:36:56+00:00)
+- `Edit` cloud/tests/test_field_display_and_explore_fe.py (2026-07-24T09:37:30+00:00)
+- `Edit` cloud/tests/test_field_display_and_explore_fe.py (2026-07-24T09:37:36+00:00)
+- `Edit` cloud/tests/test_field_display_and_explore_fe.py (2026-07-24T09:37:56+00:00)
+- `Edit` cloud/tests/test_public_keyed_gate.py (2026-07-24T09:38:19+00:00)
+- `Edit` cloud/tests/test_fe_render_smoke.py (2026-07-24T09:38:42+00:00)
+- `Write` papers/PREREG-field-fullscreen-remove-set.md (2026-07-24T09:39:52+00:00)
+- `Edit` cloud/companion/static/index.html (2026-07-24T09:44:28+00:00)

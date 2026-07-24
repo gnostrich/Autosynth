@@ -282,6 +282,33 @@
   .field-status{ position:absolute; right:12px; bottom:10px; pointer-events:none;
     font-size: var(--fs-micro); letter-spacing:.06em; color: var(--muted); }
   .field-status.settling{ color: var(--accent); }
+  /* SCROLL CONTAINER: when the (track x role) grid needs more than the viewport, the
+     field pans inside here (both axes) so cells keep a legible minimum size instead
+     of squashing. overscroll-behavior:contain keeps the PAGE body from scrolling
+     horizontally — the scroll stays inside the field. */
+  .field-scroll{ position:relative; flex:1 1 auto; min-height:0; overflow:auto;
+    border-radius: var(--r-md); background: var(--panel-inset);
+    border:1px solid var(--line); box-shadow: inset 0 2px 30px -10px rgba(0,0,0,.6);
+    -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+  .field-scroll > .field-canvas{ border:0; border-radius:0; box-shadow:none;
+    background:transparent; min-height:0; }
+  /* EXPAND / COLLAPSE control (fullscreen the field on laptop AND mobile) */
+  .field-expand{ display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    height:28px; padding:0 10px; flex:0 0 auto; cursor:pointer;
+    background: var(--panel-inset); color: var(--ink-2);
+    border:1px solid var(--line); border-radius:8px; font: inherit;
+    font-size: var(--fs-micro); letter-spacing:.10em; text-transform:uppercase; font-weight:600; }
+  .field-expand:hover{ border-color: var(--accent-deep); color: var(--ink); }
+  .field-expand:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .field-expand svg{ width:13px; height:13px; }
+  /* FULLSCREEN — one class drives BOTH the native Fullscreen API path (laptop + most
+     mobile) and the CSS-fill fallback (iOS Safari etc.): fill the viewport with
+     safe-area insets; collapsing removes the class and restores the embedded size. */
+  #padHero.field-fs{ position:fixed; inset:0; margin:0; z-index:2000;
+    width:100vw; width:100dvw; height:100vh; height:100dvh; max-width:none;
+    border-radius:0; background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+             max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
 
   /* ---------- knobs band (component 2: extra modes + TEMP/GAUGE) ------------- */
   .knobs{ padding: var(--sp-4) var(--sp-5); display:flex; flex-direction:column; gap: var(--sp-4); }
@@ -652,6 +679,9 @@
   .exp-card .foot{ display:flex; align-items:center; gap:8px; margin-top:4px; }
   .badge.disarmed{ background:#E86A6A; color:#1a0505; }
   .badge.off{ background:var(--panel-inset); color:var(--muted); border:1px solid var(--line); }
+  /* owner-only "Remove my set" (destructive, quiet until hovered) */
+  button.exp-remove{ border-color: rgba(232,106,106,.45); color: var(--muted); }
+  button.exp-remove:hover{ border-color:#E86A6A; color:#F3B7B7; box-shadow:none; }
   .exp-empty, .exp-skel, .exp-fail{ color:var(--muted); font-size:13px; padding:8px 0; }
   .exp-skel i{ display:block; height:64px; border-radius:12px; margin-bottom:12px;
        background:linear-gradient(90deg,var(--panel-2),var(--panel-inset),var(--panel-2));
@@ -1027,6 +1057,16 @@
                      There is NO track-lean disarm caption: the track grain biases through
                      the ratified REV2 fiber lean, which never routes through B. -->
                 <span class="hint" id="fieldUnitGrainMsg" hidden>unit grain disarmed &mdash; the anchor-band matrix carries no information on this world</span>
+                <!-- Expand the field to fullscreen (Fullscreen API where available; CSS
+                     viewport-fill fallback otherwise). Display-only: no steer path. -->
+                <button type="button" class="field-expand" id="fieldExpandBtn"
+                        aria-pressed="false" aria-label="Expand the field to fullscreen"
+                        title="Expand the field to fullscreen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+                  <span id="fieldExpandLbl">Expand</span>
+                </button>
               </div>
               <!-- THE FIELD (replaces the XY radial pad + the flat channel squares +
                    the aim/shape/squares toggle — a socket swap of the pad element). One
@@ -1035,9 +1075,14 @@
                    (channel_bias -> set_channel_bias); a UNIT square biases the unit grain
                    (unit_bias -> set_unit_bias). Empty field ⇒ no bias ⇒ byte-identical. -->
               <div class="field-wrap">
-                <div class="field-legend" id="fieldLegend" aria-label="Track legend — colour and name of each source track"></div>
-                <canvas id="fieldCanvas" class="field-canvas" role="application"
-                  aria-label="The field — every square glows by its live settled weight (the engine's answer, never your input echoed back). Scroll or drag to bias a track or unit; Ctrl+scroll or pinch to drill a track into its units."></canvas>
+                <!-- Legend hidden in grid mode (rows=tracks, cols=roles are labeled in
+                     the matrix — the key is redundant). The element is retained for the
+                     non-grid field code path (fieldRenderLegend re-shows it there). -->
+                <div class="field-legend" id="fieldLegend" style="display:none" aria-label="Track legend — colour and name of each source track"></div>
+                <div class="field-scroll" id="fieldScroll">
+                  <canvas id="fieldCanvas" class="field-canvas" role="application"
+                    aria-label="The field — every square glows by its live settled weight (the engine's answer, never your input echoed back). Scroll or drag to bias a track or unit; Ctrl+scroll or pinch to drill a track into its units."></canvas>
+                </div>
                 <div class="field-status" id="fieldStatus" aria-live="polite"></div>
               </div>
             </section>
@@ -2069,6 +2114,51 @@
   }
   /* ===== END FIELD PURE LOGIC ===== */
 
+  /* ===== FIELD DISPLAY PURE LOGIC (test-extractable; no DOM / no telemetry / no
+     bias-payload) — layout & motion helpers for the fullscreen / scroll / marquee
+     DISPLAY changes only. These never touch fieldBias, fieldBiasPayload, the bias
+     routing, or the steer wire: an empty field still yields the byte-identical
+     neutral payload (channel_bias 0, unit_bias {}, track_role_bias [], region_add 0). */
+  // Minimum on-screen size for the (track x role) grid so cells never shrink below a
+  // legible floor. When the grid needs more than the available box, the field SCROLLS
+  // (both axes) instead of squashing — the returned {w,h} is >= the available box, and
+  // scrollX/scrollY report which axis overflows. Pure geometry; drives no steering.
+  function fieldGridMinSize(T, M, availW, availH, opts){
+    opts = opts || {};
+    var minCW = opts.minCellW || 34, minCH = opts.minCellH || 30;
+    var rhW = opts.rhW || 160, chH = opts.chH || 30, headH = opts.headH || 22;
+    availW = +availW || 0; availH = +availH || 0;
+    var cols = Math.max(1, M | 0), rows = Math.max(1, T | 0);
+    var needW = rhW + cols * minCW, needH = headH + chH + rows * minCH;
+    return { w: Math.max(availW, needW), h: Math.max(availH, needH),
+             scrollX: needW > availW, scrollY: needH > availH };
+  }
+  // A gentle horizontal ping-pong offset (px) for a row label longer than its box, so
+  // the WHOLE track name reads over time. Pure function of elapsed ms — no trig, no
+  // timer, no easing lib (WEB-FAB clean). 0 when the name already fits; travels in
+  // [0, textW-boxW] out-and-back with a pause at each end.
+  function fieldMarqueeShift(textW, boxW, tMs, opts){
+    opts = opts || {};
+    var speed = opts.speed || 26;                 // px per second (gentle)
+    var pauseMs = (opts.pauseMs != null) ? opts.pauseMs : 850;
+    var over = (+textW || 0) - (+boxW || 0);
+    if(over <= 0) return 0;
+    var travelMs = (over / speed) * 1000;
+    var seg = travelMs + pauseMs;                 // one leg: pause, then travel
+    var period = 2 * seg;                         // out-and-back
+    var p = (((+tMs || 0) % period) + period) % period;
+    var u = (p < seg) ? p : (period - p);         // fold the return leg
+    var frac = (u <= pauseMs) ? 0 : Math.min(1, (u - pauseMs) / travelMs);
+    return over * frac;
+  }
+  // Fullscreen plan: use the Fullscreen API where the element supports it (laptop AND
+  // most mobile), a CSS viewport-fill fallback otherwise (e.g. iOS Safari). Pure branch.
+  function fieldFsPlan(apiAvail, isActive){
+    if(isActive) return apiAvail ? "api-exit" : "css-exit";
+    return apiAvail ? "api-enter" : "css-enter";
+  }
+  /* ===== END FIELD DISPLAY PURE LOGIC ===== */
+
   var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus"), fieldLegend = $("fieldLegend");
   var fieldCtx = fieldCanvas ? fieldCanvas.getContext("2d") : null;
   // ---- TELEMETRY-FED STORES (the engine's answer) — WRITTEN ONLY by the appliers ----
@@ -2162,6 +2252,7 @@
   }
   function fieldDraw(){
     if(!fieldCtx) return;
+    fieldFitCanvas(fieldState());            // size the canvas for a legible min cell (scroll if oversized)
     var W = fieldCanvas.clientWidth, H = fieldCanvas.clientHeight;
     var dpr = window.devicePixelRatio || 1;
     if(fieldCanvas.width !== Math.round(W*dpr) || fieldCanvas.height !== Math.round(H*dpr)){
@@ -2169,7 +2260,7 @@
     }
     fieldCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     fieldCtx.clearRect(0, 0, W, H);
-    fieldRenderLegend();
+    if(!FIELD_GRID_ENABLED) fieldRenderLegend();   // grid mode: rows/cols are labeled — legend removed
     var st = fieldState();
     if(FIELD_GRID_ENABLED){ fieldDrawGrid(st, W, H); return; }
     fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
@@ -2220,6 +2311,7 @@
   // bias RING = operator input (kept honestly distinct, the WEBFAB split). Column headers on
   // a region-DISARMED corpus render DIM + tagged "off" (steer-inactive), never a fake control.
   function fieldDrawGrid(st, W, H){
+    fieldMarqueeActive = false;              // set true iff a row label overflows (drives the gentle marquee)
     var g = fieldGridPlace(st, W, H), lay = g.layout;
     fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
     fieldCtx.fillText("TRACK × ROLE  (scroll / drag a row, column or cell to bias · up=amplify)",
@@ -2263,7 +2355,7 @@
       fieldCtx.fillStyle = dim ? cssVar("--faint") : cssVar("--ink");
       fieldCtx.font = "10px " + cssVar("--font-mono");
       if(sq.kind === "track"){
-        fieldCtx.fillText(fieldTruncMiddle(sq.label, Math.max(6, Math.floor(w / 7))), x + 6, y + 14);
+        fieldDrawRowLabel(x, y, w, h, sq.label);   // FULL uncompressed name (gentle marquee if it overflows)
         fieldCtx.fillStyle = cssVar("--muted");
         fieldCtx.fillText(Math.round(sq.settled * 100) + "", x + 6, y + h - 7);
       } else if(sq.kind === "col"){
@@ -2279,6 +2371,7 @@
         fieldCtx.fillText(Math.round(sq.settled * 100) + "", x + 4, y + h - 6);
       }
     });
+    fieldMaybeStartMarquee();                // re-arm the gentle marquee only while a name overflows
   }
   // ---- THE TELEMETRY APPLIERS: the SOLE writers of the glow stores. Input handlers
   // never call these. Empty telemetry -> empty field (no fabrication).
@@ -2476,6 +2569,107 @@
     }
     fieldDraw();
   }
+  /* ---------- DISPLAY runtime (fullscreen / scroll-fit / marquee) — no steer path ----
+     These size and animate the field for legibility. They never read or write fieldBias,
+     never call sendSteer, and never touch the bias payload: a neutral field stays
+     byte-identical on the wire. The pure geometry/motion is in FIELD DISPLAY PURE LOGIC. */
+  var fieldScroll = $("fieldScroll");
+  // Size the canvas so cells keep a legible minimum; when the grid exceeds the box the
+  // field-scroll container pans (both axes). Hit-testing stays consistent because the
+  // draw and the hit-test both read the SAME canvas clientWidth/clientHeight.
+  function fieldFitCanvas(st){
+    if(!fieldCanvas || !FIELD_GRID_ENABLED) return;
+    var box = fieldScroll || fieldCanvas.parentNode;
+    var availW = (box && box.clientWidth) || 0, availH = (box && box.clientHeight) || 0;
+    if(availW <= 0 || availH <= 0) return;
+    var T = fieldTrackIds(st).length, M = world.M || 0;
+    var sz = fieldGridMinSize(T, M, availW, availH);
+    var wpx = sz.w + "px", hpx = sz.h + "px";
+    if(fieldCanvas.style.width !== wpx) fieldCanvas.style.width = wpx;
+    if(fieldCanvas.style.height !== hpx) fieldCanvas.style.height = hpx;
+  }
+  function fieldReducedMotion(){
+    try{ return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
+    catch(e){ return false; }
+  }
+  function fieldNow(){ return (window.performance && performance.now) ? performance.now() : Date.now(); }
+  // Draw a row (track) label at FULL length. Fits -> plain; overflows -> gentle marquee
+  // (or, under prefers-reduced-motion, a middle-truncation with the full name in the
+  // canvas tooltip). Uses the REAL ingested name passed in — never padded/invented.
+  function fieldDrawRowLabel(x, y, w, h, label){
+    var padX = 6, boxW = w - padX * 2, ty = y + 14;
+    label = String(label == null ? "" : label);
+    fieldCtx.font = "10px " + cssVar("--font-mono");
+    var textW = fieldCtx.measureText(label).width;
+    if(textW <= boxW){ fieldCtx.fillText(label, x + padX, ty); return; }
+    if(fieldReducedMotion()){
+      fieldCtx.fillText(fieldTruncMiddle(label, Math.max(4, Math.floor(boxW / 6))), x + padX, ty);
+      return;
+    }
+    fieldMarqueeActive = true;
+    var off = fieldMarqueeShift(textW, boxW, fieldNow());
+    fieldCtx.save();
+    fieldCtx.beginPath(); fieldCtx.rect(x + padX, y + 1, boxW, h - 2); fieldCtx.clip();
+    fieldCtx.fillText(label, x + padX - off, ty);
+    fieldCtx.restore();
+  }
+  var fieldMarqueeActive = false, fieldMarqueeRAF = 0;
+  function fieldMarqueeLoop(){
+    fieldMarqueeRAF = 0;
+    if(document.hidden) return;               // don't spin when the tab is hidden
+    fieldDraw();                              // recompute offset; fieldDraw re-arms if still needed
+  }
+  function fieldMaybeStartMarquee(){
+    // only animate while a name actually overflows AND the field is on-screen (Play
+    // active -> offsetParent set) AND the tab is visible -> self-terminating, gentle.
+    if(fieldMarqueeActive && !fieldMarqueeRAF && !document.hidden
+       && fieldCanvas && fieldCanvas.offsetParent !== null && window.requestAnimationFrame)
+      fieldMarqueeRAF = window.requestAnimationFrame(fieldMarqueeLoop);
+  }
+  // ---- FULLSCREEN (laptop AND mobile). One `.field-fs` class styles both the native
+  // Fullscreen API path and the CSS-fill fallback; fieldFsPlan (pure) picks the branch.
+  var fieldFsCss = false;
+  function fieldFsApiAvailable(el){
+    return !!(el && el.requestFullscreen) && (document.fullscreenEnabled !== false);
+  }
+  function fieldFsIsActive(){ return !!document.fullscreenElement || fieldFsCss; }
+  function fieldFsSetClass(on){ var el = $("padHero"); if(el) el.classList.toggle("field-fs", !!on); }
+  function fieldSyncFsBtn(){
+    var btn = $("fieldExpandBtn"), lbl = $("fieldExpandLbl"), on = fieldFsIsActive();
+    if(btn){
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      var t = on ? "Collapse the field" : "Expand the field to fullscreen";
+      btn.setAttribute("aria-label", t); btn.title = t;
+    }
+    if(lbl) lbl.textContent = on ? "Collapse" : "Expand";
+  }
+  function fieldReflow(){ if(fieldCanvas) fieldDraw(); }
+  function fieldToggleFullscreen(){
+    var el = $("padHero"); if(!el) return;
+    var plan = fieldFsPlan(fieldFsApiAvailable(el), fieldFsIsActive());
+    if(plan === "api-enter"){
+      var p = el.requestFullscreen();
+      fieldFsSetClass(true);                  // style now; fullscreenchange keeps it synced
+      if(p && p.catch) p.catch(function(){ fieldFsCss = true; fieldFsSetClass(true); fieldSyncFsBtn(); fieldReflow(); });
+    } else if(plan === "api-exit"){
+      if(document.exitFullscreen) document.exitFullscreen();
+    } else if(plan === "css-enter"){
+      fieldFsCss = true; fieldFsSetClass(true); fieldSyncFsBtn(); fieldReflow();
+    } else {
+      fieldFsCss = false; fieldFsSetClass(false); fieldSyncFsBtn(); fieldReflow();
+    }
+  }
+  document.addEventListener("fullscreenchange", function(){
+    var el = $("padHero");
+    if(document.fullscreenElement === el) fieldFsSetClass(true);
+    else if(!fieldFsCss) fieldFsSetClass(false);
+    fieldSyncFsBtn(); fieldReflow();
+  });
+  document.addEventListener("keydown", function(ev){
+    if(ev.key === "Escape" && fieldFsCss && !document.fullscreenElement){
+      fieldFsCss = false; fieldFsSetClass(false); fieldSyncFsBtn(); fieldReflow();
+    }
+  });
   function fieldInit(){
     if(fieldInited) return;
     fieldInited = true;
@@ -2488,6 +2682,9 @@
     fieldCanvas.addEventListener("touchmove", fieldTouchMove, { passive:false });
     fieldCanvas.addEventListener("touchend", fieldTouchEnd, { passive:false });
     fieldCanvas.addEventListener("touchcancel", function(){ fieldTouch = null; });
+    var eb = $("fieldExpandBtn");
+    if(eb) eb.addEventListener("click", fieldToggleFullscreen);
+    fieldSyncFsBtn();
     fieldDraw();
   }
   window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
@@ -3917,6 +4114,15 @@
       var b = $("expRetry"); if(b) b.addEventListener("click", loadExplore);
     });
   }
+  /* ===== EXPLORE PURE LOGIC (test-extractable) =====
+     Owner-only "Remove my set": the Remove control shows ONLY on a set the current
+     session owns (entry.mine === true, from /api/explore). It reuses the EXISTING
+     owner-gated unshare (POST /api/share {on:false, set_id}); the backend enforces
+     owner-only (a foreign set_id -> 403), so this is a display gate over an already
+     authorized path — no new unauth route. */
+  function exploreRemovable(entry){ return !!(entry && entry.mine === true); }
+  function exploreRemoveMsg(name){ return "Remove " + (name || "this set") + " from Explore?"; }
+  /* ===== END EXPLORE PURE LOGIC ===== */
   function renderExplore(sets){
     if(!sets.length){ exploreList.innerHTML = '<div class="exp-empty">no shared sets published yet</div>'; return; }
     exploreList.innerHTML = "";
@@ -3926,18 +4132,43 @@
       var badges = "";
       if(!s.region_armed) badges += '<span class="badge disarmed">disarmed</span>';
       if(s.mine) badges += '<span class="badge off">yours</span>';
+      var removeBtn = exploreRemovable(s)
+        ? '<button class="act ghost exp-remove" data-remove="'+escapeHtml(s.id)+'" '+
+          'data-name="'+escapeHtml(s.name || "shared set")+'" '+
+          'style="padding:7px 12px;font-size:12px">Remove</button>'
+        : '';
       card.innerHTML =
         '<h4>'+escapeHtml(s.name || "shared set")+'</h4>'+
         '<div class="meta">by '+escapeHtml(s.owner || "owner")+'</div>'+
         '<div class="foot">'+badges+'<span class="rule"></span>'+
           (avail ? '<button class="act" data-open="'+escapeHtml(s.id)+'" style="padding:7px 14px;font-size:12px">Open in Play</button>'
                  : '<span class="note">owner offline / unavailable</span>')+
+          removeBtn+
         '</div>';
       exploreList.appendChild(card);
     });
     exploreList.querySelectorAll("[data-open]").forEach(function(b){
       b.addEventListener("click", function(){ openSet(b.getAttribute("data-open")); });
     });
+    exploreList.querySelectorAll("[data-remove]").forEach(function(b){
+      b.addEventListener("click", function(){ removeMySet(b.getAttribute("data-remove"), b.getAttribute("data-name")); });
+    });
+  }
+  // OWNER-ONLY REMOVE: confirm, then the SAME owner-gated unshare the publish toggle
+  // uses (POST /api/share {on:false, set_id}). A non-owner never sees this button, and
+  // the backend 403s a foreign set_id regardless — no new unauth path. Refresh the list.
+  function removeMySet(id, name){
+    if(!id) return;
+    if(!window.confirm(exploreRemoveMsg(name))) return;
+    fetch("/api/share", { method:"POST", headers:{ "Content-Type":"application/json" },
+                          body:JSON.stringify({ on:false, set_id:id }) })
+      .then(function(r){ if(r.status === 401){ gotoAccess(); return null; } return r.json(); })
+      .then(function(j){
+        if(j === null) return;
+        if(j.ok && typeof setShareUI === "function") setShareUI(false);  // sync the Train publish toggle
+        loadExplore();
+      })
+      .catch(function(){ loadExplore(); });
   }
   function openSet(id){
     fetch("/api/open", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ set_id:id }) })
