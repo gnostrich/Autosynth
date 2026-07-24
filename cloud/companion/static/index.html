@@ -1682,26 +1682,54 @@
 
   /* ================= TRAIN ================= */
   var resultWrap = $("resultWrap"), resultEl = $("result"), resultBadge = $("resultBadge"), resultMeta = $("resultMeta");
-  trainBtn.addEventListener("click", function(){
-    trainBtn.disabled = true; var old = trainBtn.textContent; trainBtn.textContent = "training…";
-    resultWrap.style.display = "none";
-    // show the honest staged indicator and light it from REAL /api/status transitions
-    // (never a timer-driven fake stepper — rows advance only as the backend reports).
-    trainStages.classList.add("show"); renderStages([], true);
-    var poll = setInterval(function(){ pollTrainStages(true); }, 1000);
-    var stopPoll = function(){ clearInterval(poll); };
-    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({}) })
-      .then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); })
-      .then(function(res){
-        stopPoll(); pollTrainStages(false);   // final pass: mark reported stages done
-        if(res.code === 401){ gotoAccess(); return; }
-        var j = res.j; resultWrap.style.display = "block"; trainBtn.textContent = old; trainBtn.disabled = false;
-        if(res.code === 429 || j.busy){
-          resultBadge.className = "badge err"; resultBadge.textContent = "busy";
-          resultMeta.textContent = ""; resultEl.textContent = j.error || "a training is already running — try again shortly";
-          return;
-        }
-        if(j.ok){
+  var trainOldLabel = null, trainWatch = null, stagePoll = null;
+
+  function trainUIStart(){
+    trainBtn.disabled = true;
+    if(trainOldLabel === null) trainOldLabel = trainBtn.textContent;
+    trainBtn.textContent = "training…";
+    trainStages.classList.add("show");
+    if(!stagePoll) stagePoll = setInterval(function(){ pollTrainStages(true); }, 1000);
+  }
+  function trainUIStop(){
+    trainBtn.textContent = trainOldLabel || "Train on cloud"; trainOldLabel = null;
+    trainBtn.disabled = false;
+    if(trainWatch){ clearInterval(trainWatch); trainWatch = null; }
+    if(stagePoll){ clearInterval(stagePoll); stagePoll = null; }
+    pollTrainStages(false);   // final pass: mark reported stages done
+  }
+  function trainShowError(j){
+    trainUIStop(); resultWrap.style.display = "block";
+    if(j && j.busy){
+      resultBadge.className = "badge err"; resultBadge.textContent = "busy";
+      resultMeta.textContent = ""; resultEl.textContent = j.error || "a training is already running — try again shortly";
+    } else {
+      resultBadge.className = "badge err"; resultBadge.textContent = "failed";
+      resultMeta.textContent = ""; resultEl.textContent = (j && j.error) || "unknown error";
+    }
+  }
+  // RECONCILE: the hosted train runs in the BACKGROUND (the request returns
+  // {training:true} immediately) — the FE follows /api/status until the real
+  // result/error lands. This survives gateway timeouts, page reloads, and
+  // re-clicks (the server attaches a re-click to the running train).
+  function watchTraining(){
+    if(trainWatch) return;
+    trainUIStart();
+    trainWatch = setInterval(function(){
+      fetch("/api/status").then(function(r){ return r.ok ? r.json() : null; }).then(function(s){
+        if(!s) return;                       // transient network blip: keep watching
+        renderStages((s.train_stages || []).map(function(e){ return e.stage; }), true);
+        if(s.training) return;
+        if(s.train_result){ handleTrainDone(s.train_result); }
+        else if(s.train_error){ trainShowError(s.train_error); }
+        else { trainUIStop(); }              // no train on the server at all
+      }).catch(noop);
+    }, 1500);
+  }
+  function handleTrainDone(j){
+    trainUIStop();
+    resultWrap.style.display = "block";
+    if(j.ok){
           resultBadge.className = "badge ok"; resultBadge.textContent = "world verified";
           resultMeta.textContent = "cloud anchor-fit returned + receipt verified locally";
           var r = j.receipt || {};
@@ -1742,13 +1770,34 @@
           resultBadge.className = "badge err"; resultBadge.textContent = "failed";
           resultMeta.textContent = ""; resultEl.textContent = j.error || "unknown error";
         }
-      }).catch(function(e){
-        stopPoll();
-        trainBtn.textContent = old; trainBtn.disabled = false;
-        resultWrap.style.display = "block"; resultBadge.className = "badge err"; resultBadge.textContent = "error";
-        resultEl.textContent = String(e);
+  }
+
+  trainBtn.addEventListener("click", function(){
+    resultWrap.style.display = "none";
+    // show the honest staged indicator and light it from REAL /api/status transitions
+    // (never a timer-driven fake stepper — rows advance only as the backend reports).
+    trainUIStart(); renderStages([], true);
+    fetch("/api/train", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({}) })
+      .then(function(r){ return r.json().then(function(j){ return { code:r.status, j:j }; }); })
+      .then(function(res){
+        if(res.code === 401){ trainUIStop(); gotoAccess(); return; }
+        var j = res.j || {};
+        if(res.code === 429 || j.busy){ trainShowError(j); return; }
+        if(j.training){ watchTraining(); return; }   // hosted: background train — follow /api/status
+        if(j.ok){ handleTrainDone(j); } else { trainShowError(j); }
+      }).catch(function(){
+        // the REQUEST dropped (edge-gateway timeout / network blip) — the server may
+        // well still be training. NEVER declare failure from a dropped request;
+        // reconcile against /api/status instead.
+        watchTraining();
       });
   });
+
+  // PAGE-LOAD RECONCILE: a train started before a reload (or the request that
+  // launched it timed out) is still running server-side — re-attach to it.
+  fetch("/api/status").then(function(r){ return r.ok ? r.json() : null; }).then(function(s){
+    if(s && s.training){ watchTraining(); }
+  }).catch(noop);
 
   /* ================= INSTRUMENT ENABLE / LOCK ================= */
   var instrument = $("instrument"), instHint = $("instHint");

@@ -51,10 +51,10 @@ def test_demo_engine_is_a_shared_singleton(fake_build):
 
 def test_demo_shared_across_hub_sessions(fake_build, tmp_path):
     demo = tmp_path / "demo.etsworld"; demo.write_bytes(b"demo")   # must exist to resolve
-    hub = Hub(session_dir=str(tmp_path), access_keys=["k"], play_world=str(demo))
+    hub = Hub(session_dir=str(tmp_path), access_keys=["k", "k2"], play_world=str(demo))
     a = hub.session_for_token(hub.authenticate("k"))
-    b = hub.session_for_token(hub.authenticate("k"))
-    assert a is not b, "distinct visitors get distinct sessions"
+    b = hub.session_for_token(hub.authenticate("k2"))
+    assert a is not b, "distinct KEYS get distinct sessions (same key = same session)"
     pa = hub.playable_for(a)
     pb = hub.playable_for(b)
     assert pa is pb, "both sessions must share the ONE demo engine"

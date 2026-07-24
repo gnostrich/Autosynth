@@ -41,7 +41,7 @@ def hub(tmp_path, monkeypatch):
     monkeypatch.setattr(app, "_build_stream_player",
                         lambda path, seed, is_trained: _FakePlayer(path, seed, is_trained))
     demo = tmp_path / "demo.etsworld"; demo.write_bytes(b"demo")
-    h = Hub(session_dir=str(tmp_path), access_keys=["k"], play_world=str(demo))
+    h = Hub(session_dir=str(tmp_path), access_keys=["k", "k2"], play_world=str(demo))
     h._demo_file = str(demo)
     return h
 
@@ -59,7 +59,7 @@ def _owner_with_trained_set(hub, tmp_path, name="Owner Set"):
 
 def test_unshared_set_is_unreachable_and_unlisted(hub, tmp_path):
     owner = _owner_with_trained_set(hub, tmp_path)
-    visitor = hub.session_for_token(hub.authenticate("k"))
+    visitor = hub.session_for_token(hub.authenticate("k2"))
     # not shared yet: not in the catalog, not openable by its real id
     assert hub.explore(visitor) == []
     assert hub.open_set(visitor, owner.set_id) is None
@@ -71,7 +71,7 @@ def test_unshared_set_is_unreachable_and_unlisted(hub, tmp_path):
 
 def test_unshare_revokes_immediately(hub, tmp_path):
     owner = _owner_with_trained_set(hub, tmp_path)
-    visitor = hub.session_for_token(hub.authenticate("k"))
+    visitor = hub.session_for_token(hub.authenticate("k2"))
 
     hub.share(owner, True)
     assert [e["id"] for e in hub.explore(visitor)] == [owner.set_id]
@@ -96,7 +96,7 @@ def test_only_owner_can_unshare(hub, tmp_path):
     hub.share(owner, True)
     # a different session cannot delist someone else's set via share() (it targets
     # the CALLER's own set_id) — the catalog entry survives.
-    stranger = hub.session_for_token(hub.authenticate("k"))
+    stranger = hub.session_for_token(hub.authenticate("k2"))
     hub.share(stranger, False)            # stranger has no trained set of its own
     assert [e["id"] for e in hub.explore(owner)] == [owner.set_id]
 
@@ -106,7 +106,7 @@ def test_only_owner_can_unshare(hub, tmp_path):
 def test_visitor_steer_is_region_tilt_only(hub, tmp_path):
     owner = _owner_with_trained_set(hub, tmp_path)
     hub.share(owner, True)
-    visitor = hub.session_for_token(hub.authenticate("k"))
+    visitor = hub.session_for_token(hub.authenticate("k2"))
     hub.open_set(visitor, owner.set_id)
     p = hub.playable_for(visitor)
 
