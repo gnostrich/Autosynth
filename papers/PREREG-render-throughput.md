@@ -51,4 +51,4 @@ Single revert commit; worlds/banks are unaffected (read-only compute optimizatio
 no on-disk format change).
 
 ## Operator sign-off
-- [ ] RATIFIED (operator): ______ date ______
+- [x] RATIFIED (operator, in-session: "ok go ahead using persistent opus builder /agents while retaining the existing thing as backup and retaining version control"): 2026-07-24

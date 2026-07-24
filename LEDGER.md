@@ -1666,3 +1666,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `c45a15c`
 - `Write` papers/PREREG-render-throughput.md (2026-07-24T17:22:38+00:00)
+
+### at `9722190`
+- `Edit` papers/PREREG-render-throughput.md (2026-07-24T17:38:01+00:00)
+- `Edit` BACKUPS.md (2026-07-24T17:38:08+00:00)
