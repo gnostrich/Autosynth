@@ -234,3 +234,11 @@ semantic changes that this prereg does not authorize:
 
 Neither was implemented. If throughput beyond this is wanted, it needs its own
 pre-registered run.
+
+## G5 (live) — MET, with a measurement-artifact disclosure (2026-07-25)
+Live delivery on ets-web after deploy (commit 8b92357): a warm full-length 4-track set
+on a silent box streams at a dead-flat **1.00× real-time over 151 s** (mono 88,200 B/s
+divisor — all 2026-07-24 live figures had mistakenly used the stereo rate and read half).
+The ≥1.0× clause is met. The optimization's live effect is HEADROOM (the pacer caps
+delivery at 1.0×): its measured value is the sandbox produce-throughput gain (2.37× /
+3.96×) + proportionally faster σ_φ calibration + resilience under contention.
