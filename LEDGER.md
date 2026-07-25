@@ -1666,3 +1666,42 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `c45a15c`
 - `Write` papers/PREREG-render-throughput.md (2026-07-24T17:22:38+00:00)
+
+### at `9722190`
+- `Edit` papers/PREREG-render-throughput.md (2026-07-24T17:38:01+00:00)
+- `Edit` BACKUPS.md (2026-07-24T17:38:08+00:00)
+
+### at `e57bc28`
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:47:41+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:48:00+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:48:12+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:48:21+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:49:05+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:49:27+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:49:31+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:49:38+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:49:50+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:49:54+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:51:09+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:51:13+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:51:18+00:00)
+- `Write` cloud/tools/fast_realize_verify.py (2026-07-24T17:53:09+00:00)
+- `Edit` cloud/tools/fast_realize_verify.py (2026-07-24T17:53:18+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:55:19+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-24T17:55:24+00:00)
+- `Write` cloud/tests/test_fast_realize.py (2026-07-24T17:56:20+00:00)
+
+### at `ca7b2ef`
+- `Edit` architecture-v6/ets/render/render.py (2026-07-25T05:25:12+00:00)
+- `Edit` architecture-v6/ets/render/render.py (2026-07-25T05:25:37+00:00)
+- `Edit` architecture-v6/ets/render/render.py (2026-07-25T05:25:42+00:00)
+- `Edit` architecture-v6/ets/render/render.py (2026-07-25T05:25:50+00:00)
+
+### at `cf24c7a`
+- `Write` cloud/tests/test_stretch_memo.py (2026-07-25T05:37:51+00:00)
+- `Write` papers/GATE-render-throughput.md (2026-07-25T05:43:20+00:00)
+
+### at `8e8bce7`
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-25T06:00:01+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-25T06:00:10+00:00)
+- `Edit` architecture-v6/ets/writer/realize.py (2026-07-25T06:00:21+00:00)

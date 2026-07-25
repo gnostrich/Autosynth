@@ -34,8 +34,9 @@ tape's coupling IS the provenance record (connector (i)) — the render then
 discharges I-12 sample-by-sample.
 """
 from __future__ import annotations
+import os
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from ..functional import f as ff
@@ -187,6 +188,80 @@ def build_index(fstate, protos, tracks) -> RealizationIndex:
                             unit_phase=unit_phase)
 
 
+# ---- implementation selection for the fiber choice (NO semantic content) ----
+#
+# The per-(slot, band) fiber choice below has TWO implementations of the SAME
+# mathematics: `_choose_original` (the reference, kept verbatim) and
+# `_choose_fast` (the same expressions evaluated on precomputed numpy arrays
+# instead of per-candidate Python loops). They are not alternatives in any
+# musical sense — they are proven BIT-IDENTICAL (identical candidate order,
+# identical energies, identical reuse weights, identical field addends,
+# identical rng consumption, identical argmax), so which one runs is invisible
+# to the tape. `ETS_FAST_REALIZE=0|false|off` selects the reference path at CALL
+# time (no rebuild, no restart of anything but the process's env read); the
+# default is the fast one. Gates: cloud/tools/fast_realize_verify.py (G1 row
+# identity, G2 PCM byte identity) and cloud/tests/test_fast_realize.py.
+_FAST_OFF = ("0", "false", "off", "no")
+
+
+def fast_realize_enabled() -> bool:
+    """True iff the vectorized fiber-choice implementation is selected (default).
+
+    Read from the environment at call time so the kill-switch is live for a
+    running process's next choice; it selects an IMPLEMENTATION only."""
+    return os.environ.get("ETS_FAST_REALIZE", "1").strip().lower() not in _FAST_OFF
+
+
+@dataclass
+class _Pool:
+    """The frozen (role k, band b) candidate pool, in ARRAY form.
+
+    Exactly ``index.candidates[(k, b)]`` in its fixed enumeration order — the
+    same order `_choose_original` builds its `choices` list in — with the three
+    per-candidate reads that loop performs hoisted into arrays:
+
+      keys   : the (track_id, unit_id) of each candidate — what a choice
+               returns, and the field-bias grains' lookup keys
+      phase  : each candidate's intrinsic phase (``index.unit_phase``)
+      missing: positions with NO intrinsic phase — `_choose_original` falls back
+               to the SLOT phase there, which is psi-dependent, so those entries
+               are filled per call (empty for any index built by ``build_index``)
+      gidx   : each candidate's row in the recency mirror ``_last_bar``
+      cont0/cont1: the continuation indicator of this choice set with (cont1) and
+               without (cont0) a run-continuation head — constants of the pool
+
+    Derived ONLY from the frozen index (never from elapsed time): a memo of the
+    world, not writer state (I-8; see FiberThreader._fast_tables)."""
+    keys: List[Tuple[int, int]]
+    phase: np.ndarray
+    missing: np.ndarray
+    gidx: np.ndarray
+    cont0: np.ndarray
+    cont1: np.ndarray
+    # the field-bias addends of THIS pool under the field map of the bar being
+    # written: (that map object, the vector). One slot — the live tilt is
+    # rebound per bar, so at most the current bar's map is referenced.
+    cbias: Optional[Tuple[object, np.ndarray]] = None
+
+    @property
+    def size(self) -> int:
+        return len(self.keys)
+
+
+# Recency mirror sentinel for "this unit was never committed": a bar so far in
+# the future that bar − NEVER is negative, hence Δ < 1, hence weight 0 — the
+# `last is None` branch of `_reuse`, expressed in the same comparison as the
+# Δ < 1 branch (one mask, no second condition).
+_NEVER = 1 << 62
+
+
+def _frozen(a: np.ndarray) -> np.ndarray:
+    """Mark a cached array read-only: caches are inputs to the choice measure,
+    never scratch (nothing downstream of `fiber_choice_logits` writes them)."""
+    a.flags.writeable = False
+    return a
+
+
 # ---- the fiber block: one threading mechanism for batch AND stream ---------
 
 class FiberThreader:
@@ -231,6 +306,17 @@ class FiberThreader:
         self.run_head: Dict[int, Tuple[int, int]] = {}    # band -> unit in flight
         self.last_used: Dict[Tuple[int, int], int] = {}   # unit -> last COMMITTED bar
         self._pending: Dict[Tuple[int, int], int] = {}    # placed this (uncommitted) bar
+        # --- fast-path memos (implementation only; see fast_realize_enabled) ---
+        # `_unit_row` + `_last_bar` are an ARRAY MIRROR of `last_used` (which is
+        # written in exactly one place, commit_bar); `_pools` and `_energy` memo
+        # pure functions of the FROZEN index (and, for `_energy`, of the grid's
+        # finitely many slot phases). None of them is new working state: their
+        # size is bounded by the material + the grid, never by elapsed time
+        # (I-8; cloud/tests/test_fast_realize.py::test_fast_memos_are_bounded).
+        self._unit_row: Optional[Dict[Tuple[int, int], int]] = None
+        self._last_bar: Optional[np.ndarray] = None
+        self._pools: Dict[Tuple[int, int], _Pool] = {}
+        self._energy: Dict[Tuple[int, int, float], np.ndarray] = {}
 
     # -- fiber state (the run/recency half of the working tape, spec §7) ------
     def state_size(self) -> int:
@@ -241,6 +327,10 @@ class FiberThreader:
         tape is what φ_novelty reads — connector Layer 0)."""
         for key, b in self._pending.items():
             self.last_used[key] = b
+            if self._unit_row is not None:                # keep the mirror exact
+                row = self._unit_row.get(key)             # (a key with no row is
+                if row is not None:                       # in no pool, so it is
+                    self._last_bar[row] = b               # never read back)
         self._pending.clear()
 
     def _reuse(self, key: Tuple[int, int], bar: int) -> float:
@@ -261,7 +351,21 @@ class FiberThreader:
 
     def _choose(self, k: int, b: int, psi: float, bar: int):
         """One (slot, band) fiber choice. Returns ((tid, uid), is_continuation)
-        or None if no material exists for (k, b)."""
+        or None if no material exists for (k, b).
+
+        THE single fiber-choice entry point: both implementations live behind
+        it, so every observer of the choice (and every caller) still sees
+        exactly one `_choose` per (slot, band). Which implementation evaluates
+        the measure is selected at call time by ``fast_realize_enabled()`` and
+        is bit-identical either way (see that function's note)."""
+        if fast_realize_enabled():
+            return self._choose_fast(k, b, psi, bar)
+        return self._choose_original(k, b, psi, bar)
+
+    def _choose_original(self, k: int, b: int, psi: float, bar: int):
+        """The reference implementation of the fiber choice — the measure
+        written out candidate-by-candidate. Kept verbatim as the definition the
+        vectorized path is verified against (ETS_FAST_REALIZE=0 runs it)."""
         idx = self.index
         choices: List[Tuple[int, int]] = []
         is_cont: List[bool] = []
@@ -319,6 +423,216 @@ class FiberThreader:
             gumbel = -np.log(-np.log(self.rng.uniform(size=len(logits))))
             j = int(np.argmax(logits + gumbel))    # exact categorical draw
         return (choices[j], bool(is_cont[j]))
+
+    # -- the same measure, evaluated on arrays instead of per candidate -------
+    #
+    # Term by term this is `_choose_original` with its four per-candidate Python
+    # loops (phase read, reuse lookup, field-grain lookup, choice-tuple build)
+    # replaced by array reads over the SAME candidate order. Every arithmetic
+    # expression is kept in its original form and order: the choice-set arrays
+    # are elementwise-identical to the lists they replace, and the reductions
+    # (argmax, and the rng draw's size and order) are untouched — so the logits,
+    # the consumed random stream and the index picked are bit-identical.
+
+    def _fast_tables(self) -> None:
+        """Build, once, the array mirror of the recency state `last_used`.
+
+        Every real unit of the frozen world gets a row; the mirror is seeded
+        from the recency committed SO FAR and thereafter maintained by the one
+        writer of `last_used` (commit_bar). Bounded by corpus units.
+
+        THE MIRROR'S CORRECTNESS CONDITION, stated so it can be checked:
+        `last_used` is written in exactly ONE place, `commit_bar`, which updates
+        both. Anything else writing `last_used` directly would DESYNC the mirror
+        and the fast path would then read a stale recency — silently, since the
+        two are only compared in tests. This is not hypothetical: a repo test
+        (tests/writer/test_stream.py, the I-8 phantom-material case) writes a key
+        straight into `last_used`. It is harmless there ONLY because that key is
+        no candidate of any pool, so no gather ever reads its row — the mirror is
+        exact on precisely the rows the fast path reads (see commit_bar). The
+        full mirror-vs-dict agreement over every row, after many committed bars,
+        is asserted in cloud/tests/test_fast_realize.py::test_recency_mirror_
+        matches_the_dict; keep that tooth if this state ever gains a writer."""
+        if self._unit_row is not None:
+            return
+        rows: Dict[Tuple[int, int], int] = {}
+        for pool in self.index.candidates.values():
+            for (tid, uid, _ph) in pool:
+                key = (int(tid), int(uid))
+                if key not in rows:
+                    rows[key] = len(rows)
+        for succ in self.index.successor.values():
+            key = (int(succ[0]), int(succ[1]))
+            if key not in rows:
+                rows[key] = len(rows)
+        last = np.full(len(rows), _NEVER, dtype=np.int64)
+        for key, bar in self.last_used.items():
+            row = rows.get(key)
+            if row is not None:
+                last[row] = int(bar)
+        self._unit_row = rows
+        self._last_bar = last
+
+    def _pool_of(self, k: int, b: int) -> _Pool:
+        """The (k, b) candidate pool in array form (built once per pool)."""
+        pool = self._pools.get((k, b))
+        if pool is not None:
+            return pool
+        idx = self.index
+        cands = idx.candidates.get((k, b), ())
+        keys = [(int(tid), int(uid)) for (tid, uid, _ph) in cands]
+        n = len(keys)
+        phase = np.zeros(n)
+        missing: List[int] = []
+        for j, key in enumerate(keys):
+            ph = idx.unit_phase.get(key)
+            if ph is None:
+                missing.append(j)                  # slot-phase fallback, per call
+            else:
+                phase[j] = float(ph)
+        cont1 = np.zeros(n + 1)
+        cont1[0] = 1.0                             # the run-continuation head
+        pool = _Pool(
+            keys=keys,
+            phase=_frozen(phase),
+            missing=np.array(missing, dtype=np.intp),
+            gidx=np.array([self._unit_row[key] for key in keys], dtype=np.intp),
+            cont0=_frozen(np.zeros(n)),
+            cont1=_frozen(cont1),
+        )
+        self._pools[(k, b)] = pool
+        return pool
+
+    def _pool_energies(self, pool: _Pool, k: int, b: int, psi: float) -> np.ndarray:
+        """F's fiber energies of the pool's candidates at slot phase psi.
+
+        `ff.LAMBDA["T1p"] * charge - ff.LAMBDA["T4"] * cont` with cont = 0 (a
+        seed candidate never continues a run) — the candidate block of
+        `_choose_original`'s `energies`, elementwise identical to it. Memoized
+        on (pool, slot phase): the grid has exactly `s_phase` slot phases, so
+        this table is bounded by pools x s_phase (material x grid, not time).
+
+        THE MEMO BAKES F's WEIGHTS IN, and that is correct ONLY under I-9: the
+        term weights ``ff.LAMBDA`` are the FROZEN registered training artifact,
+        never rebound at runtime (enforced by
+        tests/invariants: test_i9_engine_and_panel_never_write_lambda / the
+        live-LAMBDA-equals-artifact check). A cached energy vector is therefore
+        a function of the world and the grid alone. If LAMBDA ever became
+        rebindable, this memo — and the entire fast path — would have to key on
+        it or be deleted; that is a change to F, out of scope here by
+        construction (the reference `_choose_original` reads LAMBDA per call,
+        so the two implementations would visibly disagree, and G1 would fail)."""
+        key = (k, b, psi)
+        e = self._energy.get(key)
+        if e is not None:
+            return e
+        phase = pool.phase
+        if pool.missing.size:
+            phase = phase.copy()
+            phase[pool.missing] = psi              # `unit_phase.get(c, psi)`
+        charge = ff.unit_phase_charge_at(phase, psi)
+        e = _frozen(ff.LAMBDA["T1p"] * charge - ff.LAMBDA["T4"] * pool.cont0)
+        self._energy[key] = e
+        return e
+
+    def _pool_cbias(self, pool: _Pool, k: int, fb, tw, uw, trw) -> np.ndarray:
+        """The pool's field-bias addends β(c) = β_track + β_unit + β_(track,k).
+
+        Same sum, same order, same grains as `_choose_original`; k is fixed
+        across the pool (it IS the pool's role), so the whole vector is a
+        function of (pool, the tilt's field map) and is memoized on that map
+        object — recomputed exactly once per pool per rebound tilt.
+
+        WHY IDENTITY (`is`) IS A SAFE CACHE KEY HERE, exactly:
+          (i) the cached entry holds a STRONG reference to `fb`, so that object
+              cannot be collected while it is the key — no address recycling can
+              make a DIFFERENT map compare `is`-equal to it; and
+         (ii) every `TiltTerms.__post_init__` builds a FRESH normalized dict for
+              `channel_logbias` (it re-keys and drops zero weights), so a tilt
+              carrying different weights is necessarily a different object.
+        Identity is therefore strictly conservative: it can only miss (recompute
+        the same vector), never serve one field map's weights for another's.
+        Equality-keying would be no safer and would cost a full map compare per
+        choice."""
+        cached = pool.cbias
+        if cached is not None and cached[0] is fb:
+            return cached[1]
+        arr = _frozen(np.array(
+            [tw.get(tid, 0.0) + uw.get(uid, 0.0) + trw.get((tid, k), 0.0)
+             for (tid, uid) in pool.keys]))
+        pool.cbias = (fb, arr)
+        return arr
+
+    def _choose_fast(self, k: int, b: int, psi: float, bar: int):
+        """The vectorized fiber choice (see `_choose`; bit-identical to
+        `_choose_original`)."""
+        idx = self.index
+        if self._unit_row is None:
+            self._fast_tables()
+        cur = self.run_head.get(b)
+        nxt = idx.successor.get(cur) if cur is not None else None
+        pool = self._pool_of(k, b)
+        n = pool.size
+        h = 1 if nxt is not None else 0            # the continuation head, if any
+        if n + h == 0:
+            fallback = idx.unit_of.get((k, b))     # minimal index / degenerate
+            return (fallback, False) if fallback is not None else None
+
+        # F's own fiber energies (LAMBDA live; term math from f.py).
+        base = self._pool_energies(pool, k, b, psi)
+        if h:
+            energies = np.empty(n + 1)
+            energies[0] = (ff.LAMBDA["T1p"]
+                           * ff.unit_phase_charge_at(idx.unit_phase.get(nxt, psi), psi)
+                           - ff.LAMBDA["T4"] * 1.0)
+            energies[1:] = base
+            cont = pool.cont1
+        else:
+            energies = base
+            cont = pool.cont0
+
+        if self.tilt is None:
+            logits = -energies                     # T→0 deterministic reduction
+        else:
+            reuse = np.empty(n + h)
+            if h:
+                reuse[0] = self._reuse(nxt, bar)
+            if n:
+                delta = bar - self._last_bar[pool.gidx]
+                # r(Δ)=1/Δ against the COMMITTED tape; never-used (Δ<0 by the
+                # _NEVER sentinel) and same-bar (Δ<1) units weigh 0 — `_reuse`,
+                # elementwise.
+                reuse[h:] = np.where(delta >= 1,
+                                     1.0 / np.maximum(delta, 1), 0.0)
+            # SOFT multi-grain field lean: identical grains, sum and order to
+            # `_choose_original` (see the note there); the array length matches
+            # the choice set, so the rng draw size below is unchanged.
+            fb = getattr(self.tilt, "channel_logbias", None)
+            cbias = None
+            if fb:
+                tw = fb.get("track") or {}
+                uw = fb.get("unit") or {}
+                trw = fb.get("track_role") or {}
+                if tw or uw or trw:
+                    pc = self._pool_cbias(pool, k, fb, tw, uw, trw)
+                    if h:
+                        cbias = np.empty(n + 1)
+                        cbias[0] = (tw.get(int(nxt[0]), 0.0) + uw.get(int(nxt[1]), 0.0)
+                                    + trw.get((int(nxt[0]), int(k)), 0.0))
+                        cbias[1:] = pc
+                    else:
+                        cbias = pc
+            logits = fiber_logits(energies, cont, reuse, self.tilt,
+                                  channel_bias=cbias)
+
+        if self.rng is None:
+            j = int(np.argmax(logits))             # first-max: fixed enumeration order
+        else:
+            gumbel = -np.log(-np.log(self.rng.uniform(size=len(logits))))
+            j = int(np.argmax(logits + gumbel))    # exact categorical draw
+        if h and j == 0:
+            return (nxt, True)
+        return (pool.keys[j - h], False)
 
     def place_slot(self, s: int, col: np.ndarray, clamp_unit=None):
         """Realize output slot ``s`` from its settled column ``col`` (M,).

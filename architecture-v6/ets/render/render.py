@@ -38,7 +38,10 @@ function and changes no contract. ``RENDER_STRETCH_BACKEND`` records the choice
 for any artifact that wants to trace it.
 """
 from __future__ import annotations
-from typing import Tuple
+from collections import OrderedDict
+from typing import Optional, Tuple
+from weakref import WeakKeyDictionary
+import os
 import numpy as np
 import librosa
 
@@ -96,6 +99,111 @@ def _apply_gauge(x: np.ndarray, sr: int, out_len: int,
     return np.asarray(y, dtype=np.float64), float(ratio)
 
 
+# ---- the fitted-unit memo (implementation only; NO semantic content) -------
+#
+# `_apply_gauge(x, sr, out_len, semitones, loudness)` splits exactly in two: a
+# PURE function of (the unit's audio, sr, out_len, semitones) — pitch shift,
+# time-stretch, fix_length — followed by ONE scalar multiply by `loudness`
+# (`if loudness != 1.0`). The loudness factor (gauge loudness x the placement's
+# settled mass) is the only input that varies per placement; the expensive half
+# does not depend on it. Every placement of the same unit at the same slot length
+# therefore recomputes an IDENTICAL phase-vocoder stretch. Measured on a
+# 6192-unit multi-tempo world: 9600 placements over 150 bars carry only 2657
+# distinct (unit, out_len) inputs (steady-state repeat rate 92%), while one
+# `librosa.time_stretch` per placement (~4 ms x 64/bar) is 92% of the bar.
+#
+# So this memoizes that pure half, per BANK. The MISS path is the original
+# `_apply_gauge` call VERBATIM (with loudness=1.0, which its own `!= 1.0` guard
+# turns into the identity), and the multiply is then applied by the same
+# expression as before — so a hit returns exactly the array a miss would have
+# built and the audio is byte-identical with the memo on or off (gated: G2).
+# It is not a second render path and it takes no decision (I-11): nothing is
+# scored, ranked or selected; a key either was computed before or was not.
+#
+# `ETS_STRETCH_CACHE=0|false|off` bypasses the memo entirely (the verbatim
+# pre-memo call), selected per render call. `ETS_STRETCH_CACHE_MB` (default 128)
+# bounds the memory: least-recently-used entries are dropped when the budget is
+# exceeded, and a dropped entry is simply recomputed — the bound is a MEMORY
+# bound, never a semantic one. The memo is held per SourceUnitBank in a weak
+# map, so it lives and dies with the world's material (no cross-world key
+# collision: (track, unit) ids are per world) and adds no global state.
+_CACHE_OFF = ("0", "false", "off", "no")
+_DEFAULT_CACHE_MB = 128.0
+
+
+def stretch_cache_enabled() -> bool:
+    """True iff the fitted-unit memo is selected (default). Read at call time."""
+    return os.environ.get("ETS_STRETCH_CACHE", "1").strip().lower() not in _CACHE_OFF
+
+
+def stretch_cache_budget_bytes() -> int:
+    """The memo's memory budget per bank (ETS_STRETCH_CACHE_MB, default 128)."""
+    return int(float(os.environ.get("ETS_STRETCH_CACHE_MB",
+                                    _DEFAULT_CACHE_MB)) * 1e6)
+
+
+class _FittedMemo:
+    """Least-recently-used memo of `_apply_gauge(..., loudness=1.0)` results.
+
+    Keyed by the COMPLETE input tuple of that call: (track, unit) identifies the
+    unit's audio inside this bank (the bank is built once and immutable), plus
+    sr, out_len and the section's transposition. Values are (fitted audio, the
+    stretch ratio the provenance records). Eviction is by insertion/use order
+    only — no ranking, no scoring (I-11)."""
+
+    def __init__(self, budget_bytes: int):
+        self._d: "OrderedDict[tuple, Tuple[np.ndarray, float]]" = OrderedDict()
+        self._bytes = 0
+        self.budget = int(budget_bytes)
+        self.hits = 0
+        self.misses = 0
+        self.evictions = 0
+
+    def get(self, key) -> Optional[Tuple[np.ndarray, float]]:
+        got = self._d.get(key)
+        if got is None:
+            self.misses += 1
+            return None
+        self.hits += 1
+        self._d.move_to_end(key)
+        return got
+
+    def put(self, key, value: Tuple[np.ndarray, float]) -> None:
+        self._d[key] = value
+        self._bytes += int(value[0].nbytes)
+        while self._bytes > self.budget and len(self._d) > 1:
+            _k, v = self._d.popitem(last=False)
+            self._bytes -= int(v[0].nbytes)
+            self.evictions += 1
+
+    def stats(self) -> dict:
+        n = self.hits + self.misses
+        return {"entries": len(self._d), "bytes": self._bytes,
+                "budget_bytes": self.budget, "hits": self.hits,
+                "misses": self.misses, "evictions": self.evictions,
+                "hit_rate": (self.hits / n) if n else 0.0}
+
+
+_MEMOS: "WeakKeyDictionary[SourceUnitBank, _FittedMemo]" = WeakKeyDictionary()
+
+
+def _memo_for(sources: SourceUnitBank) -> _FittedMemo:
+    memo = _MEMOS.get(sources)
+    if memo is None:
+        memo = _FittedMemo(stretch_cache_budget_bytes())
+        _MEMOS[sources] = memo
+    return memo
+
+
+def stretch_memo_stats(sources: SourceUnitBank) -> Optional[dict]:
+    """Read-only instrument: this bank's memo counters (None if never used).
+
+    An INSTRUMENT, never an input to anything the engine decides (I-14): no
+    code path reads these numbers back into the render, the writer or F."""
+    memo = _MEMOS.get(sources)
+    return None if memo is None else memo.stats()
+
+
 def render(schedule: Schedule, sources: SourceUnitBank
            ) -> Tuple[np.ndarray, ProvenanceStream]:
     """Apply ``schedule`` to ``sources``. See module docstring (I-11, I-12).
@@ -108,6 +216,7 @@ def render(schedule: Schedule, sources: SourceUnitBank
     placements = schedule.placements
     segs = np.zeros(len(placements), dtype=PROV_SEG_DTYPE)
     m = 0  # count of placements that actually reached the tape
+    memo = _memo_for(sources) if stretch_cache_enabled() else None
 
     for idx in range(len(placements)):
         p = placements[idx]
@@ -122,9 +231,25 @@ def render(schedule: Schedule, sources: SourceUnitBank
         # settled mass (settlement output on the placement) multiplies the
         # section-global gauge loudness — pure application of the schedule.
         mass = float(p["mass"])
-        y, ratio = _apply_gauge(su.audio, schedule.sr, out_len,
-                                gauge.transpose_semitones,
-                                gauge.loudness_scale * mass)
+        if memo is None:
+            y, ratio = _apply_gauge(su.audio, schedule.sr, out_len,
+                                    gauge.transpose_semitones,
+                                    gauge.loudness_scale * mass)
+        else:
+            # the SAME call, with its loudness-independent half memoized: the
+            # miss path IS the line above with loudness=1.0 (its `!= 1.0` guard
+            # makes that the identity), and the multiply below is the same
+            # expression `_apply_gauge` would have applied.
+            key = (int(p["src_track"]), int(p["src_unit"]), int(schedule.sr),
+                   out_len, float(gauge.transpose_semitones))
+            got = memo.get(key)
+            if got is None:
+                got = _apply_gauge(su.audio, schedule.sr, out_len,
+                                   gauge.transpose_semitones, 1.0)
+                memo.put(key, got)
+            fitted, ratio = got
+            loudness = gauge.loudness_scale * mass
+            y = (fitted * loudness) if loudness != 1.0 else fitted
 
         # beat-phase shift: gauge fraction of this slot, resolved to samples.
         shift = int(np.round(gauge.phase_shift * out_len))

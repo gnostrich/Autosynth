@@ -51,4 +51,10 @@ Single revert commit; worlds/banks are unaffected (read-only compute optimizatio
 no on-disk format change).
 
 ## Operator sign-off
-- [ ] RATIFIED (operator): ______ date ______
+- [x] RATIFIED (operator, in-session: "ok go ahead using persistent opus builder /agents while retaining the existing thing as backup and retaining version control"): 2026-07-24
+
+## Deviation sign-off (post-audit)
+- [x] D1 ACCEPTED (operator): realize.py stays arch-v6-only — the frozen root tree cannot
+  take the byte-copy (missing field-bias dependencies); archival trees untouched.
+- [x] D2 ACCEPTED (operator, "keep the goddamn archivals"): render.py mirror deferred;
+  archival trees stay byte-frozen; recorded open end. 2026-07-25

@@ -25,6 +25,7 @@ this file is the "how do I get back to X" index.
 | `pre-sampler-xy-2026-07-19` | `de40dd87ff7c78c74e14cd7fde41ce2433ae3e2e` | 2026-07-19 | before any sampler/bias steering work (pre-channel-bias) |
 | `field-bias-rev3-live-2026-07-19` | `042c274455a878d2f8400f787696621c99cc4f62` | 2026-07-19 | THE FIELD + soft track/unit fiber bias (deployed code at `eb557b9`) |
 | `track-role-drill-live-2026-07-20` | `f3e4a2d9507e45b6861d9237adf061c35b004a77` | 2026-07-20 | **CURRENT LIVE** — track×role drill (emergent sub-track handle; drill re-enabled onto role cells; dodges the role wall) |
+| `pre-render-throughput-2026-07-24` | `97221908c2acc3b27ee8d67e339568302c1f8d9f` | 2026-07-24 | before the render-throughput optimization (PREREG-render-throughput.md, ratified) — rollback point |
 
 ## Milestone — track×role GRID (row/column/cell bias, seen-through routing) (2026-07-20)
 - **What it is:** the Play surface as a **track × role grid**. Three bias gestures, each routed to
