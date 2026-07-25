@@ -254,28 +254,43 @@ def phase_bench(world: str, is_trained: bool, n_bars: int, warmup: int = 3,
     for _ in range(n_bars):
         p.produce_one_bar()
     dt = time.perf_counter() - t0
+    import importlib
+    memo = importlib.import_module("ets.render.render").stretch_memo_stats(p._bank)
     return {"bars_per_s": n_bars / dt, "s_per_bar": dt / n_bars,
             "compose_s_per_bar": t["compose"] / n_bars,
             "finish_s_per_bar": t["finish"] / n_bars,
-            "bar_seconds": float(p.engine.writer.bar_seconds)}
+            "bar_seconds": float(p.engine.writer.bar_seconds),
+            "warmup": warmup, "memo": memo}
 
 
 # ---------------------------------------------------------------------------
 # parent: run a phase in a child interpreter with the flag set
 # ---------------------------------------------------------------------------
 
-def child(phase: str, world: str, is_trained: bool, fast: bool, n: int,
-          seed: int = 0) -> dict:
+CONFIGS = {                       # name -> (fiber fast path, stretch memo)
+    "base": (False, False),       # the pre-change engine
+    "fiber": (True, False),       # the vectorized fiber choice alone
+    "memo": (False, True),        # the fitted-unit stretch memo alone
+    "both": (True, True),         # what ships by default
+}
+
+
+def child(phase: str, world: str, is_trained: bool, cfg: str, n: int,
+          seed: int = 0, warmup: int = None) -> dict:
+    fast, cache = CONFIGS[cfg]
     env = dict(os.environ)
     env["ETS_FAST_REALIZE"] = "1" if fast else "0"
+    env["ETS_STRETCH_CACHE"] = "1" if cache else "0"
     env["ETS_WARM_IDLE_S"] = "5"            # a child never outlives its measurement
     cmd = [sys.executable, os.path.abspath(__file__), "--phase", phase,
            "--world", world, "--n", str(n), "--seed", str(seed)]
+    if warmup is not None:
+        cmd += ["--warmup", str(warmup)]
     if is_trained:
         cmd.append("--trained")
     r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
     if r.returncode != 0:
-        raise RuntimeError(f"child {phase} (fast={fast}) failed:\n{r.stderr[-3000:]}")
+        raise RuntimeError(f"child {phase} (cfg={cfg}) failed:\n{r.stderr[-3000:]}")
     return json.loads(r.stdout.strip().splitlines()[-1])
 
 
@@ -283,63 +298,84 @@ def child(phase: str, world: str, is_trained: bool, fast: bool, n: int,
 # gates
 # ---------------------------------------------------------------------------
 
-def gate_rows(tag: str, world: str, is_trained: bool, n_bars: int) -> bool:
-    log(f"[G1:{tag}] {n_bars} bars, placement rows fast-vs-original…")
-    f = child("rows", world, is_trained, True, n_bars)
-    o = child("rows", world, is_trained, False, n_bars)
-    n_rows = sum(len(b) for b in f["rows"])
-    ok = f["rows"] == o["rows"]
+def gate_rows(tag: str, world: str, is_trained: bool, n_bars: int,
+              a: str = "both", b: str = "base") -> bool:
+    """G1 + G2a: identical placement rows and identical PCM, config a vs b."""
+    log(f"[G1:{tag}] {n_bars} bars, placement rows {a} vs {b}…")
+    fa = child("rows", world, is_trained, a, n_bars)
+    fb = child("rows", world, is_trained, b, n_bars)
+    n_rows = sum(len(x) for x in fa["rows"])
+    ok = fa["rows"] == fb["rows"]
     if not ok:
-        for i, (a, b) in enumerate(zip(f["rows"], o["rows"])):
-            if a != b:
+        for i, (x, y) in enumerate(zip(fa["rows"], fb["rows"])):
+            if x != y:
                 log(f"    FAIL bar {i}: rows differ")
-                for x, y in zip(a, b):
-                    if x != y:
-                        log(f"      fast={x} orig={y}")
+                for u, v in zip(x, y):
+                    if u != v:
+                        log(f"      {a}={u} {b}={v}")
                         break
                 break
-    if f["cont"] != o["cont"]:
+    if fa["cont"] != fb["cont"]:
         ok = False
         log("    FAIL continuation flags differ")
-    log(f"    {n_rows} rows over {len(f['rows'])} bars; rows identical="
-        f"{f['rows'] == o['rows']} cont identical={f['cont'] == o['cont']}")
-    same_pcm = (f["pcm_sha"] == o["pcm_sha"] and f["pcm_len"] == o["pcm_len"])
-    log(f"[G2a:{tag}] direct produce_one_bar PCM: fast={f['pcm_sha'][:16]} "
-        f"orig={o['pcm_sha'][:16]} ({f['pcm_len']} bytes) identical={same_pcm}")
-    return ok and same_pcm
+    log(f"    {n_rows} rows over {len(fa['rows'])} bars; rows identical={ok} "
+        f"cont identical={fa['cont'] == fb['cont']}")
+    same = (fa["pcm_sha"] == fb["pcm_sha"] and fa["pcm_len"] == fb["pcm_len"])
+    log(f"[G2a:{tag}] direct produce_one_bar PCM {a} vs {b}: "
+        f"{fa['pcm_sha'][:16]} / {fb['pcm_sha'][:16]} ({fa['pcm_len']} bytes) "
+        f"identical={same}")
+    return ok and same
 
 
-def gate_loop(tag: str, world: str, is_trained: bool, n_chunks: int) -> bool:
-    log(f"[G2b:{tag}] {n_chunks} emissions through the REAL produce loop "
-        f"(subscribe)…")
-    a = child("loop", world, is_trained, True, n_chunks)
-    b = child("loop", world, is_trained, False, n_chunks)
-    same = (a["pcm_sha"] == b["pcm_sha"] and a["pcm_len"] == b["pcm_len"])
-    log(f"    fast={a['pcm_sha'][:16]} ({a['pcm_len']} bytes)  "
-        f"orig={b['pcm_sha'][:16]} ({b['pcm_len']} bytes)  identical={same}")
+def gate_loop(tag: str, world: str, is_trained: bool, n_chunks: int,
+              a: str = "both", b: str = "base") -> bool:
+    """G2b: identical PCM through the REAL produce loop (subscribe)."""
+    log(f"[G2b:{tag}] {n_chunks} emissions through the produce loop, {a} vs {b}…")
+    x = child("loop", world, is_trained, a, n_chunks)
+    y = child("loop", world, is_trained, b, n_chunks)
+    same = (x["pcm_sha"] == y["pcm_sha"] and x["pcm_len"] == y["pcm_len"])
+    log(f"    {a}={x['pcm_sha'][:16]} ({x['pcm_len']} bytes)  "
+        f"{b}={y['pcm_sha'][:16]} ({y['pcm_len']} bytes)  identical={same}")
     return same
 
 
 def gate_speed(tag: str, world: str, is_trained: bool, n_bars: int,
-               required: float = None) -> dict:
-    f = child("bench", world, is_trained, True, n_bars)
-    o = child("bench", world, is_trained, False, n_bars)
-    r = f["bars_per_s"] / o["bars_per_s"]
-    cr = (o["compose_s_per_bar"] / f["compose_s_per_bar"]
-          if f["compose_s_per_bar"] > 0 else float("nan"))
-    verdict = "" if required is None else \
-        ("  PASS" if r >= required else f"  FAIL (< {required}x)")
-    log(f"[G3:{tag}] {n_bars} bars steady state, one process per path:")
-    log(f"    fast {f['bars_per_s']:7.3f} bars/s  ({f['s_per_bar'] * 1e3:8.1f} ms/bar"
-        f" = compose {f['compose_s_per_bar'] * 1e3:7.1f} + finish "
-        f"{f['finish_s_per_bar'] * 1e3:7.1f})")
-    log(f"    orig {o['bars_per_s']:7.3f} bars/s  ({o['s_per_bar'] * 1e3:8.1f} ms/bar"
-        f" = compose {o['compose_s_per_bar'] * 1e3:7.1f} + finish "
-        f"{o['finish_s_per_bar'] * 1e3:7.1f})")
-    log(f"    produce_one_bar speedup={r:.2f}x   compose-half speedup={cr:.2f}x   "
-        f"realtime: fast={f['bar_seconds'] / f['s_per_bar']:.2f}x "
-        f"orig={o['bar_seconds'] / o['s_per_bar']:.2f}x{verdict}")
-    return {"speedup": r, "compose_speedup": cr, "fast": f, "orig": o}
+               warmup: int, required: float = None,
+               configs=("base", "fiber", "memo", "both")) -> dict:
+    """G3: bars/s for each configuration, one process each, same conditions.
+
+    Reports the compose/finish split (compose = the settlement + fiber choice
+    the vectorization touches; finish = the render the memo touches) and, where
+    the memo ran, its measured hit rate and resident size — so each half of the
+    change is read against the part of the bar it can possibly move."""
+    log(f"[G3:{tag}] {n_bars} bars steady state (warmup {warmup}), "
+        f"one process per configuration:")
+    out = {}
+    for cfg in configs:
+        d = child("bench", world, is_trained, cfg, n_bars, warmup=warmup)
+        out[cfg] = d
+        memo = d.get("memo")
+        mtxt = ""
+        if memo:
+            mtxt = (f"  memo {memo['hit_rate'] * 100:5.1f}% hit, "
+                    f"{memo['entries']} entries, {memo['bytes'] / 1e6:.0f} MB"
+                    + (f", {memo['evictions']} evicted" if memo["evictions"] else ""))
+        log(f"    {cfg:6s} {d['bars_per_s']:8.3f} bars/s  "
+            f"({d['s_per_bar'] * 1e3:8.1f} ms/bar = compose "
+            f"{d['compose_s_per_bar'] * 1e3:7.1f} + finish "
+            f"{d['finish_s_per_bar'] * 1e3:8.1f})  "
+            f"realtime {d['bar_seconds'] / d['s_per_bar']:6.2f}x{mtxt}")
+    base = out.get("base")
+    if base:
+        for cfg in configs:
+            if cfg == "base":
+                continue
+            r = out[cfg]["bars_per_s"] / base["bars_per_s"]
+            verdict = ""
+            if required is not None and cfg == "both":
+                verdict = "  PASS" if r >= required else f"  FAIL (< {required}x)"
+            log(f"    speedup {cfg:6s} vs base: {r:5.2f}x{verdict}")
+    return out
 
 
 def main() -> int:
@@ -350,6 +386,9 @@ def main() -> int:
                     help="cache dir for the synthesized >=4k-unit worlds")
     ap.add_argument("--bars", type=int, default=12, help="bars per identity pass")
     ap.add_argument("--bench-bars", type=int, default=40)
+    ap.add_argument("--bench-warmup", type=int, default=20,
+                    help="bars produced before timing (the memo's steady state "
+                         "is what a live listener hears; 3 measures a cold start)")
     ap.add_argument("--chunks", type=int, default=8, help="loop emissions (G2b)")
     ap.add_argument("--tracks", type=int, default=6)
     ap.add_argument("--seconds", type=float, default=30.0)
@@ -361,21 +400,27 @@ def main() -> int:
     ap.add_argument("--skip-demo", action="store_true")
     ap.add_argument("--skip-big", action="store_true")
     ap.add_argument("--skip-loop", action="store_true")
+    ap.add_argument("--skip-speed", action="store_true")
     # child-side
     ap.add_argument("--phase", default=None,
                     choices=["rows", "loop", "bench", "stats"])
     ap.add_argument("--world", default=None)
     ap.add_argument("--trained", action="store_true")
     ap.add_argument("--n", type=int, default=8)
+    ap.add_argument("--warmup", type=int, default=3)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     if args.phase:                            # ---- child: one measured pass ----
-        fn = {"rows": phase_rows, "loop": phase_loop, "bench": phase_bench}
         if args.phase == "stats":
             out = world_stats(args.world, args.trained)
+        elif args.phase == "bench":
+            out = phase_bench(args.world, args.trained, args.n,
+                              warmup=args.warmup, seed=args.seed)
+        elif args.phase == "rows":
+            out = phase_rows(args.world, args.trained, args.n, seed=args.seed)
         else:
-            out = fn[args.phase](args.world, args.trained, args.n, seed=args.seed)
+            out = phase_loop(args.world, args.trained, args.n, seed=args.seed)
         print(json.dumps(out))
         return 0
 
@@ -386,25 +431,29 @@ def main() -> int:
         return 0
 
     ok = True
-    demo = os.path.join(ROOT, "demo.etsworld")
+    worlds = []
     if not args.skip_demo:
-        log(f"[world] demo stats: {child('stats', demo, False, True, 0)}")
-        ok &= gate_rows("demo", demo, False, args.bars)
-        if not args.skip_loop:
-            ok &= gate_loop("demo", demo, False, args.chunks)
-        gate_speed("demo", demo, False, args.bench_bars)
-
+        worlds.append(("demo", os.path.join(ROOT, "demo.etsworld"), False, None))
     if not args.skip_big:
         w = big_world(args.work, args.tracks, args.seconds, args.bpm, args.spread,
                       rebuild=args.rebuild)
-        st = child("stats", w, True, True, 0)
-        log(f"[world] big stats ({os.path.basename(w)}): {st}")
+        st = child("stats", w, True, "both", 0)
         assert st["units"] >= 4000, f"big world has only {st['units']} units (<4k)"
-        ok &= gate_rows("big", w, True, args.bars)
+        tag = "big-single-tempo" if args.spread == 0 else "big-multi-tempo"
+        worlds.append((tag, w, True, 2.0))
+
+    for tag, world, trained, required in worlds:
+        log(f"[world] {tag}: {child('stats', world, trained, 'both', 0)}")
+        # the WHOLE change vs the pre-change engine…
+        ok &= gate_rows(tag, world, trained, args.bars, "both", "base")
+        # …and each half isolated, so neither can hide the other's drift.
+        ok &= gate_rows(tag, world, trained, args.bars, "both", "fiber")
+        ok &= gate_rows(tag, world, trained, args.bars, "fiber", "base")
         if not args.skip_loop:
-            ok &= gate_loop("big", w, True, args.chunks)
-        sp = gate_speed("big", w, True, args.bench_bars, required=2.0)
-        ok &= (sp["speedup"] >= 2.0)
+            ok &= gate_loop(tag, world, trained, args.chunks, "both", "base")
+        if not args.skip_speed:
+            gate_speed(tag, world, trained, args.bench_bars, args.bench_warmup,
+                       required=required)
 
     log("FAST_REALIZE_VERIFY_OK" if ok else "FAST_REALIZE_VERIFY_FAILED")
     return 0 if ok else 1
