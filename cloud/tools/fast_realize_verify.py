@@ -39,6 +39,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)                          # for cloud.*
@@ -341,7 +342,7 @@ def gate_loop(tag: str, world: str, is_trained: bool, n_chunks: int,
 
 def gate_speed(tag: str, world: str, is_trained: bool, n_bars: int,
                warmup: int, required: float = None,
-               configs=("base", "fiber", "memo", "both")) -> dict:
+               configs=("base", "fiber", "memo", "both")) -> Tuple[dict, bool]:
     """G3: bars/s for each configuration, one process each, same conditions.
 
     Reports the compose/finish split (compose = the settlement + fiber choice
@@ -366,6 +367,7 @@ def gate_speed(tag: str, world: str, is_trained: bool, n_bars: int,
             f"{d['finish_s_per_bar'] * 1e3:8.1f})  "
             f"realtime {d['bar_seconds'] / d['s_per_bar']:6.2f}x{mtxt}")
     base = out.get("base")
+    met = True                                # no threshold asked for => nothing to fail
     if base:
         for cfg in configs:
             if cfg == "base":
@@ -373,9 +375,10 @@ def gate_speed(tag: str, world: str, is_trained: bool, n_bars: int,
             r = out[cfg]["bars_per_s"] / base["bars_per_s"]
             verdict = ""
             if required is not None and cfg == "both":
-                verdict = "  PASS" if r >= required else f"  FAIL (< {required}x)"
+                met = r >= required
+                verdict = "  PASS" if met else f"  FAIL (< {required}x)"
             log(f"    speedup {cfg:6s} vs base: {r:5.2f}x{verdict}")
-    return out
+    return out, met
 
 
 def main() -> int:
@@ -452,8 +455,9 @@ def main() -> int:
         if not args.skip_loop:
             ok &= gate_loop(tag, world, trained, args.chunks, "both", "base")
         if not args.skip_speed:
-            gate_speed(tag, world, trained, args.bench_bars, args.bench_warmup,
-                       required=required)
+            _speeds, met = gate_speed(tag, world, trained, args.bench_bars,
+                                      args.bench_warmup, required=required)
+            ok &= met                          # the throughput gate is a GATE
 
     log("FAST_REALIZE_VERIFY_OK" if ok else "FAST_REALIZE_VERIFY_FAILED")
     return 0 if ok else 1

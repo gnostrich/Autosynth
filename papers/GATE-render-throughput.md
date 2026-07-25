@@ -99,6 +99,12 @@ pinned in `cloud/tests/test_stretch_memo.py`.
 40 bars timed after 20 warm-up bars, ONE PROCESS PER CONFIGURATION, back to
 back. `base` = both switches off (the pre-change engine).
 
+The prereg's G3 has TWO clauses: ">=2x produce_one_bar throughput on a >=4k-unit
+world (sandbox measured)" AND "live delivery >=1.0x real-time on the operator's
+4-track set". Only the SANDBOX clause is settled below. The live clause is
+prereg G5 (live verification on ets-web) and is PENDING DEPLOY — every "PASS"
+in these tables is the sandbox clause only.
+
 **big-multi-tempo (6192 units) — the corpus class that failed:**
 
 | config | bars/s | ms/bar | compose | finish | realtime | speedup |
@@ -106,7 +112,7 @@ back. `base` = both switches off (the pre-change engine).
 | base | 2.767 | 361.4 | 23.2 | 338.3 | 5.15x | — |
 | fiber | 2.773 | 360.6 | 8.1 | 352.5 | 5.17x | 1.00x |
 | memo | 5.546 | 180.3 | 24.5 | 155.8 | 10.33x | 2.00x |
-| **both** | **6.546** | **152.8** | **7.1** | **145.7** | **12.19x** | **2.37x  PASS (>=2.0x)** |
+| **both** | **6.546** | **152.8** | **7.1** | **145.7** | **12.19x** | **2.37x  PASS (sandbox clause, >=2.0x); live >=1.0x realtime clause = G5, pending deploy** |
 
 **big-single-tempo (5760 units):**
 
@@ -115,7 +121,7 @@ back. `base` = both switches off (the pre-change engine).
 | base | 2.525 | 396.0 | 32.6 | 363.4 | 5.05x | — |
 | fiber | 2.912 | 343.4 | 7.2 | 336.2 | 5.82x | 1.15x |
 | memo | 7.267 | 137.6 | 32.6 | 105.0 | 14.53x | 2.88x |
-| **both** | **10.011** | **99.9** | **7.3** | **92.5** | **20.02x** | **3.96x  PASS** |
+| **both** | **10.011** | **99.9** | **7.3** | **92.5** | **20.02x** | **3.96x  PASS (sandbox clause); live >=1.0x realtime clause = G5, pending deploy** |
 
 **demo (768 units) — reported honestly, not gated:**
 

@@ -51,10 +51,13 @@ from ets.panel.lanes import default_lane_vector
 
 WORLD = "demo.etsworld"
 
-def _sched_and_banks(seed=3, n_units=6, in_len=96, out_len=64, reps=3):
-    "A schedule that REPEATS each unit at DIFFERENT masses, with in_len != out_len."
+def _sched_and_banks(seed=3, n_units=6, in_len=96, reps=3):
+    # A schedule that REPEATS each unit at DIFFERENT masses, over slots of
+    # UNEQUAL length, none of them the unit length, so every placement really
+    # runs the phase vocoder and the same unit is fitted at three ratios.
     rng = np.random.default_rng(seed)
-    bounds = np.arange(4, dtype=np.int64) * out_len          # 3 output slots
+    slot_lens = [64, 80, 48]                                 # unequal, != in_len
+    bounds = np.cumsum([0] + slot_lens).astype(np.int64)     # 3 output slots
     banks = []
     for b in range(2):                                       # two DIFFERENT banks,
         bank = SourceUnitBank(sr=44100)                      # same (track, unit) ids

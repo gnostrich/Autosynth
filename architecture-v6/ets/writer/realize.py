@@ -439,7 +439,20 @@ class FiberThreader:
 
         Every real unit of the frozen world gets a row; the mirror is seeded
         from the recency committed SO FAR and thereafter maintained by the one
-        writer of `last_used` (commit_bar). Bounded by corpus units."""
+        writer of `last_used` (commit_bar). Bounded by corpus units.
+
+        THE MIRROR'S CORRECTNESS CONDITION, stated so it can be checked:
+        `last_used` is written in exactly ONE place, `commit_bar`, which updates
+        both. Anything else writing `last_used` directly would DESYNC the mirror
+        and the fast path would then read a stale recency — silently, since the
+        two are only compared in tests. This is not hypothetical: a repo test
+        (tests/writer/test_stream.py, the I-8 phantom-material case) writes a key
+        straight into `last_used`. It is harmless there ONLY because that key is
+        no candidate of any pool, so no gather ever reads its row — the mirror is
+        exact on precisely the rows the fast path reads (see commit_bar). The
+        full mirror-vs-dict agreement over every row, after many committed bars,
+        is asserted in cloud/tests/test_fast_realize.py::test_recency_mirror_
+        matches_the_dict; keep that tooth if this state ever gains a writer."""
         if self._unit_row is not None:
             return
         rows: Dict[Tuple[int, int], int] = {}
@@ -497,7 +510,18 @@ class FiberThreader:
         seed candidate never continues a run) — the candidate block of
         `_choose_original`'s `energies`, elementwise identical to it. Memoized
         on (pool, slot phase): the grid has exactly `s_phase` slot phases, so
-        this table is bounded by pools x s_phase (material x grid, not time)."""
+        this table is bounded by pools x s_phase (material x grid, not time).
+
+        THE MEMO BAKES F's WEIGHTS IN, and that is correct ONLY under I-9: the
+        term weights ``ff.LAMBDA`` are the FROZEN registered training artifact,
+        never rebound at runtime (enforced by
+        tests/invariants: test_i9_engine_and_panel_never_write_lambda / the
+        live-LAMBDA-equals-artifact check). A cached energy vector is therefore
+        a function of the world and the grid alone. If LAMBDA ever became
+        rebindable, this memo — and the entire fast path — would have to key on
+        it or be deleted; that is a change to F, out of scope here by
+        construction (the reference `_choose_original` reads LAMBDA per call,
+        so the two implementations would visibly disagree, and G1 would fail)."""
         key = (k, b, psi)
         e = self._energy.get(key)
         if e is not None:
@@ -517,7 +541,19 @@ class FiberThreader:
         Same sum, same order, same grains as `_choose_original`; k is fixed
         across the pool (it IS the pool's role), so the whole vector is a
         function of (pool, the tilt's field map) and is memoized on that map
-        object — recomputed exactly once per pool per rebound tilt."""
+        object — recomputed exactly once per pool per rebound tilt.
+
+        WHY IDENTITY (`is`) IS A SAFE CACHE KEY HERE, exactly:
+          (i) the cached entry holds a STRONG reference to `fb`, so that object
+              cannot be collected while it is the key — no address recycling can
+              make a DIFFERENT map compare `is`-equal to it; and
+         (ii) every `TiltTerms.__post_init__` builds a FRESH normalized dict for
+              `channel_logbias` (it re-keys and drops zero weights), so a tilt
+              carrying different weights is necessarily a different object.
+        Identity is therefore strictly conservative: it can only miss (recompute
+        the same vector), never serve one field map's weights for another's.
+        Equality-keying would be no safer and would cost a full map compare per
+        choice."""
         cached = pool.cbias
         if cached is not None and cached[0] is fb:
             return cached[1]

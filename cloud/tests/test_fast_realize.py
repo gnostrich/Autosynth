@@ -136,6 +136,21 @@ bounds = {"warm": warm, "late": late, "n_pools": n_pools,
           "s_phase": int(e.writer.s_phase),
           "n_units": int(sum(len(t.units) for t in w.tracks))}
 
+# ---- the recency MIRROR agrees with the dict it mirrors, row for row ------
+# (commit_bar is the sole writer of `last_used`; if that ever stops being true
+# the fast path reads a stale recency. 30 bars are committed above.)
+NEVER = 1 << 62
+mismatch = []
+for key, row in th._unit_row.items():
+    want = th.last_used.get(key, NEVER)
+    got = int(th._last_bar[row])
+    if got != want:
+        mismatch.append([list(key), want, got])
+extra = [list(k) for k in th.last_used if k not in th._unit_row]
+mirror = {"rows": len(th._unit_row), "committed": len(th.last_used),
+          "mismatch": mismatch[:5], "n_mismatch": len(mismatch),
+          "unmirrored_keys": extra[:5], "n_unmirrored": len(extra)}
+
 # ---- the elementwise assumption the charge memo rests on ------------------
 rng = np.random.default_rng(0)
 elementwise = True
@@ -158,6 +173,7 @@ print(json.dumps({
     "n_batch_rows": len(batch_f),
     "switch": switch,
     "bounds": bounds,
+    "mirror": mirror,
     "elementwise": elementwise,
 }))
 """ % (_ROOT, _ROOT)
@@ -214,8 +230,23 @@ def test_fast_memos_are_bounded():
 
 
 def test_cos_is_elementwise_here():
-    # If this ever fails, the memoized phase charge is NOT bit-identical to the
-    # charge computed inside a longer choice-set array and the fast path must be
-    # switched off (ETS_FAST_REALIZE=0) until it is re-derived.
-    assert _d()["elementwise"], \
-        "numpy cos is not a pure elementwise function on this build"
+    assert _d()["elementwise"], (
+        "numpy cos is NOT a pure elementwise function on this build: the "
+        "memoized phase charge is therefore not bit-identical to the charge "
+        "computed inside a longer choice-set array. REMEDIATION: run the engine "
+        "with ETS_FAST_REALIZE=0 (the verbatim reference path) until the charge "
+        "memo is re-derived for this build — do not relax this test.")
+
+
+def test_recency_mirror_matches_the_dict():
+    m = _d()["mirror"]
+    assert m["rows"] > 100 and m["committed"] > 0, m       # the check has teeth
+    assert m["n_mismatch"] == 0, (
+        f"the fast path's recency mirror disagrees with `last_used` on "
+        f"{m['n_mismatch']} row(s), e.g. {m['mismatch']} — something other than "
+        f"commit_bar wrote `last_used`, and the fiber choice is now reading a "
+        f"stale recency")
+    assert m["n_unmirrored"] == 0, (
+        f"{m['n_unmirrored']} committed key(s) have no mirror row, e.g. "
+        f"{m['unmirrored_keys']} — such a key is in no candidate pool (so it is "
+        f"never read back); if it IS a real unit the mirror build is wrong")
