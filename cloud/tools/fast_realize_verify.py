@@ -33,7 +33,9 @@ sandbox, replaying from the cache takes seconds. Read-only w.r.t. the engine.
 """
 import argparse
 import hashlib
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -47,10 +49,6 @@ import numpy as np                                                       # noqa:
 
 def log(m):
     print(m, flush=True)
-
-
-def sha(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -88,20 +86,30 @@ def _synth_wav(path, sr=44100, seconds=30.0, bpm=120.0, seed=0):
 
 
 def big_world(work: str, n_tracks: int = 6, seconds: float = 30.0,
+              bpm: float = 120.0, spread: float = 0.0,
               rebuild: bool = False) -> str:
-    """Synthesize + train (cached) a multi-track world of >=4k real units."""
+    """Synthesize + train (cached) a multi-track world of >=4k real units.
+
+    `spread` is the per-track bpm step. spread=0 gives a SINGLE-TEMPO corpus (the
+    demo world's character, and a beat-matched DJ set's): unit lengths agree with
+    the output tatum, so the render lays units without a phase-vocoder stretch and
+    the per-bar cost is the placement loop's. A nonzero spread gives a corpus whose
+    tracks disagree on tempo, where EVERY placement is time-stretched and the
+    render dominates the bar (measured; see papers/GATE-render-throughput.md)."""
     os.makedirs(work, exist_ok=True)
-    out = os.path.join(work, "big.etsworld")
+    tag = f"big_{n_tracks}x{int(seconds)}s_bpm{int(bpm)}_spread{int(spread)}"
+    out = os.path.join(work, tag + ".etsworld")
     if os.path.exists(out) and not rebuild:
         log(f"[world] cached big world: {out}")
         return out
     wavs = []
     for i in range(n_tracks):
-        p = os.path.join(work, f"big{i}.wav")
+        p = os.path.join(work, f"{tag}_{i}.wav")
         if not os.path.exists(p):
-            _synth_wav(p, seconds=seconds, bpm=112.0 + 7.0 * i, seed=i)
+            _synth_wav(p, seconds=seconds, bpm=bpm + spread * i, seed=i)
         wavs.append(p)
-    log(f"[world] synthesized {n_tracks} x {seconds:.0f}s rhythmic WAVs; training "
+    log(f"[world] synthesized {n_tracks} x {seconds:.0f}s rhythmic WAVs "
+        f"(bpm {bpm:.0f} + {spread:.0f}/track); training "
         f"(ingest -> stage-3 -> anchor fit -> build_index)…")
     t0 = time.time()
     from cloud.companion.train_local import build_trained_world
@@ -125,7 +133,16 @@ def world_stats(path: str, is_trained: bool) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# one produce pass (rows + PCM) under a deterministic lane/field program
+# one produce pass, ALWAYS in a child process
+#
+# PROCESS ISOLATION IS PART OF THE INSTRUMENT (measured 2026-07-24): running the
+# two flag states in ONE process made the throughput comparison meaningless —
+# `subscribe()` leaves the warm produce loop running for ETS_WARM_IDLE_S (120s
+# default) after the last listener leaves, so the next timed pass shares the core
+# with a background renderer, and every pass leaves a ~250 MB audio bank behind.
+# The first in-process A/B read 0.21 vs 1.29 bars/s (fast "6x SLOWER"); the same
+# code, one pass per process, reads 4.371 vs 4.309. Every measured pass therefore
+# runs as `--phase` in its own interpreter with its own env.
 # ---------------------------------------------------------------------------
 
 def _program(p, bar: int) -> None:
@@ -151,23 +168,26 @@ def _program(p, bar: int) -> None:
         p.set_unit_bias({u: 0.6 if i % 2 == 0 else -0.3 for i, u in enumerate(units)})
 
 
-def produce_pass(world: str, is_trained: bool, n_bars: int, fast: bool,
-                 seed: int = 0):
-    """Run `n_bars` through the REAL produce path; return (rows, pcm bytes).
-
-    `rows` is captured by a behaviour-neutral wrap of `_compose_bar` (it calls
-    the original and records the committed BarResult's rows + continues)."""
-    os.environ["ETS_FAST_REALIZE"] = "1" if fast else "0"
+def _player(world: str, is_trained: bool, seed: int = 0):
     from cloud.companion.engine_bridge import StreamPlayer
     p = StreamPlayer(world, seed=seed, is_trained=is_trained)
     p.world_info()
+    return p
+
+
+def phase_rows(world: str, is_trained: bool, n_bars: int, seed: int = 0) -> dict:
+    """`n_bars` through the REAL produce path: every placement row + the PCM.
+
+    Rows are captured by a behaviour-neutral wrap of `_compose_bar` (it calls the
+    original and records the committed BarResult)."""
+    p = _player(world, is_trained, seed)
     rows, conts = [], []
     orig_compose = p._compose_bar
 
     def capture():
         r, sched = orig_compose()
-        rows.append(tuple(tuple(x) for x in r.rows))
-        conts.append(tuple(bool(c) for c in r.continues))
+        rows.append([[float(v) for v in row] for row in r.rows])
+        conts.append([bool(c) for c in r.continues])
         return r, sched
 
     p._compose_bar = capture
@@ -176,16 +196,15 @@ def produce_pass(world: str, is_trained: bool, n_bars: int, fast: bool,
         _program(p, bar)
         b, _roles = p.produce_one_bar()
         pcm.append(b)
-    return rows, conts, b"".join(pcm)
+    pcm = b"".join(pcm)
+    return {"rows": rows, "cont": conts, "pcm_sha": hashlib.sha256(pcm).hexdigest(),
+            "pcm_len": len(pcm)}
 
 
-def loop_pass(world: str, is_trained: bool, n_chunks: int, fast: bool,
-              seed: int = 0, timeout: float = 240.0) -> bytes:
+def phase_loop(world: str, is_trained: bool, n_chunks: int, seed: int = 0,
+               timeout: float = 600.0) -> dict:
     """Collect `n_chunks` emissions from the REAL produce loop via subscribe()."""
-    os.environ["ETS_FAST_REALIZE"] = "1" if fast else "0"
-    from cloud.companion.engine_bridge import StreamPlayer
-    p = StreamPlayer(world, seed=seed, is_trained=is_trained)
-    p.world_info()
+    p = _player(world, is_trained, seed)
     q = p.subscribe()
     got, deadline = [], time.monotonic() + timeout
     while len(got) < n_chunks and time.monotonic() < deadline:
@@ -196,21 +215,68 @@ def loop_pass(world: str, is_trained: bool, n_chunks: int, fast: bool,
     p.stop()
     p.unsubscribe(q)
     assert len(got) == n_chunks, f"produce loop delivered {len(got)}/{n_chunks}"
-    return b"".join(got)
+    pcm = b"".join(got)
+    return {"pcm_sha": hashlib.sha256(pcm).hexdigest(), "pcm_len": len(pcm),
+            "chunks": len(got)}
 
 
-def bars_per_second(world: str, is_trained: bool, fast: bool, n_bars: int,
-                    warmup: int = 3, seed: int = 0) -> float:
-    os.environ["ETS_FAST_REALIZE"] = "1" if fast else "0"
-    from cloud.companion.engine_bridge import StreamPlayer
-    p = StreamPlayer(world, seed=seed, is_trained=is_trained)
-    p.world_info()
+def phase_bench(world: str, is_trained: bool, n_bars: int, warmup: int = 3,
+                seed: int = 0) -> dict:
+    """Steady-state produce_one_bar throughput, with the compose/finish split.
+
+    The split is measured by a behaviour-neutral wrap of the two halves (compose
+    = settlement + the fiber choice this change touches; finish = the pure render
+    + telemetry it does not), so a speedup can be read against the part of the bar
+    it can possibly move."""
+    p = _player(world, is_trained, seed)
+    t = {"compose": 0.0, "finish": 0.0}
+    oc, of = p._compose_bar, p._finish_bar
+
+    def compose():
+        t0 = time.perf_counter()
+        try:
+            return oc()
+        finally:
+            t["compose"] += time.perf_counter() - t0
+
+    def finish(r, sched):
+        t0 = time.perf_counter()
+        try:
+            return of(r, sched)
+        finally:
+            t["finish"] += time.perf_counter() - t0
+
+    p._compose_bar, p._finish_bar = compose, finish
     for _ in range(warmup):
         p.produce_one_bar()                 # bank warmup + memo fill
+    t["compose"] = t["finish"] = 0.0
     t0 = time.perf_counter()
     for _ in range(n_bars):
         p.produce_one_bar()
-    return n_bars / (time.perf_counter() - t0)
+    dt = time.perf_counter() - t0
+    return {"bars_per_s": n_bars / dt, "s_per_bar": dt / n_bars,
+            "compose_s_per_bar": t["compose"] / n_bars,
+            "finish_s_per_bar": t["finish"] / n_bars,
+            "bar_seconds": float(p.engine.writer.bar_seconds)}
+
+
+# ---------------------------------------------------------------------------
+# parent: run a phase in a child interpreter with the flag set
+# ---------------------------------------------------------------------------
+
+def child(phase: str, world: str, is_trained: bool, fast: bool, n: int,
+          seed: int = 0) -> dict:
+    env = dict(os.environ)
+    env["ETS_FAST_REALIZE"] = "1" if fast else "0"
+    env["ETS_WARM_IDLE_S"] = "5"            # a child never outlives its measurement
+    cmd = [sys.executable, os.path.abspath(__file__), "--phase", phase,
+           "--world", world, "--n", str(n), "--seed", str(seed)]
+    if is_trained:
+        cmd.append("--trained")
+    r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"child {phase} (fast={fast}) failed:\n{r.stderr[-3000:]}")
+    return json.loads(r.stdout.strip().splitlines()[-1])
 
 
 # ---------------------------------------------------------------------------
@@ -219,51 +285,61 @@ def bars_per_second(world: str, is_trained: bool, fast: bool, n_bars: int,
 
 def gate_rows(tag: str, world: str, is_trained: bool, n_bars: int) -> bool:
     log(f"[G1:{tag}] {n_bars} bars, placement rows fast-vs-original…")
-    rf, cf, pf = produce_pass(world, is_trained, n_bars, fast=True)
-    ro, co, po = produce_pass(world, is_trained, n_bars, fast=False)
-    n_rows = sum(len(b) for b in rf)
-    ok = True
-    if len(rf) != len(ro):
-        log(f"    FAIL bar count {len(rf)} != {len(ro)}"); return False
-    for i, (a, b) in enumerate(zip(rf, ro)):
-        if a != b:
-            ok = False
-            log(f"    FAIL bar {i}: rows differ")
-            for j, (x, y) in enumerate(zip(a, b)):
-                if x != y:
-                    log(f"      row {j}: fast={x} orig={y}")
-                    break
-            break
-    if cf != co:
+    f = child("rows", world, is_trained, True, n_bars)
+    o = child("rows", world, is_trained, False, n_bars)
+    n_rows = sum(len(b) for b in f["rows"])
+    ok = f["rows"] == o["rows"]
+    if not ok:
+        for i, (a, b) in enumerate(zip(f["rows"], o["rows"])):
+            if a != b:
+                log(f"    FAIL bar {i}: rows differ")
+                for x, y in zip(a, b):
+                    if x != y:
+                        log(f"      fast={x} orig={y}")
+                        break
+                break
+    if f["cont"] != o["cont"]:
         ok = False
         log("    FAIL continuation flags differ")
-    log(f"    {n_rows} rows over {len(rf)} bars; rows identical={rf == ro} "
-        f"cont identical={cf == co}")
-    log(f"[G2a:{tag}] direct produce_one_bar PCM: fast={sha(pf)} orig={sha(po)} "
-        f"({len(pf)} bytes) identical={pf == po}")
-    return ok and (pf == po)
+    log(f"    {n_rows} rows over {len(f['rows'])} bars; rows identical="
+        f"{f['rows'] == o['rows']} cont identical={f['cont'] == o['cont']}")
+    same_pcm = (f["pcm_sha"] == o["pcm_sha"] and f["pcm_len"] == o["pcm_len"])
+    log(f"[G2a:{tag}] direct produce_one_bar PCM: fast={f['pcm_sha'][:16]} "
+        f"orig={o['pcm_sha'][:16]} ({f['pcm_len']} bytes) identical={same_pcm}")
+    return ok and same_pcm
 
 
 def gate_loop(tag: str, world: str, is_trained: bool, n_chunks: int) -> bool:
     log(f"[G2b:{tag}] {n_chunks} emissions through the REAL produce loop "
         f"(subscribe)…")
-    a = loop_pass(world, is_trained, n_chunks, fast=True)
-    b = loop_pass(world, is_trained, n_chunks, fast=False)
-    log(f"    fast={sha(a)} ({len(a)} bytes)  orig={sha(b)} ({len(b)} bytes)  "
-        f"identical={a == b}")
-    return a == b
+    a = child("loop", world, is_trained, True, n_chunks)
+    b = child("loop", world, is_trained, False, n_chunks)
+    same = (a["pcm_sha"] == b["pcm_sha"] and a["pcm_len"] == b["pcm_len"])
+    log(f"    fast={a['pcm_sha'][:16]} ({a['pcm_len']} bytes)  "
+        f"orig={b['pcm_sha'][:16]} ({b['pcm_len']} bytes)  identical={same}")
+    return same
 
 
 def gate_speed(tag: str, world: str, is_trained: bool, n_bars: int,
-               required: float = None) -> float:
-    f = bars_per_second(world, is_trained, True, n_bars)
-    o = bars_per_second(world, is_trained, False, n_bars)
-    r = f / o
+               required: float = None) -> dict:
+    f = child("bench", world, is_trained, True, n_bars)
+    o = child("bench", world, is_trained, False, n_bars)
+    r = f["bars_per_s"] / o["bars_per_s"]
+    cr = (o["compose_s_per_bar"] / f["compose_s_per_bar"]
+          if f["compose_s_per_bar"] > 0 else float("nan"))
     verdict = "" if required is None else \
         ("  PASS" if r >= required else f"  FAIL (< {required}x)")
-    log(f"[G3:{tag}] {n_bars} bars steady state: fast={f:.3f} bars/s  "
-        f"orig={o:.3f} bars/s  speedup={r:.2f}x{verdict}")
-    return r
+    log(f"[G3:{tag}] {n_bars} bars steady state, one process per path:")
+    log(f"    fast {f['bars_per_s']:7.3f} bars/s  ({f['s_per_bar'] * 1e3:8.1f} ms/bar"
+        f" = compose {f['compose_s_per_bar'] * 1e3:7.1f} + finish "
+        f"{f['finish_s_per_bar'] * 1e3:7.1f})")
+    log(f"    orig {o['bars_per_s']:7.3f} bars/s  ({o['s_per_bar'] * 1e3:8.1f} ms/bar"
+        f" = compose {o['compose_s_per_bar'] * 1e3:7.1f} + finish "
+        f"{o['finish_s_per_bar'] * 1e3:7.1f})")
+    log(f"    produce_one_bar speedup={r:.2f}x   compose-half speedup={cr:.2f}x   "
+        f"realtime: fast={f['bar_seconds'] / f['s_per_bar']:.2f}x "
+        f"orig={o['bar_seconds'] / o['s_per_bar']:.2f}x{verdict}")
+    return {"speedup": r, "compose_speedup": cr, "fast": f, "orig": o}
 
 
 def main() -> int:
@@ -271,46 +347,65 @@ def main() -> int:
     ap.add_argument("--work",
                     default=os.path.join(tempfile.gettempdir(),
                                          "ets_fast_realize_work"),
-                    help="cache dir for the synthesized >=4k-unit world")
+                    help="cache dir for the synthesized >=4k-unit worlds")
     ap.add_argument("--bars", type=int, default=12, help="bars per identity pass")
     ap.add_argument("--bench-bars", type=int, default=40)
     ap.add_argument("--chunks", type=int, default=8, help="loop emissions (G2b)")
     ap.add_argument("--tracks", type=int, default=6)
     ap.add_argument("--seconds", type=float, default=30.0)
+    ap.add_argument("--bpm", type=float, default=120.0)
+    ap.add_argument("--spread", type=float, default=0.0,
+                    help="per-track bpm step (0 = a single-tempo, beat-matched set)")
     ap.add_argument("--build-world", action="store_true", help="build/train only")
     ap.add_argument("--rebuild", action="store_true")
+    ap.add_argument("--skip-demo", action="store_true")
     ap.add_argument("--skip-big", action="store_true")
     ap.add_argument("--skip-loop", action="store_true")
+    # child-side
+    ap.add_argument("--phase", default=None,
+                    choices=["rows", "loop", "bench", "stats"])
+    ap.add_argument("--world", default=None)
+    ap.add_argument("--trained", action="store_true")
+    ap.add_argument("--n", type=int, default=8)
+    ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
+    if args.phase:                            # ---- child: one measured pass ----
+        fn = {"rows": phase_rows, "loop": phase_loop, "bench": phase_bench}
+        if args.phase == "stats":
+            out = world_stats(args.world, args.trained)
+        else:
+            out = fn[args.phase](args.world, args.trained, args.n, seed=args.seed)
+        print(json.dumps(out))
+        return 0
+
     if args.build_world:
-        w = big_world(args.work, args.tracks, args.seconds, rebuild=args.rebuild)
+        w = big_world(args.work, args.tracks, args.seconds, args.bpm, args.spread,
+                      rebuild=args.rebuild)
         log(f"[world] stats: {world_stats(w, True)}")
         return 0
 
-    demo = os.path.join(ROOT, "demo.etsworld")
-    log(f"[world] demo stats: {world_stats(demo, False)}")
     ok = True
-    ok &= gate_rows("demo", demo, False, args.bars)
-    if not args.skip_loop:
-        ok &= gate_loop("demo", demo, False, args.chunks)
-    demo_speed = gate_speed("demo", demo, False, args.bench_bars)
+    demo = os.path.join(ROOT, "demo.etsworld")
+    if not args.skip_demo:
+        log(f"[world] demo stats: {child('stats', demo, False, True, 0)}")
+        ok &= gate_rows("demo", demo, False, args.bars)
+        if not args.skip_loop:
+            ok &= gate_loop("demo", demo, False, args.chunks)
+        gate_speed("demo", demo, False, args.bench_bars)
 
-    big_speed = None
     if not args.skip_big:
-        w = big_world(args.work, args.tracks, args.seconds, rebuild=args.rebuild)
-        st = world_stats(w, True)
-        log(f"[world] big stats: {st}")
+        w = big_world(args.work, args.tracks, args.seconds, args.bpm, args.spread,
+                      rebuild=args.rebuild)
+        st = child("stats", w, True, True, 0)
+        log(f"[world] big stats ({os.path.basename(w)}): {st}")
         assert st["units"] >= 4000, f"big world has only {st['units']} units (<4k)"
         ok &= gate_rows("big", w, True, args.bars)
         if not args.skip_loop:
             ok &= gate_loop("big", w, True, args.chunks)
-        big_speed = gate_speed("big", w, True, args.bench_bars, required=2.0)
-        ok &= (big_speed >= 2.0)
+        sp = gate_speed("big", w, True, args.bench_bars, required=2.0)
+        ok &= (sp["speedup"] >= 2.0)
 
-    log(f"[summary] identity={'OK' if ok else 'BROKEN'}  demo speedup="
-        f"{demo_speed:.2f}x  big speedup="
-        f"{'n/a' if big_speed is None else f'{big_speed:.2f}x'}")
     log("FAST_REALIZE_VERIFY_OK" if ok else "FAST_REALIZE_VERIFY_FAILED")
     return 0 if ok else 1
 
