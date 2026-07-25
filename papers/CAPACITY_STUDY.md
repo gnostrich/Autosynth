@@ -178,20 +178,21 @@ One-time per train (÷ ~100 for real hardware):
 
 ---
 
-## 4b. LIVE CORRECTION (2026-07-24) — the ×realtime conversion was WRONG for the deployed box  **[MEASURED, live]**
-
-Measured on the LIVE ets-web box (Railway Pro, post-train, single produce loop, eigen worker
-parked by the audio-defer, no other engines resident): a **10-track full-length DJ corpus
-(M=4, ~70 min total audio) delivers 0.49× real-time**, steady over 90 s, identical under
-`ETS_BANK_DTYPE=float16` and `float32` (dtype is NOT the bottleneck). The §4 sandbox rows
-scale consistently (8 tracks/8.9k units → 0.3× sandbox); the live box is only ~1.5-2× faster
-per core than this sandbox — the disclosed "~100×" sandbox→hardware factor (and therefore the
-"30-113× realtime / CPU is a non-issue" conclusion) does NOT hold on Railway-class shared
-vCPU. **CPU is the binding constraint for full-length corpora on the current host.**
-Corpora at the 20-track/30-min-clips scale DO play ≥1× live (verified). Options, none
-applied without operator sign-off: (a) producer pipelining in the bridge (≤2× bound),
-(b) preregistered engine-path optimization guided by an on-box per-stage profile,
-(c) corpus guidance (clip-length sources), (d) faster single-core host.
+## 4b. RETRACTED + RE-CORRECTED (2026-07-25): the 2026-07-24 "live 0.49x" numbers were a MEASUREMENT ARTIFACT
+The §4b claims previously recorded here divided delivered bytes by a STEREO byte rate
+(176,400 B/s); the live stream is MONO int16 @44.1 kHz (88,200 B/s — wav_header, 1
+channel). Every "×realtime" live figure from 2026-07-24 was therefore exactly HALF the
+truth. Corrected: a warm full-length set on a silent box delivers a dead-flat **1.00×
+real-time** (the pacer's exact signature; measured 151 s, corrected divisor, 2026-07-25).
+The REAL live degradations of 2026-07-24 — eigen-ensemble starvation (true 0.12×),
+unbounded warm-loop pile-up (true ~0.3-0.4× under contention) — were genuine and are
+fixed (audio-defer + idle-stop, audited). The render-throughput optimization
+(PREREG-render-throughput.md, gates PASS, audited) stands as measured in the SANDBOX
+(2.37× multi-tempo / 3.96× single-tempo produce throughput) and now provides HEADROOM
+above the already-real-time live baseline (plus proportionally faster σ_φ calibration).
+The "~100× sandbox factor" critique below survives only in weakened form: live per-core
+≈ sandbox per-core for this path remains true, but the deployed conclusion is "at or
+above realtime with the optimization's margin", not "CPU-bound below realtime".
 
 ## 4. Per-bar playback CPU vs corpus size  **[MEASURED, sandbox]**
 
