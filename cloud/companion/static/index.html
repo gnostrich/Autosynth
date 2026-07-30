@@ -2406,14 +2406,32 @@
 
   /* ===== FIELD TRACKS PURE LOGIC (PREREG-waveform-scrub; test-extractable, no DOM,
      no telemetry writes, no fetch, no audio/transport) ==========================
-     WAVEFORM SCRUB-TO-STEER: the material surface's SECOND front-end. It adds NO jack
-     and NO decision channel — every lean it produces is a (row, cell) entry in the
-     EXISTING field lean ledger (keyStr -> value, the same ["track", t] / ["role", t, k]
-     keys the GRID gestures write), summed by the EXISTING saturating accumulator
-     (fieldAddBias) and cast by the EXISTING single payload builder (fieldBiasPayload).
-     So W-4 (same-jack equivalence) holds BY CONSTRUCTION, and every wall the grid
-     respects (a track absent from the channel roster, a region-disarmed column) is
-     respected here for free — the same predicates run, because it is the same builder.
+     WAVEFORM CLICK-TO-STEER: the material surface's SECOND front-end. It adds NO jack
+     and NO decision channel — every lean it produces is an entry in the EXISTING field
+     lean ledger (keyStr -> value, the same ["col", r] keys the GRID's column headers
+     write), summed by the EXISTING saturating accumulator (fieldAddBias) and cast by
+     the EXISTING single payload builder (fieldBiasPayload). So W-4 (same-jack
+     equivalence) holds BY CONSTRUCTION, and every wall the grid respects (a
+     region-disarmed corpus) is respected here for free — the same predicate runs,
+     because it is the same builder.
+
+     AMENDMENT 2 (operator, 2026-07-30) — CLICK = PURE CHARACTER STEER, COLUMNS ONLY.
+     This SUPERSEDES the original row+cell emission and the cells-only amendment: the
+     TRACKS click steers CHARACTER (which roles the arrangement settles into) and
+     NOTHING else. No row component (recruiting more of the pointed character already
+     lifts the pointed track's material indirectly — a programmed track favouring would
+     be a second, hidden meaning for one gesture); no cell component (cells stay a
+     GRID-only surgical grain). Explicit per-track bias remains the row header's job.
+     This amendment IS the parked column-lean directive, activated with the click as
+     its gesture — so the original "no settlement-lane changes" line no longer holds.
+
+     LANE-OWNERSHIP MATRIX (total; WS-9):
+       click/hold (TRACKS)     -> COLUMN lanes (settlement)  — the only writer in TRACKS
+       row-header gesture      -> ROW lanes (casting)        — the only writer anywhere
+       grid cell gesture       -> CELL lanes (casting)       — GRID view only
+       grid column header      -> COLUMN lanes (settlement)  — GRID view only
+     The view-switch reset (V-1) prevents cross-view double-driving; simultaneous
+     gestures compose as DISJOINT key families in the one ledger — no arbitration.
 
      W-2 mapping (the ONLY effect of the pointer):
        window   = the STORED slice grid: the unit span(s) [t0, t1) containing t. Never a
@@ -2421,15 +2439,20 @@
        w_r      = normalize(Σ_{selected j} m_j · q_j[r]) — the mass-weighted conditional
                   over the world's STORED soft assignment. No smoothing, no floor, no
                   invented uniform: a selection with zero role mass yields ZEROS.
-       leans    = row bias (i) = mag ; cell bias (i, r) = mag · w_r.
+       leans    = column bias (r) = mag · w_r. Nothing else.
        mag      = the field's OWN gesture quantum (FIELD_BIAS_STEP per existing
                   FIELD_TOUCH_BIAS_PX step of travel along the lane, pointer-down = the
                   first step), soft-saturating at the field's OWN FIELD_BIAS_LIMIT. No
-                  new scaling constant enters the outbound path.
+                  new scaling constant enters the outbound path (the column's σ-scale is
+                  the payload builder's existing regionCap, shared with the grid).
        held     = sustained (the lean IS the gesture state); release = the gesture's
                   contribution is exactly 0, instantly, with no tween — the codebase's
                   existing held-gesture release law (scalarForce/T-3), and V-3's "no fade
-                  theater". A released scrub leaves NO residue in the ledger.
+                  theater". A released click leaves NO residue in the ledger.
+       disarm   = on a region-DISARMED corpus the columns are honest-absent from the
+                  payload (fieldBiasPayload's existing predicate) and the click refuses
+                  with the grid's existing message. DISCLOSED WALL: the click is inert
+                  there — the ruled trade for one-gesture-one-meaning.
      NOT-A-PLAYHEAD: nothing here reads or writes audio, transport, time-position or a
      unit id destined for the wire. Unit ids appear ONLY as READ keys of the achieved
      heatmap's telemetry lookup (W-3, display), never in a lean and never in a body. */
@@ -2493,32 +2516,34 @@
     var m = (1 + steps) * FIELD_BIAS_STEP;
     return m > FIELD_BIAS_LIMIT ? FIELD_BIAS_LIMIT : m;
   }
-  // The gesture's leans, as ledger entries under the EXISTING grid keys — CELLS ONLY
-  // (AMENDMENT 2026-07-30, lane-ownership law): the (track, role) CELLS weighted by w_r
-  // (-> track_role_bias) and NOTHING else. The ROW lane is owned exclusively by the
-  // row-header gesture — the scrub never writes it (WS-9). Held header-drag + held scrub
-  // compose at the payload level as DISJOINT lanes through the one saturating ledger.
-  // A zero-weight role gets NO entry (the same byte-clean omission fieldAddBias makes).
+  // The gesture's leans, as ledger entries under the EXISTING grid keys — COLUMNS ONLY
+  // (AMENDMENT 2 2026-07-30, CLICK = PURE CHARACTER STEER): the ROLE columns weighted by
+  // w_r (["col", r] -> the settlement/region lane) and NOTHING else. No row component,
+  // no cell component: those lanes have their own owning gestures (WS-9). The TRACK ID
+  // IS NOT AN ARGUMENT — this function structurally cannot write a per-track lean. A
+  // zero-weight role gets NO entry (the same byte-clean omission fieldAddBias makes).
   // No unit key, no unit id, ever.
-  function fieldScrubLeans(tid, mag, w){
+  function fieldScrubLeans(mag, w){
     var out = {};
     if(!(mag > 0)) return out;
     for(var r = 0; r < (w ? w.length : 0); r++){
       var v = mag * (+w[r] || 0);
-      if(v > 0) out[fieldKeyStr(["role", tid | 0, r])] = v;
+      if(v > 0) out[fieldKeyStr(["col", r])] = v;
     }
     return out;
   }
-  // The held scrub's ledger contribution, or null when it contributes nothing (no
-  // gesture, no wavemap for that lane, or no STORED slice under t). M is the WORLD's
-  // role count: the projection basis is the world's, never the file's.
+  // The held click's ledger contribution, or null when it contributes nothing (no
+  // gesture, no wavemap for that lane, or no STORED slice under t). The lane only
+  // selects the WINDOW (whose stored mixture is read); it contributes no lean of its
+  // own. M is the WORLD's role count: the projection basis is the world's, never the
+  // file's.
   function fieldScrubBiasMap(scrub, wave, M){
     if(!scrub || !wave) return null;
     var tr = wave.tracks && wave.tracks[String(scrub.track)];
     if(!tr) return null;
     var sw = fieldScrubWeights(tr.slices, scrub.t, M);
     if(!sw.sel.length) return null;
-    return fieldScrubLeans(scrub.track, fieldScrubMag(scrub.travel), sw.w);
+    return fieldScrubLeans(fieldScrubMag(scrub.travel), sw.w);
   }
   // Sum a transient lean map onto the persistent ledger through the EXISTING saturating
   // accumulator — one clamp law for every gesture. `base` is never mutated.
@@ -2820,10 +2845,12 @@
      per-unit placement telemetry the grid's glows consume (nowplaying_unit, keyed by
      the slice's own stored uid), and the FORCE mark at the held scrub (two-marks law:
      glow = achieved, mark/ring = your push — never conflated).
-     INPUT: the row header is the grid's row square, so the EXISTING row-lean gesture
-     drives it unchanged; the wave area takes the scrub, whose ONLY effect is the W-2
-     lean map. No audio element, no transport call, no seek, no preview, no unit id on
-     the wire — the pointer's entire footprint is the bias payload. */
+     INPUT (lane-ownership matrix, AMENDMENT 2): the row header — and, per the operator's
+     UX ruling, the whole lane under the WHEEL — is the grid's row square, so the EXISTING
+     row-lean gesture drives the ROW lane unchanged; the click/hold on the wave area
+     writes the COLUMN lane and nothing else. Two gestures, two disjoint lane families,
+     no arbitration. No audio element, no transport call, no seek, no preview, no unit id
+     on the wire — the pointer's entire footprint is the bias payload. */
   function fieldLanesSquareAt(x, y){
     if(!fieldCanvas) return null;
     var g = fieldLanesPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
@@ -2881,6 +2908,10 @@
       return "stored role count does not match this world — scrub inactive";
     return "";
   }
+  // The click's honest disarm (AMENDMENT 2's disclosed wall): the click rides the
+  // SETTLEMENT lane, so on a corpus whose σ_φ.region is unidentifiable it can no more
+  // steer than the grid's column headers can. Same predicate, same message, verbatim.
+  var FIELD_REGION_DISARM_MSG = "region DISARMED — column steer inactive on this corpus";
   // GIVEN MATERIAL: the peak envelope of the user's own audio, drawn as a symmetric
   // envelope. Pure sample data in, rectangles out — no procedural art anywhere.
   function fieldDrawWave(rect, peaks, color){
@@ -3011,7 +3042,11 @@
     if(!fieldScrubArmed()) return;
     var rect = fieldCanvas.getBoundingClientRect();
     var p = fieldScrubPoint(ev.clientX - rect.left, ev.clientY - rect.top);
-    if(!p) return;                              // row header / outside: not a scrub
+    if(!p) return;                              // row header / outside: not a click
+    // COLUMN honest disarm, the grid's law verbatim: the click rides the settlement
+    // lane, so on a region-disarmed corpus it would settle no differently — refuse the
+    // gesture and say so, rather than accumulate an inert lean (AMENDMENT 2's wall).
+    if(fieldRegionDisarmed()){ fieldSetStatus(FIELD_REGION_DISARM_MSG, false); return; }
     fieldScrub = { track:p.track, t:p.t, travel:0, x:ev.clientX - rect.left };
     fieldScrubSent = null;
     try{ fieldCanvas.setPointerCapture(ev.pointerId); }catch(e){}
