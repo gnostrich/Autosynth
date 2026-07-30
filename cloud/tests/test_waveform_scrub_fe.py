@@ -528,6 +528,96 @@ def test_scrub_arming_predicate_refuses_a_foreign_role_basis():
         "a missing/mismatched wavemap must be reported honestly, not faked"
 
 
+# ============================ D-1 : the role strip ===========================
+
+def test_role_strip_marks_split_achieved_from_force_by_provenance():
+    """D-1 + the two-marks law, at the source of the marks: ACHIEVED comes from the SAME
+    fieldColShares telemetry reduction the GRID's column headers glow by, FORCE comes
+    from the ledger's ["col", r] entries — and neither can borrow the other's number.
+    The BITE: a lean with no telemetry shows force but zero achieved, and telemetry with
+    no lean shows achieved but zero force."""
+    assert _run_node(_driver("""
+    // telemetry ONLY: two live (track, role) cells, no lean anywhere.
+    var st = { nowplayingTrackRole:{ "7,0":0.5, "9,0":0.5, "7,2":1.0 }, bias:{} };
+    var marks = fieldRoleStripMarks(st, 3);
+    var shares = fieldColShares(st, 3);
+    for(var r=0;r<3;r++){
+      if(marks[r].achieved !== fieldClamp01(shares.glow[r])){
+        console.log('FAIL achieved ' + r); process.exit(1); }
+      if(marks[r].share !== shares.share[r]){ console.log('FAIL share ' + r); process.exit(1); }
+      if(marks[r].force !== 0){ console.log('FAIL force-from-telemetry ' + r); process.exit(1); }
+    }
+    if(!(marks[0].achieved > 0)){ console.log('FAIL no glow'); process.exit(1); }
+
+    // lean ONLY: a held click's column lean, no telemetry at all.
+    var st2 = { nowplayingTrackRole:{}, bias:{} };
+    fieldAddBias(st2.bias, fieldKeyStr(["col", 1]), 0.5);
+    var m2 = fieldRoleStripMarks(st2, 3);
+    if(m2[1].force !== 0.5){ console.log('FAIL force ' + m2[1].force); process.exit(1); }
+    for(var r2=0;r2<3;r2++){
+      if(m2[r2].achieved !== 0){ console.log('FAIL achieved-from-lean ' + r2); process.exit(1); }
+    }
+    // the click's OWN lean shows up on the strip as force (the visible-effect law).
+    var st3 = { nowplayingTrackRole:{},
+                bias: fieldMergeLeans({}, fieldScrubBiasMap({track:7,t:1.7,travel:0}, WM, 3)) };
+    var m3 = fieldRoleStripMarks(st3, 3);
+    if(JSON.stringify([m3[0].force, m3[1].force, m3[2].force]) !==
+       JSON.stringify([0.0625, 0.03125, 0.03125])){
+      console.log('FAIL click force ' + JSON.stringify(m3)); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_role_strip_is_read_only_and_in_no_hit_test():
+    """D-1: read-only means read-only. The strip is not in `placed` (so no square
+    hit-test can return it), the wave hit-test excludes its band (so no click can start
+    there), and the WHEEL hit-test used in TRACKS view returns nothing over it."""
+    assert _run_node(_runtime_driver("""
+    var st = { nowplaying:{ 7:0.4, 9:0.9 }, nowplayingTrackRole:{}, nowplayingUnit:{},
+               profiles:{ 7:[1,0,0], 9:[0,1,1] }, names:{ 7:"seven", 9:"nine" }, bias:{} };
+    var g = fieldLanesPlace(st, 800, 400);
+    // every placed square is a ROW header — the strip contributes none.
+    for(var i=0;i<g.placed.length;i++){
+      if(g.placed[i].kind !== "track"){ console.log('FAIL kind ' + g.placed[i].kind); process.exit(1); }
+    }
+    // the strip band sits ABOVE every lane and every row header.
+    var rects = fieldRoleStripPlace(800, 3, g.layout.rhW);
+    if(rects.length !== 3){ console.log('FAIL rects'); process.exit(1); }
+    for(var r=0;r<rects.length;r++){
+      var rc = rects[r];
+      if(rc.y + rc.h > g.layout.top){ console.log('FAIL overlap lanes'); process.exit(1); }
+      if(fieldLaneAt(g.lanes, rc.x + 1, rc.y + 1) !== null){
+        console.log('FAIL click surface in the strip'); process.exit(1); }
+    }
+    // and the TRACKS wheel hit-test (which resolves the whole lane to its row square)
+    // returns NOTHING over the strip band: the strip drives no lane at all.
+    fieldView = "tracks";
+    for(var x=0; x<800; x+=17){
+      for(var y=FIELD_HEADER; y<FIELD_HEADER+FIELD_STRIP_H; y+=5){
+        if(fieldLanesEmphasisSquareAt(x, y) !== null){
+          console.log('FAIL wheel writes via the strip at ' + x + ',' + y); process.exit(1); }
+      }
+    }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_role_strip_draw_is_a_dumb_renderer_of_the_pure_marks():
+    """The strip's drawing may not invent a number: it renders exactly what
+    fieldRoleStripMarks (pure, provenance-split) computed, and it reads no telemetry
+    store of its own. Its disarm state is the GRID's own predicate."""
+    fns = _js_functions(_strip_comments(_tracks_runtime()))
+    body = fns["fieldDrawRoleStrip"]
+    assert "fieldRoleStripMarks" in body and "fieldRoleStripPlace" in body, \
+        "the strip must render the pure marks/rects, not recompute them"
+    assert "fieldRegionDisarmed()" in body, \
+        "a disarmed corpus must render the strip inert, as the grid's headers do"
+    for banned in ("nowplaying", "nowplayingUnit", "nowplayingTrackRole", "fieldColShares",
+                   "fieldScrub", "Math.random", "Math.sin"):
+        assert banned not in body, \
+            f"the strip renderer must not reach for {banned!r} — it draws the pure marks only"
+
+
 # ============================ W-1 : the row header ===========================
 
 def test_lane_row_header_is_the_grids_row_square_verbatim():

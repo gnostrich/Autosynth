@@ -2412,7 +2412,7 @@
      write), summed by the EXISTING saturating accumulator (fieldAddBias) and cast by
      the EXISTING single payload builder (fieldBiasPayload). So W-4 (same-jack
      equivalence) holds BY CONSTRUCTION, and every wall the grid respects (a
-     region-disarmed corpus) is respected here for free — the same predicate runs,
+     region-disarmed corpus) is respected here for free — the same predicates run,
      because it is the same builder.
 
      AMENDMENT 2 (operator, 2026-07-30) — CLICK = PURE CHARACTER STEER, COLUMNS ONLY.
@@ -2425,7 +2425,7 @@
      This amendment IS the parked column-lean directive, activated with the click as
      its gesture — so the original "no settlement-lane changes" line no longer holds.
 
-     LANE-OWNERSHIP MATRIX (total; WS-9):
+     LANE-OWNERSHIP MATRIX (total; WS-9/WS-10):
        click/hold (TRACKS)     -> COLUMN lanes (settlement)  — the only writer in TRACKS
        row-header gesture      -> ROW lanes (casting)        — the only writer anywhere
        grid cell gesture       -> CELL lanes (casting)       — GRID view only
@@ -2460,6 +2460,7 @@
   // tab pair ships hidden, fieldViewMode() pins "grid", and no scrub can arm.
   var FIELD_TRACKS_VIEW = true;
   var FIELD_LANE_MIN_H = 64;        // DISPLAY-only: legible minimum waveform lane height
+  var FIELD_STRIP_H = 26;           // DISPLAY-only: the read-only role strip band (D-1)
   var FIELD_VIEW_KEY = "ets.fieldView";   // last selected view (V-4; default GRID)
 
   // The effective view. Pure in its input so the rollback branch is testable.
@@ -2519,10 +2520,10 @@
   // The gesture's leans, as ledger entries under the EXISTING grid keys — COLUMNS ONLY
   // (AMENDMENT 2 2026-07-30, CLICK = PURE CHARACTER STEER): the ROLE columns weighted by
   // w_r (["col", r] -> the settlement/region lane) and NOTHING else. No row component,
-  // no cell component: those lanes have their own owning gestures (WS-9). The TRACK ID
-  // IS NOT AN ARGUMENT — this function structurally cannot write a per-track lean. A
-  // zero-weight role gets NO entry (the same byte-clean omission fieldAddBias makes).
-  // No unit key, no unit id, ever.
+  // no cell component: those lanes have their own owning gestures (WS-9/WS-10). The
+  // TRACK ID IS NOT AN ARGUMENT — this function structurally cannot write a per-track
+  // lean. A zero-weight role gets NO entry (the same byte-clean omission fieldAddBias
+  // makes). No unit key, no unit id, ever.
   function fieldScrubLeans(mag, w){
     var out = {};
     if(!(mag > 0)) return out;
@@ -2556,13 +2557,44 @@
     return out;
   }
 
+  /* D-1 ROLE STRIP (AMENDMENT 2): a slim READ-ONLY strip above the lanes carrying the
+     COLUMN marks under the existing two-marks law, so the click's effect is visible.
+     PURE and split by provenance on purpose (WS-10e):
+       achieved <- fieldColShares(st, M): the SAME per-(track,role) telemetry reduction
+                   the GRID's column headers glow by. Telemetry only, never a lean.
+       force    <- st.bias's ["col", r] entries: YOUR lean, the click's own column
+                   leans (and, in GRID view, the column header's). Ledger only, never
+                   telemetry.
+     Read-only means read-only: the strip is NOT in `placed`, so no hit-test can ever
+     return it and no gesture can write through it. */
+  function fieldRoleStripMarks(st, M){
+    var shares = fieldColShares(st, M), out = [];
+    for(var r = 0; r < (M | 0); r++){
+      out.push({ role: r,
+                 achieved: fieldClamp01(shares.glow[r]),        // TELEMETRY
+                 share: shares.share[r],                        // TELEMETRY
+                 force: st.bias[fieldKeyStr(["col", r])] || 0 });// YOUR LEAN
+    }
+    return out;
+  }
+  // The strip's cell rects: M equal columns across the wave area (the row-header column
+  // is skipped — it belongs to the row lane, which the strip never speaks for).
+  function fieldRoleStripPlace(W, M, rhW){
+    var rects = [], n = M | 0;
+    if(n <= 0) return rects;
+    var w = (W - rhW) / n;
+    for(var r = 0; r < n; r++)
+      rects.push({ x: rhW + r * w, y: FIELD_HEADER, w: w, h: FIELD_STRIP_H });
+    return rects;
+  }
   // Lane layout: one row per track (the SAME roster and the SAME row-header column the
-  // grid uses), row header left, waveform right. The row header squares are the GRID's
-  // row squares verbatim (kind "track", key ["track", t]) so the existing row-lean
-  // gesture code drives them unchanged; the wave rects are the scrub's only surface.
+  // grid uses), row header left, waveform right, the read-only role strip above them
+  // all. The row header squares are the GRID's row squares verbatim (kind "track", key
+  // ["track", t]) so the existing row-lean gesture code drives them unchanged; the wave
+  // rects are the click's only surface.
   function fieldLanesPlace(st, W, H){
     var tracks = fieldTrackIds(st), T = tracks.length;
-    var top = FIELD_HEADER;
+    var top = FIELD_HEADER + FIELD_STRIP_H;      // the read-only role strip sits above
     var rhW = Math.max(56, Math.min(160, Math.floor(W * 0.22)));
     var laneH = T > 0 ? (H - top) / T : (H - top);
     var placed = [], lanes = [];
@@ -2845,12 +2877,16 @@
      per-unit placement telemetry the grid's glows consume (nowplaying_unit, keyed by
      the slice's own stored uid), and the FORCE mark at the held scrub (two-marks law:
      glow = achieved, mark/ring = your push — never conflated).
+     ... plus the D-1 ROLE STRIP: the read-only column marks (achieved = the same
+     fieldColShares telemetry the grid's column headers glow by; force = your column
+     lean), so the click's effect is visible where it actually lands.
      INPUT (lane-ownership matrix, AMENDMENT 2): the row header — and, per the operator's
      UX ruling, the whole lane under the WHEEL — is the grid's row square, so the EXISTING
      row-lean gesture drives the ROW lane unchanged; the click/hold on the wave area
-     writes the COLUMN lane and nothing else. Two gestures, two disjoint lane families,
-     no arbitration. No audio element, no transport call, no seek, no preview, no unit id
-     on the wire — the pointer's entire footprint is the bias payload. */
+     writes the COLUMN lane and nothing else; the strip writes nothing at all. Two
+     gestures, two disjoint lane families, no arbitration. No audio element, no transport
+     call, no seek, no preview, no unit id on the wire — the pointer's entire footprint
+     is the bias payload. */
   function fieldLanesSquareAt(x, y){
     if(!fieldCanvas) return null;
     var g = fieldLanesPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
@@ -2961,16 +2997,50 @@
     fieldCtx.beginPath(); fieldCtx.moveTo(x, rect.y + 3); fieldCtx.lineTo(x, rect.y + rect.h - 3);
     fieldCtx.stroke();
   }
+  // D-1 ROLE STRIP: the column marks, read-only, in the field's existing two-marks
+  // language — GLOW fill = achieved (the same fieldColShares telemetry the grid's column
+  // headers glow by), RING = force (your column lean). A disarmed corpus renders the
+  // strip dim and tagged "off" exactly as the grid's column headers do: honest-inert,
+  // never a fake control. Draws nothing but what fieldRoleStripMarks (pure) computed.
+  function fieldDrawRoleStrip(st, W, rhW, M){
+    var marks = fieldRoleStripMarks(st, M), rects = fieldRoleStripPlace(W, M, rhW);
+    var disarmed = fieldRegionDisarmed();
+    fieldCtx.font = "10px " + cssVar("--font-mono");
+    fieldCtx.fillStyle = cssVar("--faint");
+    fieldCtx.fillText("role →", 6, FIELD_HEADER + FIELD_STRIP_H - 9);
+    for(var r = 0; r < rects.length; r++){
+      var rc = rects[r], mk = marks[r];
+      fieldCtx.globalAlpha = (0.14 + 0.86 * mk.achieved) * (disarmed ? 0.4 : 1);
+      fieldCtx.fillStyle = fieldRoleColor(r);
+      fieldCtx.fillRect(rc.x + 1, rc.y + 1, rc.w - 2, rc.h - 2);
+      fieldCtx.globalAlpha = 1;
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(rc.x + 1.5, rc.y + 1.5, rc.w - 3, rc.h - 3);
+      if(!disarmed && Math.abs(mk.force) > 1e-9){
+        fieldCtx.strokeStyle = mk.force > 0 ? cssVar("--accent") : cssVar("--damp");
+        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(mk.force));
+        fieldCtx.strokeRect(rc.x + 3, rc.y + 3, rc.w - 6, rc.h - 6);
+      }
+      fieldCtx.fillStyle = disarmed ? cssVar("--faint") : cssVar("--ink");
+      fieldCtx.fillText("R" + r, rc.x + 4, rc.y + 11);
+      if(disarmed){ fieldCtx.fillText("off", rc.x + 4, rc.y + rc.h - 4); }
+      else if(rc.w > 34){
+        fieldCtx.fillStyle = cssVar("--muted");
+        fieldCtx.fillText(Math.round(mk.share * 100) + "%", rc.x + 4, rc.y + rc.h - 4);
+      }
+    }
+  }
   function fieldDrawLanes(st, W, H){
     fieldMarqueeActive = false;             // set true iff a row label overflows (gentle marquee)
     var g = fieldLanesPlace(st, W, H), lay = g.layout;
     fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
     fieldCtx.fillText("TRACKS  (point at a part you love — the instrument leans toward what that part is made of)",
                       8, 15);
+    fieldDrawRoleStrip(st, W, lay.rhW, world.M | 0);     // D-1: read-only column marks
     if(lay.T === 0){
       fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
       fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field",
-                        14, FIELD_HEADER + 20);
+                        14, lay.top + 20);
       return;
     }
     var note = fieldLanesNote();
@@ -3042,7 +3112,7 @@
     if(!fieldScrubArmed()) return;
     var rect = fieldCanvas.getBoundingClientRect();
     var p = fieldScrubPoint(ev.clientX - rect.left, ev.clientY - rect.top);
-    if(!p) return;                              // row header / outside: not a click
+    if(!p) return;                              // row header / strip / outside: not a click
     // COLUMN honest disarm, the grid's law verbatim: the click rides the settlement
     // lane, so on a region-disarmed corpus it would settle no differently — refuse the
     // gesture and say so, rather than accumulate an inert lean (AMENDMENT 2's wall).
@@ -3330,7 +3400,8 @@
     // the same min-size/scroll helper, parameterised. No second layout law.
     var sz = (fieldViewMode(fieldView) === "tracks")
       ? fieldGridMinSize(T, 1, availW, availH,
-          { minCellW: 240, minCellH: FIELD_LANE_MIN_H, rhW: 160, chH: 0, headH: FIELD_HEADER })
+          { minCellW: 240, minCellH: FIELD_LANE_MIN_H, rhW: 160, chH: FIELD_STRIP_H,
+            headH: FIELD_HEADER })
       : fieldGridMinSize(T, M, availW, availH);
     var wpx = sz.w + "px", hpx = sz.h + "px";
     if(fieldCanvas.style.width !== wpx) fieldCanvas.style.width = wpx;
