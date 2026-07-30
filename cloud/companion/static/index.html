@@ -329,6 +329,21 @@
     -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
   .field-scroll > .field-canvas{ border:0; border-radius:0; box-shadow:none;
     background:transparent; min-height:0; }
+  /* VIEW TABS ([GRID][TRACKS], PREREG-waveform-scrub V-4): the SAME material surface
+     with two front-ends onto the SAME two jacks. Small chips in the surface header,
+     styled off .field-expand (one chrome family, no new visual vocabulary). */
+  .field-views{ display:inline-flex; flex:0 0 auto; gap:0; }
+  .field-view-tab{ display:inline-flex; align-items:center; justify-content:center;
+    height:28px; padding:0 10px; cursor:pointer;
+    background: var(--panel-inset); color: var(--ink-2);
+    border:1px solid var(--line); border-right-width:0; border-radius:0; font: inherit;
+    font-size: var(--fs-micro); letter-spacing:.10em; text-transform:uppercase; font-weight:600; }
+  .field-view-tab:first-child{ border-radius:8px 0 0 8px; }
+  .field-view-tab:last-child{ border-right-width:1px; border-radius:0 8px 8px 0; }
+  .field-view-tab:hover{ border-color: var(--accent-deep); color: var(--ink); }
+  .field-view-tab:focus-visible{ outline:none; box-shadow: var(--focus); }
+  .field-view-tab[aria-pressed="true"]{ color: var(--ink); border-color: var(--accent-deep);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel-inset)); }
   /* EXPAND / COLLAPSE control (fullscreen the field on laptop AND mobile) */
   .field-expand{ display:inline-flex; align-items:center; justify-content:center; gap:6px;
     height:28px; padding:0 10px; flex:0 0 auto; cursor:pointer;
@@ -1135,6 +1150,20 @@
                      There is NO track-lean disarm caption: the track grain biases through
                      the ratified REV2 fiber lean, which never routes through B. -->
                 <span class="hint" id="fieldUnitGrainMsg" hidden>unit grain disarmed &mdash; the anchor-band matrix carries no information on this world</span>
+                <!-- VIEW TABS (PREREG-waveform-scrub, V-4): ONE material surface, two
+                     front-ends onto the SAME two jacks (channel_bias + track_role_bias).
+                     GRID = the machine-native (track x role) matrix, unaltered and the
+                     paper-faithful DEFAULT. TRACKS = the waveform-lane view (scrub-to-
+                     steer). Only one is visible at a time and switching either way ZEROES
+                     every material-surface lean and publishes the neutral carrier (V-1).
+                     Ships hidden when FIELD_TRACKS_VIEW is false (rollback = the exact
+                     pre-directive surface). -->
+                <span class="field-views" id="fieldViews" role="group" aria-label="Material surface view">
+                  <button type="button" class="field-view-tab" id="fieldViewGrid"
+                          aria-pressed="true" title="The track x role matrix (default)">Grid</button>
+                  <button type="button" class="field-view-tab" id="fieldViewTracks"
+                          aria-pressed="false" title="Waveform lanes — point at a part you love">Tracks</button>
+                </span>
                 <!-- Expand the field to fullscreen (Fullscreen API where available; CSS
                      viewport-fill fallback otherwise). Display-only: no steer path. -->
                 <button type="button" class="field-expand" id="fieldExpandBtn"
@@ -2375,6 +2404,180 @@
   }
   /* ===== END FIELD DISPLAY PURE LOGIC ===== */
 
+  /* ===== FIELD TRACKS PURE LOGIC (PREREG-waveform-scrub; test-extractable, no DOM,
+     no telemetry writes, no fetch, no audio/transport) ==========================
+     WAVEFORM SCRUB-TO-STEER: the material surface's SECOND front-end. It adds NO jack
+     and NO decision channel — every lean it produces is a (row, cell) entry in the
+     EXISTING field lean ledger (keyStr -> value, the same ["track", t] / ["role", t, k]
+     keys the GRID gestures write), summed by the EXISTING saturating accumulator
+     (fieldAddBias) and cast by the EXISTING single payload builder (fieldBiasPayload).
+     So W-4 (same-jack equivalence) holds BY CONSTRUCTION, and every wall the grid
+     respects (a track absent from the channel roster, a region-disarmed column) is
+     respected here for free — the same predicates run, because it is the same builder.
+
+     W-2 mapping (the ONLY effect of the pointer):
+       window   = the STORED slice grid: the unit span(s) [t0, t1) containing t. Never a
+                  new grid, never a resampling.
+       w_r      = normalize(Σ_{selected j} m_j · q_j[r]) — the mass-weighted conditional
+                  over the world's STORED soft assignment. No smoothing, no floor, no
+                  invented uniform: a selection with zero role mass yields ZEROS.
+       leans    = row bias (i) = mag ; cell bias (i, r) = mag · w_r.
+       mag      = the field's OWN gesture quantum (FIELD_BIAS_STEP per existing
+                  FIELD_TOUCH_BIAS_PX step of travel along the lane, pointer-down = the
+                  first step), soft-saturating at the field's OWN FIELD_BIAS_LIMIT. No
+                  new scaling constant enters the outbound path.
+       held     = sustained (the lean IS the gesture state); release = the gesture's
+                  contribution is exactly 0, instantly, with no tween — the codebase's
+                  existing held-gesture release law (scalarForce/T-3), and V-3's "no fade
+                  theater". A released scrub leaves NO residue in the ledger.
+     NOT-A-PLAYHEAD: nothing here reads or writes audio, transport, time-position or a
+     unit id destined for the wire. Unit ids appear ONLY as READ keys of the achieved
+     heatmap's telemetry lookup (W-3, display), never in a lean and never in a body. */
+  // ONE flag, default on. False = the material surface is EXACTLY pre-directive: the
+  // tab pair ships hidden, fieldViewMode() pins "grid", and no scrub can arm.
+  var FIELD_TRACKS_VIEW = true;
+  var FIELD_LANE_MIN_H = 64;        // DISPLAY-only: legible minimum waveform lane height
+  var FIELD_VIEW_KEY = "ets.fieldView";   // last selected view (V-4; default GRID)
+
+  // The effective view. Pure in its input so the rollback branch is testable.
+  function fieldViewMode(view){
+    return (FIELD_TRACKS_VIEW && view === "tracks") ? "tracks" : "grid";
+  }
+  // V-4: persisted view choice. Anything but the exact "tracks" token (absent, junk,
+  // a storage failure) reads as the paper-faithful DEFAULT.
+  function fieldViewPick(stored){ return (stored === "tracks") ? "tracks" : "grid"; }
+
+  // V-1 SWITCH-RESET: the material surface's ENTIRE lean state, neutral. Zeroes the
+  // row/column/cell ledger, the scrub gesture, and the sub-step wheel remainder (so no
+  // half-accumulated push can resurrect after a switch). Outboard/eigen/transport state
+  // is not named here at all (V-2). The caller assigns these and republishes: with an
+  // empty ledger fieldBiasPayload emits the byte-identical neutral carrier.
+  function fieldNeutralLeanState(){
+    return { bias: {}, scrub: null, wheel: { key: null, acc: 0 } };
+  }
+
+  // The STORED slice(s) under time t on one lane: half-open [t0, t1) containment over the
+  // world's own unit segmentation. A t in a gap between stored spans selects NOTHING.
+  function fieldSlicesAt(slices, t){
+    var out = [];
+    t = +t;
+    for(var i = 0; i < (slices ? slices.length : 0); i++){
+      var s = slices[i];
+      if(t >= +s[0] && t < +s[1]) out.push(s);
+    }
+    return out;
+  }
+  // WS-1 / W-2: w_r = normalize(Σ m_j · q_j[r]) over the selected STORED slices. Exact
+  // mass-weighted conditional of the STORED soft assignment — no smoothing term, no
+  // epsilon floor, no uniform fallback. Zero total mass => all-zero weights (honest).
+  function fieldScrubWeights(slices, t, M){
+    M = M | 0;
+    var sel = fieldSlicesAt(slices, t), w = new Array(M), tot = 0, r;
+    for(r = 0; r < M; r++) w[r] = 0;
+    for(var j = 0; j < sel.length; j++){
+      var m = +sel[j][3] || 0, q = sel[j][4] || [];
+      for(r = 0; r < M && r < q.length; r++){
+        var v = m * (+q[r] || 0);
+        w[r] += v; tot += v;
+      }
+    }
+    if(!(tot > 0)) return { sel: sel, w: w };     // no stored role mass => no cell lean
+    for(r = 0; r < M; r++) w[r] = w[r] / tot;
+    return { sel: sel, w: w };
+  }
+  // The gesture magnitude: the field's OWN step quantum per its OWN travel quantum
+  // (fieldDragSteps), pointer-down counting as the first step, soft-saturating at the
+  // field's OWN limit. Identical arithmetic to a grid row/cell scroll or drag.
+  function fieldScrubMag(travelPx){
+    var steps = fieldDragSteps(Math.abs(+travelPx || 0)).steps;
+    var m = (1 + steps) * FIELD_BIAS_STEP;
+    return m > FIELD_BIAS_LIMIT ? FIELD_BIAS_LIMIT : m;
+  }
+  // The gesture's leans, as ledger entries under the EXISTING grid keys: the lane's ROW
+  // (track roll-up -> channel_bias) plus its (track, role) CELLS weighted by w_r
+  // (-> track_role_bias). A zero-weight role gets NO entry (the same byte-clean omission
+  // fieldAddBias makes). No unit key, no unit id, ever.
+  function fieldScrubLeans(tid, mag, w){
+    var out = {};
+    if(!(mag > 0)) return out;
+    out[fieldKeyStr(["track", tid | 0])] = mag;
+    for(var r = 0; r < (w ? w.length : 0); r++){
+      var v = mag * (+w[r] || 0);
+      if(v > 0) out[fieldKeyStr(["role", tid | 0, r])] = v;
+    }
+    return out;
+  }
+  // The held scrub's ledger contribution, or null when it contributes nothing (no
+  // gesture, no wavemap for that lane, or no STORED slice under t). M is the WORLD's
+  // role count: the projection basis is the world's, never the file's.
+  function fieldScrubBiasMap(scrub, wave, M){
+    if(!scrub || !wave) return null;
+    var tr = wave.tracks && wave.tracks[String(scrub.track)];
+    if(!tr) return null;
+    var sw = fieldScrubWeights(tr.slices, scrub.t, M);
+    if(!sw.sel.length) return null;
+    return fieldScrubLeans(scrub.track, fieldScrubMag(scrub.travel), sw.w);
+  }
+  // Sum a transient lean map onto the persistent ledger through the EXISTING saturating
+  // accumulator — one clamp law for every gesture. `base` is never mutated.
+  function fieldMergeLeans(base, add){
+    base = base || {};
+    if(!add) return base;
+    var out = {}, k;
+    for(k in base){ if(base.hasOwnProperty(k)) out[k] = base[k]; }
+    for(k in add){ if(add.hasOwnProperty(k)) fieldAddBias(out, k, add[k]); }
+    return out;
+  }
+
+  // Lane layout: one row per track (the SAME roster and the SAME row-header column the
+  // grid uses), row header left, waveform right. The row header squares are the GRID's
+  // row squares verbatim (kind "track", key ["track", t]) so the existing row-lean
+  // gesture code drives them unchanged; the wave rects are the scrub's only surface.
+  function fieldLanesPlace(st, W, H){
+    var tracks = fieldTrackIds(st), T = tracks.length;
+    var top = FIELD_HEADER;
+    var rhW = Math.max(56, Math.min(160, Math.floor(W * 0.22)));
+    var laneH = T > 0 ? (H - top) / T : (H - top);
+    var placed = [], lanes = [];
+    for(var r = 0; r < T; r++){
+      var t = tracks[r], y = top + r * laneH, tkey = ["track", t];
+      placed.push({ kind:"track", key:tkey, label:fieldTrackName(st, t), track:t,
+        settled:fieldClamp01((st.nowplaying && st.nowplaying[t]) || 0),
+        bias:st.bias[fieldKeyStr(tkey)] || 0,
+        rect:{ x:0, y:y, w:rhW, h:laneH } });
+      lanes.push({ track:t, rect:{ x:rhW, y:y, w:W - rhW, h:laneH } });
+    }
+    return { placed:placed, lanes:lanes, layout:{ rhW:rhW, top:top, laneH:laneH, T:T } };
+  }
+  function fieldRectHas(rc, x, y){
+    return x >= rc.x && x < rc.x + rc.w && y >= rc.y && y < rc.y + rc.h;
+  }
+  // Which lane's WAVE area a point lands in (null over a row header / outside).
+  function fieldLaneAt(lanes, x, y){
+    for(var i = 0; i < (lanes ? lanes.length : 0); i++){
+      if(fieldRectHas(lanes[i].rect, x, y)) return lanes[i];
+    }
+    return null;
+  }
+  // Pointer x -> lane TIME. A display->time map only: it addresses the stored slice
+  // grid and NOTHING else (no seek, no playhead, no transport position).
+  function fieldLaneTime(rect, x, duration){
+    var d = +duration || 0;
+    if(!(rect.w > 0) || d <= 0) return 0;
+    var u = (x - rect.x) / rect.w;
+    if(u < 0) u = 0; else if(u > 1) u = 1;
+    return u * d;
+  }
+  // Time -> x on a lane (drawing the stored spans and the force mark).
+  function fieldLaneX(rect, t, duration){
+    var d = +duration || 0;
+    if(d <= 0) return rect.x;
+    var u = (+t || 0) / d;
+    if(u < 0) u = 0; else if(u > 1) u = 1;
+    return rect.x + u * rect.w;
+  }
+  /* ===== END FIELD TRACKS PURE LOGIC ===== */
+
   var fieldCanvas = $("fieldCanvas"), fieldStatus = $("fieldStatus"), fieldLegend = $("fieldLegend");
   var fieldCtx = fieldCanvas ? fieldCanvas.getContext("2d") : null;
   // ---- TELEMETRY-FED STORES (the engine's answer) — WRITTEN ONLY by the appliers ----
@@ -2401,13 +2604,26 @@
   var fieldPinchState     = { acc: 0, lastStepMs: -1e9 };  // two-finger pinch gate
   var fieldWheelBiasState = { key: null, acc: 0 };         // plain-wheel bias remainder
   var fieldInited = false;
+  // ---- TRACKS VIEW state (PREREG-waveform-scrub) ----
+  var fieldView  = "grid";   // selected view ("grid" | "tracks"); GRID is the default (V-4)
+  var fieldWave  = null;     // /api/wavemap payload: GIVEN material (peaks) + STORED slices/q
+  var fieldWaveState = "idle";  // idle | loading | ready | absent (honest, never a fake wave)
+  var fieldScrub = null;     // the HELD scrub gesture {track, t, travel, x} — null at rest
 
+  // The lean ledger the payload is cast from: the persistent row/column/cell ledger PLUS
+  // the HELD scrub's transient contribution, summed through the EXISTING accumulator. At
+  // rest (no scrub) this IS fieldBias — the same object, so the GRID path is bit-for-bit
+  // unchanged. On release the contribution vanishes with no residue (V-3 / T-3).
+  function fieldEffectiveBias(){
+    var add = fieldScrubBiasMap(fieldScrub, fieldWave, world.M | 0);
+    return add ? fieldMergeLeans(fieldBias, add) : fieldBias;
+  }
   function fieldState(){
     return { roleact:fieldSettled, nowplaying:fieldNowPlaying,
              nowplayingUnit:fieldNowPlayingUnit,
              nowplayingTrackRole:fieldNowPlayingTrackRole, profiles:fieldProfiles,
              unitPools:fieldUnitPools, trackUnitPools:fieldTrackUnitPools,
-             names:fieldTrackNames, bias:fieldBias };
+             names:fieldTrackNames, bias:fieldEffectiveBias() };
   }
   function fieldViewSquares(){ return fieldCurrentSquares(fieldState(), fieldStack); }
   function cssVar(name){
@@ -2434,6 +2650,11 @@
     fieldStatus.classList.toggle("settling", !!settling);
   }
   function fieldSquareAt(x, y){
+    // TRACKS view: the only biasable SQUARES are the lane ROW HEADERS — the grid's own
+    // row squares (kind "track", key ["track", t]), so every existing gesture handler
+    // (wheel / drag / tap) drives them with NO change. The wave area holds no square:
+    // a wheel over it is inert, and the scrub owns it through its own pointer path.
+    if(fieldViewMode(fieldView) === "tracks") return fieldLanesSquareAt(x, y);
     if(FIELD_GRID_ENABLED) return fieldGridSquareAt(x, y);
     var sqs = fieldViewSquares();
     var idx = fieldHitIndex(x, y - FIELD_HEADER, fieldCanvas.clientWidth,
@@ -2478,6 +2699,7 @@
     fieldCtx.clearRect(0, 0, W, H);
     if(!FIELD_GRID_ENABLED) fieldRenderLegend();   // grid mode: rows/cols are labeled — legend removed
     var st = fieldState();
+    if(fieldViewMode(fieldView) === "tracks"){ fieldDrawLanes(st, W, H); return; }
     if(FIELD_GRID_ENABLED){ fieldDrawGrid(st, W, H); return; }
     fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
     fieldCtx.fillText(fieldBreadcrumb(st, fieldStack) +
@@ -2589,6 +2811,245 @@
     });
     fieldMaybeStartMarquee();                // re-arm the gentle marquee only while a name overflows
   }
+
+  /* ---------- TRACKS VIEW runtime (PREREG-waveform-scrub) ---------------------
+     DISPLAY: waveform lanes drawn from the GIVEN material (/api/wavemap peaks — the
+     user's own audio, never synthesised), the ACHIEVED heatmap drawn from the SAME
+     per-unit placement telemetry the grid's glows consume (nowplaying_unit, keyed by
+     the slice's own stored uid), and the FORCE mark at the held scrub (two-marks law:
+     glow = achieved, mark/ring = your push — never conflated).
+     INPUT: the row header is the grid's row square, so the EXISTING row-lean gesture
+     drives it unchanged; the wave area takes the scrub, whose ONLY effect is the W-2
+     lean map. No audio element, no transport call, no seek, no preview, no unit id on
+     the wire — the pointer's entire footprint is the bias payload. */
+  function fieldLanesSquareAt(x, y){
+    if(!fieldCanvas) return null;
+    var g = fieldLanesPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
+    for(var i = 0; i < g.placed.length; i++){
+      if(fieldRectHas(g.placed[i].rect, x, y)) return g.placed[i];
+    }
+    return null;
+  }
+  function fieldWaveTrack(tid){
+    return (fieldWave && fieldWave.tracks && fieldWave.tracks[String(tid)]) || null;
+  }
+  // The wavemap is a READ-ONLY GET, once per world: no method, no body, nothing sent.
+  // Absent or failed => the lanes show their honest empty state and the scrub cannot
+  // arm (no fabricated envelope, no invented assignment).
+  function fieldWaveEnsure(){
+    if(!FIELD_TRACKS_VIEW || !world.ready) return;
+    if(fieldWaveState === "loading" || fieldWaveState === "ready") return;
+    fieldWaveState = "loading";
+    fetch("/api/wavemap").then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        if(j && j.ok){ fieldWave = j; fieldWaveState = "ready"; }
+        else { fieldWave = null; fieldWaveState = "absent"; }
+        fieldDraw();
+      }).catch(function(){ fieldWave = null; fieldWaveState = "absent"; fieldDraw(); });
+  }
+  // The scrub arms ONLY on a real wavemap whose role count IS the world's: a mismatch is
+  // an honest refusal (never a remap or a truncation of a foreign basis).
+  function fieldScrubArmed(){
+    return !!(FIELD_TRACKS_VIEW && fieldViewMode(fieldView) === "tracks" && world.ready
+              && fieldWave && (fieldWave.M | 0) === (world.M | 0));
+  }
+  function fieldLanesNote(){
+    if(fieldWaveState === "loading") return "reading the waveform map…";
+    if(fieldWaveState === "absent")  return "waveform map unavailable — the grid view is unaffected";
+    if(fieldWave && (fieldWave.M | 0) !== (world.M | 0))
+      return "stored role count does not match this world — scrub inactive";
+    return "";
+  }
+  // GIVEN MATERIAL: the peak envelope of the user's own audio, drawn as a symmetric
+  // envelope. Pure sample data in, rectangles out — no procedural art anywhere.
+  function fieldDrawWave(rect, peaks, color){
+    var n = peaks ? peaks.length : 0;
+    if(!n || !(rect.w > 0)) return;
+    var mid = rect.y + rect.h / 2, half = Math.max(1, rect.h / 2 - 5);
+    var bw = Math.max(1, rect.w / n);
+    fieldCtx.globalAlpha = 0.62; fieldCtx.fillStyle = color;
+    for(var i = 0; i < n; i++){
+      var a = fieldClamp01(peaks[i]) * half;
+      fieldCtx.fillRect(rect.x + (i / n) * rect.w, mid - a, bw, Math.max(1, 2 * a));
+    }
+    fieldCtx.globalAlpha = 1;
+  }
+  // ACHIEVED MARK (W-3): each STORED slice glows by its OWN live placement activity —
+  // nowplaying_unit[uid], the same telemetry feed the grid's squares glow by, reprojected
+  // onto lane time through the same stored spans. Read-only: deleting this changes
+  // nothing that reaches the engine. No telemetry => no glow (never a fake pulse).
+  function fieldDrawHeat(rect, tr, st, color){
+    var dur = +tr.duration_s || 0, slices = tr.slices || [];
+    if(dur <= 0) return;
+    for(var i = 0; i < slices.length; i++){
+      var g = fieldClamp01((st.nowplayingUnit && st.nowplayingUnit[slices[i][2]]) || 0);
+      if(!(g > 0)) continue;
+      var x0 = fieldLaneX(rect, slices[i][0], dur), x1 = fieldLaneX(rect, slices[i][1], dur);
+      fieldCtx.globalAlpha = 0.14 + 0.86 * g;
+      fieldCtx.fillStyle = color;
+      fieldCtx.fillRect(x0, rect.y + 2, Math.max(1, x1 - x0), rect.h - 4);
+    }
+    fieldCtx.globalAlpha = 1;
+  }
+  // FORCE MARK: where you are pointing and how hard. The selected STORED slice(s) are
+  // ringed and the point is a line whose width follows the SAME |bias|-width law as the
+  // grid's bias ring — your push, drawn as a push, never as achieved activity.
+  function fieldDrawScrubMark(rect, tr, color){
+    var dur = +tr.duration_s || 0;
+    var sw = fieldScrubWeights(tr.slices, fieldScrub.t, world.M | 0);
+    var mag = fieldScrubMag(fieldScrub.travel);
+    fieldCtx.strokeStyle = cssVar("--accent");
+    for(var i = 0; i < sw.sel.length; i++){
+      var a = fieldLaneX(rect, sw.sel[i][0], dur), b = fieldLaneX(rect, sw.sel[i][1], dur);
+      fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(a + 0.5, rect.y + 3.5, Math.max(1, b - a - 1), rect.h - 7);
+    }
+    var x = fieldLaneX(rect, fieldScrub.t, dur);
+    fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(mag));
+    fieldCtx.beginPath(); fieldCtx.moveTo(x, rect.y + 3); fieldCtx.lineTo(x, rect.y + rect.h - 3);
+    fieldCtx.stroke();
+  }
+  function fieldDrawLanes(st, W, H){
+    fieldMarqueeActive = false;             // set true iff a row label overflows (gentle marquee)
+    var g = fieldLanesPlace(st, W, H), lay = g.layout;
+    fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
+    fieldCtx.fillText("TRACKS  (point at a part you love — the instrument leans toward what that part is made of)",
+                      8, 15);
+    if(lay.T === 0){
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("no settled telemetry yet — press Play to hear and steer the field",
+                        14, FIELD_HEADER + 20);
+      return;
+    }
+    var note = fieldLanesNote();
+    for(var i = 0; i < g.lanes.length; i++){
+      var lane = g.lanes[i], rc = lane.rect, col = fieldTrackColor(lane.track);
+      var tr = fieldWaveTrack(lane.track);
+      fieldCtx.fillStyle = "rgba(255,255,255,.02)";
+      fieldCtx.fillRect(rc.x + 2, rc.y + 2, rc.w - 4, rc.h - 4);
+      if(tr){
+        fieldDrawHeat(rc, tr, st, col);                       // achieved (telemetry)
+        fieldDrawWave(rc, tr.peaks, col);                     // given material
+        if(fieldScrub && fieldScrub.track === lane.track && fieldScrubArmed())
+          fieldDrawScrubMark(rc, tr, col);                    // force (your push)
+      } else if(note){
+        fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "11px " + cssVar("--font-ui");
+        fieldCtx.fillText(note, rc.x + 8, rc.y + Math.round(rc.h / 2) + 4);
+      }
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(rc.x + 2.5, rc.y + 2.5, rc.w - 5, rc.h - 5);
+    }
+    // ROW HEADERS: the grid's row squares, drawn in the grid's language (glow fill =
+    // live telemetry, ring = your lean, full name with the gentle marquee).
+    g.placed.forEach(function(sq){
+      var rc = sq.rect, col = fieldTrackColor(sq.track);
+      fieldCtx.globalAlpha = 0.14 + 0.86 * sq.settled;
+      fieldCtx.fillStyle = col; fieldCtx.fillRect(rc.x + 2, rc.y + 2, rc.w - 4, rc.h - 4);
+      fieldCtx.globalAlpha = 1;
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(rc.x + 2.5, rc.y + 2.5, rc.w - 5, rc.h - 5);
+      if(fieldKeyEq(sq.key, fieldHover)){
+        fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 1;
+        fieldCtx.strokeRect(rc.x + 3.5, rc.y + 3.5, rc.w - 7, rc.h - 7);
+      }
+      if(Math.abs(sq.bias) > 1e-9){
+        fieldCtx.strokeStyle = sq.bias > 0 ? cssVar("--accent") : cssVar("--damp");
+        fieldCtx.lineWidth = 1 + Math.round(3 * Math.abs(sq.bias));
+        fieldCtx.strokeRect(rc.x + 5, rc.y + 5, rc.w - 10, rc.h - 10);
+      }
+      fieldCtx.fillStyle = cssVar("--ink"); fieldCtx.font = "10px " + cssVar("--font-mono");
+      fieldDrawRowLabel(rc.x, rc.y, rc.w, rc.h, sq.label);
+      fieldCtx.fillStyle = cssVar("--muted");
+      fieldCtx.fillText(Math.round(sq.settled * 100) + "", rc.x + 6, rc.y + rc.h - 7);
+    });
+    fieldMaybeStartMarquee();
+  }
+  // ---- SCRUB (W-2): the pointer's ONLY effect is this lean map ----------------
+  var fieldScrubSent = null;   // last PUBLISHED scrub lean map (JSON) — idempotence only
+  function fieldScrubPoint(x, y){
+    if(!fieldScrubArmed() || !fieldCanvas) return null;
+    var g = fieldLanesPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
+    var lane = fieldLaneAt(g.lanes, x, y);
+    if(!lane) return null;
+    var tr = fieldWaveTrack(lane.track);
+    if(!tr) return null;
+    return { track: lane.track, t: fieldLaneTime(lane.rect, x, tr.duration_s) };
+  }
+  // Publish the held gesture through the ONE steer call. An unchanged lean map says
+  // nothing new, so it is not re-sent (idempotence, not a gate: the engine already
+  // holds exactly this carrier).
+  function fieldScrubPublish(){
+    var m = fieldScrubBiasMap(fieldScrub, fieldWave, world.M | 0);
+    var s = m ? JSON.stringify(m) : "";
+    if(s === fieldScrubSent){ fieldDraw(); return; }
+    fieldScrubSent = s;
+    if(window.ambFirePulse) window.ambFirePulse();
+    fieldMarkSettling(); sendSteerNow(); fieldDraw();
+  }
+  function fieldScrubStart(ev){
+    if(!fieldScrubArmed()) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var p = fieldScrubPoint(ev.clientX - rect.left, ev.clientY - rect.top);
+    if(!p) return;                              // row header / outside: not a scrub
+    fieldScrub = { track:p.track, t:p.t, travel:0, x:ev.clientX - rect.left };
+    fieldScrubSent = null;
+    try{ fieldCanvas.setPointerCapture(ev.pointerId); }catch(e){}
+    fieldScrubPublish();
+  }
+  function fieldScrubMove(ev){
+    if(!fieldScrub) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var x = ev.clientX - rect.left;
+    var p = fieldScrubPoint(x, ev.clientY - rect.top);
+    if(!p){ fieldDraw(); return; }               // off the lanes: the held lean stands
+    if(p.track !== fieldScrub.track){            // retarget: a NEW gesture on the new lane
+      fieldScrub = { track:p.track, t:p.t, travel:0, x:x };
+    } else {
+      fieldScrub.travel += Math.abs(x - fieldScrub.x);   // travel along the lane = magnitude
+      fieldScrub.t = p.t; fieldScrub.x = x;
+    }
+    fieldScrubPublish();
+  }
+  // RELEASE: the gesture's contribution becomes exactly 0, instantly, with no tween and
+  // no residue in the ledger (the codebase's held-gesture release law; V-3).
+  function fieldScrubEnd(){
+    if(!fieldScrub) return;
+    fieldScrub = null; fieldScrubSent = null;
+    fieldMarkSettling(); sendSteerNow(); fieldDraw();
+  }
+  // ---- VIEW SWITCH (V-1..V-4) -------------------------------------------------
+  var fieldViewsEl = $("fieldViews"), fieldViewGridBtn = $("fieldViewGrid"),
+      fieldViewTracksBtn = $("fieldViewTracks");
+  function fieldSyncViewTabs(){
+    var mode = fieldViewMode(fieldView);
+    if(fieldViewsEl) fieldViewsEl.hidden = !FIELD_TRACKS_VIEW;   // rollback: pre-directive surface
+    if(fieldViewGridBtn) fieldViewGridBtn.setAttribute("aria-pressed", mode === "grid" ? "true" : "false");
+    if(fieldViewTracksBtn) fieldViewTracksBtn.setAttribute("aria-pressed", mode === "tracks" ? "true" : "false");
+  }
+  // ANY switch, either direction: EVERY material-surface lean is zeroed (row, column,
+  // cell, scrub, and the sub-step wheel remainder — nothing can resurrect) and the
+  // NEUTRAL carrier is published: an empty ledger makes fieldBiasPayload emit the
+  // byte-identical no-carrier payload. Instant and honest — no fade theater (V-3).
+  // Outboard, eigen strips and transport are untouched (V-2): sendSteerNow rebuilds
+  // their half of the vector from their OWN unchanged state, as on every publish.
+  function fieldSetView(v){
+    if(!FIELD_TRACKS_VIEW) v = "grid";
+    if(v !== "grid" && v !== "tracks") return;
+    if(v === fieldView) return;                  // not a switch: no reset, no publish
+    var n = fieldNeutralLeanState();
+    fieldBias = n.bias; fieldScrub = n.scrub; fieldWheelBiasState = n.wheel;
+    fieldScrubSent = null; fieldHover = null;
+    fieldView = v;
+    try{ window.localStorage.setItem(FIELD_VIEW_KEY, v); }catch(e){}
+    fieldSyncViewTabs();
+    sendSteerNow();                              // the NEUTRAL material-surface carrier
+    if(v === "tracks") fieldWaveEnsure();
+    fieldSetStatus("", false);
+    fieldDraw();
+  }
+  // Settle the tab pair's visibility at parse time, before any world loads: with
+  // FIELD_TRACKS_VIEW false the control never appears at all (exact pre-directive surface).
+  fieldSyncViewTabs();
   // ---- THE TELEMETRY APPLIERS: the SOLE writers of the glow stores. Input handlers
   // never call these. Empty telemetry -> empty field (no fabrication).
   function fieldApplySettled(d){
@@ -2618,6 +3079,10 @@
     fieldTrackNames = (w && w.track_names) || {};
     fieldProfileArmed = !(w && w.profile_armed === false);
     fieldStack = [];                                    // a new world resets the drill
+    // a new world invalidates the wavemap (peaks, spans and stored q all belong to THAT
+    // world) and any held scrub — re-read on demand, never carried across worlds.
+    fieldWave = null; fieldWaveState = "idle"; fieldScrub = null; fieldScrubSent = null;
+    if(fieldViewMode(fieldView) === "tracks") fieldWaveEnsure();
     fieldDraw();
   }
   // HONEST DISARM REFUSAL (Theorem A arming corollary). Reads its caption from the
@@ -2799,7 +3264,12 @@
     var availW = (box && box.clientWidth) || 0, availH = (box && box.clientHeight) || 0;
     if(availW <= 0 || availH <= 0) return;
     var T = fieldTrackIds(st).length, M = world.M || 0;
-    var sz = fieldGridMinSize(T, M, availW, availH);
+    // TRACKS view: ONE column (the waveform) per row, with a legible minimum LANE height —
+    // the same min-size/scroll helper, parameterised. No second layout law.
+    var sz = (fieldViewMode(fieldView) === "tracks")
+      ? fieldGridMinSize(T, 1, availW, availH,
+          { minCellW: 240, minCellH: FIELD_LANE_MIN_H, rhW: 160, chH: 0, headH: FIELD_HEADER })
+      : fieldGridMinSize(T, M, availW, availH);
     var wpx = sz.w + "px", hpx = sz.h + "px";
     if(fieldCanvas.style.width !== wpx) fieldCanvas.style.width = wpx;
     if(fieldCanvas.style.height !== hpx) fieldCanvas.style.height = hpx;
@@ -2892,8 +3362,14 @@
     if(!fieldCanvas) return;
     fieldCanvas.addEventListener("wheel", fieldOnWheel, { passive:false });
     fieldCanvas.addEventListener("pointermove", fieldOnMove);
-    fieldCanvas.addEventListener("pointerleave", function(){ fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw(); });
+    fieldCanvas.addEventListener("pointerleave", function(){ fieldScrubEnd(); fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw(); });
     fieldCanvas.addEventListener("click", fieldOnClick);
+    // SCRUB (TRACKS view): pointer down/hold/release on a waveform lane. Inert in GRID
+    // view and whenever the scrub is not armed — one handler, no parallel input path.
+    fieldCanvas.addEventListener("pointerdown", fieldScrubStart);
+    fieldCanvas.addEventListener("pointermove", fieldScrubMove);
+    fieldCanvas.addEventListener("pointerup", fieldScrubEnd);
+    fieldCanvas.addEventListener("pointercancel", fieldScrubEnd);
     fieldCanvas.addEventListener("touchstart", fieldTouchStart, { passive:false });
     fieldCanvas.addEventListener("touchmove", fieldTouchMove, { passive:false });
     fieldCanvas.addEventListener("touchend", fieldTouchEnd, { passive:false });
@@ -2901,6 +3377,15 @@
     var eb = $("fieldExpandBtn");
     if(eb) eb.addEventListener("click", fieldToggleFullscreen);
     fieldSyncFsBtn();
+    // VIEW TABS (V-4): restore the last selected view; anything but the exact "tracks"
+    // token (absent / junk / storage denied) falls to the paper-faithful GRID default.
+    // Restoring is not a switch — there is no lean to reset and nothing to publish.
+    if(fieldViewGridBtn) fieldViewGridBtn.addEventListener("click", function(){ fieldSetView("grid"); });
+    if(fieldViewTracksBtn) fieldViewTracksBtn.addEventListener("click", function(){ fieldSetView("tracks"); });
+    try{ fieldView = fieldViewPick(window.localStorage.getItem(FIELD_VIEW_KEY)); }
+    catch(e){ fieldView = "grid"; }
+    fieldSyncViewTabs();
+    if(fieldViewMode(fieldView) === "tracks") fieldWaveEnsure();
     fieldDraw();
   }
   window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
