@@ -1284,6 +1284,42 @@ class _Handler(BaseHTTPRequestHandler):
             return not getattr(session, "is_visitor", False)
         return not getattr(session, "public", False)
 
+    def _no_world_reason(self, session) -> str:
+        """The ONE honest 'nothing to play' reason, tailored to what THIS session
+        can do so the FE can point the right way. Shared by every surface that
+        resolves a playable world (/api/world, /api/wavemap)."""
+        return ("no set loaded — train your own, or open a shared set from Explore"
+                if self._can_train(session)
+                else "no set loaded — open a shared set from Explore")
+
+    def _honest_track_names(self, session, base_names) -> dict:
+        """The ONE track-naming rule, applied identically by every surface that
+        labels tracks (/api/world, /api/wavemap).
+
+        The world carries no source filenames, but two honest sources exist beyond
+        the bridge's generic "track N":
+          * a session's OWN trained world -> the SESSION's real ingested filenames
+            by track index (the same T0,T1… order the Source Library shows);
+          * an OPENED shared set -> the names its OWNER opted to publish with it at
+            share time (the catalog snapshot).
+        Everything else (demo / no shared names) keeps the honest generic label —
+        never an invented name. Key type is preserved (int or str track ids)."""
+        names = dict(base_names or {})
+        if session._is_trained and session.opened_set_id is None:
+            audio = session.ingested_track_names()
+            for key in list(names.keys()):
+                i = int(key)
+                if 0 <= i < len(audio):
+                    names[key] = audio[i]
+        elif session.opened_set_id is not None:
+            entry = self.hub.catalog.get(session.opened_set_id)
+            shared = entry.track_names if entry is not None else {}
+            for key in list(names.keys()):
+                n = shared.get(int(key))
+                if n:
+                    names[key] = n
+        return names
+
     # --- GET ----------------------------------------------------------------
     def do_GET(self):  # noqa: N802
         self._mint = None            # per-request (handlers persist across keep-alive)
@@ -1348,10 +1384,8 @@ class _Handler(BaseHTTPRequestHandler):
                 # The reason is tailored to what THIS session can do so the FE can
                 # point the right way; ``loaded:false`` distinguishes this from a world
                 # that exists but is still warming up (never conflated with "loading").
-                reason = ("no set loaded — train your own, or open a shared set "
-                          "from Explore" if self._can_train(session)
-                          else "no set loaded — open a shared set from Explore")
-                info = {"ready": False, "loaded": False, "reason": reason}
+                info = {"ready": False, "loaded": False,
+                        "reason": self._no_world_reason(session)}
             else:
                 info = p.world_info()
             info["public"] = getattr(session, "public", False)
@@ -1388,31 +1422,48 @@ class _Handler(BaseHTTPRequestHandler):
                     log.warning("static_field unavailable -> role-grain-only "
                                 "field: %s", exc)
                     info["field_degraded"] = f"{type(exc).__name__}: {exc}"
-                # HONEST track NAMES: the world carries no source filenames, but two
-                # honest sources exist beyond the bridge's generic "track N":
-                #   * a session's OWN trained world -> the SESSION's real ingested
-                #     filenames by track index (the same T0,T1… order the Source
-                #     Library shows);
-                #   * an OPENED shared set -> the names its OWNER opted to publish
-                #     with it at share time (the catalog snapshot).
-                # Everything else (demo / no shared names) keeps the honest generic
-                # label — never an invented name.
-                names = dict(info.get("track_names", {}))
-                if session._is_trained and session.opened_set_id is None:
-                    audio = session.ingested_track_names()
-                    for tid_str in list(names.keys()):
-                        i = int(tid_str)
-                        if 0 <= i < len(audio):
-                            names[tid_str] = audio[i]
-                elif session.opened_set_id is not None:
-                    entry = self.hub.catalog.get(session.opened_set_id)
-                    shared = entry.track_names if entry is not None else {}
-                    for tid_str in list(names.keys()):
-                        n = shared.get(int(tid_str))
-                        if n:
-                            names[tid_str] = n
-                info["track_names"] = names
+                info["track_names"] = self._honest_track_names(
+                    session, info.get("track_names", {}))
             self._json(200, info)
+            return
+        # WAVEMAP (PREREG-waveform-scrub, technical annex): the TRACKS view's
+        # READ-ONLY material map for the SAME world /api/world describes and
+        # /api/play plays — per track, the |peak| envelope of the session's OWN
+        # audio file, the world's STORED unit spans, and each unit's STORED role
+        # assignment. Pure read: it touches no engine state and emits no telemetry
+        # (the achieved-heatmap feed stays /api/telemetry's nowplaying_unit), so
+        # audio is byte-identical whether or not this route is ever called.
+        # PRIVACY: served under exactly the same access as PLAYING the set
+        # (playable_for) — an opener who can already hear a shared set gets a
+        # strictly weaker disclosure (an envelope); raw audio never leaves.
+        if path == "/api/wavemap":
+            p = self.hub.playable_for(session)
+            if p is None:
+                self._json(409, {"ok": False,
+                                 "error": self._no_world_reason(session)})
+                return
+            try:
+                wm = p.wavemap()
+            except Exception as exc:
+                # SURFACED, never swallowed: an unexpected reduction failure is
+                # reported as itself (the same honesty rule static_field follows).
+                log.exception("wavemap failed for %s", getattr(p, "world_path", "?"))
+                self._json(500, {"ok": False,
+                                 "error": "%s: %s" % (type(exc).__name__, exc)})
+                return
+            if not wm.get("ok"):
+                # HONEST refusal (embedded-source world, missing/mismatched source
+                # file, or a world storing no per-unit role) — never a filled-in map.
+                self._json(409, wm)
+                return
+            # The SAME single track-naming rule /api/world uses (one source of
+            # naming truth; a lane can never be labelled two ways).
+            names = self._honest_track_names(
+                session, {tid: t.get("name") for tid, t in wm["tracks"].items()})
+            out = dict(wm)
+            out["tracks"] = {tid: dict(t, name=names.get(tid, t.get("name")))
+                             for tid, t in wm["tracks"].items()}
+            self._json(200, out)
             return
         if path == "/api/explore":
             self._json(200, {"ok": True, "sets": self.hub.explore(session)})
