@@ -1751,3 +1751,9 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T12:12:02+00:00)
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T12:12:07+00:00)
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T12:12:27+00:00)
+
+### at `1d18dca`
+- `Edit` cloud/tests/test_wavemap_mapping_honesty.py (2026-07-30T12:16:23+00:00)
+
+### at `ae451e2`
+- `Edit` cloud/companion/engine_bridge.py (2026-07-30T12:18:50+00:00)

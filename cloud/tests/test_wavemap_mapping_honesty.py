@@ -157,6 +157,42 @@ def test_slices_are_in_time_order_and_inside_the_track():
             last = t0
 
 
+def test_the_window_at_t_yields_a_genuinely_soft_role_mixture():
+    """W-2's ``q(r | selected units)`` is REAL and non-degenerate on the served data.
+
+    This is where the q wall resolves. A per-unit q is a hard indicator (the finest
+    STORED assignment), but the directive's quantity is the mixture over the units
+    the window at t selects — and a unit is a (slot, band) cell, so a pointer at t
+    selects the n_bands stored units of that tatum, each with its OWN stored role.
+    The mass-weighted mixture w_r = Σ m·q / Σ m is therefore soft from STORED values
+    alone. Asserted here: the window selects several units, and somewhere on the lane
+    the mixture has more than one nonzero component (if it never did, the scrub could
+    only ever lean one cell and the 'soft role mass' claim would be empty)."""
+    d = _payload()
+    M = d["M"]
+    soft_windows = 0
+    max_sel = 0
+    for tid, tr in d["wavemap"]["tracks"].items():
+        slices = tr["slices"]
+        # probe the middle of every 16th stored span (a real pointer position)
+        for s in slices[::16]:
+            t = 0.5 * (s[0] + s[1])
+            sel = [x for x in slices if x[0] <= t < x[1]]
+            max_sel = max(max_sel, len(sel))
+            tot = sum(x[3] for x in sel)
+            if tot <= 0:
+                continue
+            w = [sum(x[3] * x[4][r] for x in sel) / tot for r in range(M)]
+            if sum(1 for v in w if v > 0) > 1:
+                soft_windows += 1
+    assert max_sel > 1, (
+        "a pointer position selects only ONE stored unit — the served segmentation "
+        "cannot produce a soft role mixture")
+    assert soft_windows > 0, (
+        "no probed window produced a multi-role mixture: the stored assignment is "
+        "degenerate on this world and the scrub's soft weights would be empty")
+
+
 def test_envelope_is_a_real_nonconstant_peak_envelope():
     """The lane is the GIVEN material, decoded: ~800 buckets in [0,1] that actually
     vary (a fabricated/blank envelope would be constant)."""
