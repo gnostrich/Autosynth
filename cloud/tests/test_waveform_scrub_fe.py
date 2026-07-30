@@ -82,6 +82,19 @@ def _tracks_runtime() -> str:
     return _block("/* ---------- TRACKS VIEW runtime", "// ---- THE TELEMETRY APPLIERS")
 
 
+def _effective_bias_src() -> str:
+    """fieldEffectiveBias + fieldState: the ONE place the held scrub is summed onto the
+    persistent ledger before the payload is cast."""
+    return _block("  // The lean ledger the payload is cast from",
+                  "bias:fieldEffectiveBias() };\n  }")
+
+
+def _send_steer_now_src() -> str:
+    """The REAL publish path (the widened force vector + the field's two grains). Only
+    the terminal `sendSteer` fetch is stubbed in the runtime harness."""
+    return _block("  function sendSteerNow(){", "    sendSteer(payload);\n  }")
+
+
 def _strip_comments(src: str) -> str:
     src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
     src = re.sub(r"//[^\n]*", " ", src)
@@ -693,6 +706,180 @@ def test_operator_copy_is_present_on_the_lane_view():
     rt = _tracks_runtime()
     assert ("point at a part you love — the instrument leans toward what that part "
             "is made of") in rt, "the W-5 copy must appear on the TRACKS view"
+
+
+# ============= RUNTIME: the real handlers, executed end to end ===============
+#
+# The gesture handlers, the effective-ledger merge and the REAL sendSteerNow are
+# extracted verbatim and run in node against minimal collaborators. Everything the
+# NOT-A-PLAYHEAD law forbids is simply LEFT UNDEFINED: if the scrub path ever reached
+# for an audio context, the transport or a stream it would throw ReferenceError here.
+# The terminal `sendSteer` is stubbed so every published payload is recorded.
+_RUNTIME_HARNESS = """
+world.ready = true;                          // a loaded world (nothing publishes without one)
+var PUBLISHED = [], CALLS = [], DRAWS = 0;
+// ---- collaborators (stubs). Nothing audio/transport-shaped is defined AT ALL. ----
+var region = [], scalarBuilt = false, radialK = 0;
+function sendSteer(p){                       // the ONE call site, recorded not sent
+  PUBLISHED.push(JSON.stringify({ channel_bias:p.channel_bias, unit_bias:p.unit_bias,
+    track_role_bias:p.track_role_bias, region:p.region }));
+  CALLS.push("sendSteer");
+}
+function fetch(u, init){ CALLS.push("fetch:" + u + ":" + JSON.stringify(init || null));
+                         return Promise.resolve({ ok:false }); }
+function noop(){}
+function fieldDraw(){ DRAWS++; }
+function fieldMarkSettling(){}
+function fieldSetStatus(){}
+function $(id){ return { id:id, hidden:false, attrs:{},
+                         setAttribute:function(k,v){ this.attrs[k]=v; } }; }
+var window = { localStorage: { s:{}, getItem:function(k){ return (k in this.s) ? this.s[k] : null; },
+                               setItem:function(k,v){ this.s[k]=v; } } };
+var fieldCanvas = { clientWidth:800, clientHeight:400,
+  getBoundingClientRect:function(){ return { left:0, top:0 }; },
+  setPointerCapture:function(){ CALLS.push("capture"); } };
+// ---- the field's own state (the telemetry stores + the operator ledger) ----
+var fieldSettled = [], fieldNowPlaying = { 7:0.4, 9:0.9 }, fieldNowPlayingUnit = {},
+    fieldNowPlayingTrackRole = {}, fieldProfiles = { 7:[1,0,0], 9:[0,1,1] },
+    fieldUnitPools = {}, fieldTrackUnitPools = {}, fieldTrackNames = { 7:"seven", 9:"nine" },
+    fieldBias = {}, fieldStack = [], fieldHover = null,
+    fieldWheelBiasState = { key:null, acc:0 };
+var fieldView = "grid", fieldWave = null, fieldWaveState = "idle", fieldScrub = null;
+function ev(x, y){ return { clientX:x, clientY:y, pointerId:1 }; }
+// lane geometry for this box: rhW = 160, laneH = 189, lane 0 = track 7 (duration 10s)
+function xAt(t){ return 160 + (t / 10) * 640; }
+"""
+
+
+def _runtime_driver(body: str) -> str:
+    # newline-joined: the runtime block ends on a line comment.
+    return "\n".join([_field_block(), _tracks_block(), _effective_bias_src(),
+                      _tracks_runtime(), _send_steer_now_src(),
+                      _FIXTURE, _RUNTIME_HARNESS, body])
+
+
+def test_runtime_a_full_scrub_gesture_publishes_only_bias_payloads():
+    """The pointer's ENTIRE footprint, measured: a view switch publishes the neutral
+    carrier; pointer-down on a lane publishes exactly the W-4 row+cell payload; a move
+    that changes nothing publishes nothing; a move to another stored slice publishes the
+    new conditional; release returns exactly to the standing ledger. Every publish goes
+    through the ONE steer call site and nothing else is ever called."""
+    out = _run_node(_runtime_driver("""
+    // --- V-1: switching to TRACKS zeroes the surface and publishes the neutral carrier.
+    fieldBias = {}; fieldAddBias(fieldBias, fieldKeyStr(["track", 7]), 0.5);
+    fieldSetView("tracks");
+    if(PUBLISHED.length !== 1){ console.log('FAIL switch publish ' + PUBLISHED.length); process.exit(1); }
+    if(PUBLISHED[0] !== '{"channel_bias":[0,0],"unit_bias":{},"track_role_bias":[],"region":[0,0,0]}'){
+      console.log('FAIL neutral ' + PUBLISHED[0]); process.exit(1); }
+    if(JSON.stringify(fieldBias) !== "{}"){ console.log('FAIL not zeroed'); process.exit(1); }
+
+    // --- the wavemap arrives (read-only given material + stored assignment).
+    fieldWave = WM; fieldWaveState = "ready";
+
+    // --- a pointer-down on the ROW HEADER is not a scrub (the row-lean gesture owns it).
+    fieldScrubStart(ev(10, 100));
+    if(fieldScrub !== null || PUBLISHED.length !== 1){ console.log('FAIL header'); process.exit(1); }
+
+    // --- pointer-down on lane 0 at t = 1.7 (the two overlapping stored slices).
+    fieldScrubStart(ev(xAt(1.7), 100));
+    if(!fieldScrub || fieldScrub.track !== 7){ console.log('FAIL no scrub'); process.exit(1); }
+    if(PUBLISHED.length !== 2){ console.log('FAIL down publish'); process.exit(1); }
+    if(PUBLISHED[1] !== '{"channel_bias":[0.125,0],"unit_bias":{},"track_role_bias":' +
+       '[[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]],"region":[0,0,0]}'){
+      console.log('FAIL down payload ' + PUBLISHED[1]); process.exit(1); }
+
+    // --- a move inside the SAME selection with sub-step travel says nothing new.
+    fieldScrubMove(ev(xAt(1.7) + 1.2, 100));
+    if(PUBLISHED.length !== 2){ console.log('FAIL idempotence ' + PUBLISHED.length); process.exit(1); }
+
+    // --- a move to another STORED slice (t = 0.625) with 2 further travel steps.
+    fieldScrubMove(ev(xAt(0.625), 100));
+    if(PUBLISHED.length !== 3){ console.log('FAIL move publish'); process.exit(1); }
+    if(PUBLISHED[2] !== '{"channel_bias":[0.375,0],"unit_bias":{},' +
+       '"track_role_bias":[[7,0,0.375]],"region":[0,0,0]}'){
+      console.log('FAIL move payload ' + PUBLISHED[2]); process.exit(1); }
+
+    // --- RELEASE: back to the standing ledger (empty) instantly, no residue.
+    fieldScrubEnd();
+    if(fieldScrub !== null){ console.log('FAIL held after release'); process.exit(1); }
+    if(PUBLISHED.length !== 4){ console.log('FAIL release publish'); process.exit(1); }
+    if(PUBLISHED[3] !== PUBLISHED[0]){ console.log('FAIL release ' + PUBLISHED[3]); process.exit(1); }
+    if(JSON.stringify(fieldBias) !== "{}"){ console.log('FAIL residue ' + JSON.stringify(fieldBias)); process.exit(1); }
+
+    // --- switching back: neutral again, and the old leans do not come back.
+    fieldSetView("grid");
+    if(PUBLISHED.length !== 5 || PUBLISHED[4] !== PUBLISHED[0]){
+      console.log('FAIL back ' + PUBLISHED[PUBLISHED.length-1]); process.exit(1); }
+    // --- the WHOLE gesture touched nothing but the ONE steer call site, the pointer
+    //     capture, and the single read-only wavemap GET the view switch triggered.
+    var bad = CALLS.filter(function(c){
+      return c !== "sendSteer" && c !== "capture" && c !== "fetch:/api/wavemap:null"; });
+    if(bad.length){ console.log('FAIL calls ' + JSON.stringify(bad)); process.exit(1); }
+    if(CALLS.filter(function(c){ return c.indexOf("fetch:") === 0; }).length !== 1){
+      console.log('FAIL requests ' + JSON.stringify(CALLS)); process.exit(1); }
+    console.log('OK ' + PUBLISHED.length + ' ' + DRAWS);
+    """))
+    assert out.startswith("OK 5 "), out
+
+
+def test_runtime_the_wavemap_read_is_a_bodyless_get_and_failure_disarms():
+    """The only request the view makes, observed at runtime: GET /api/wavemap with NO
+    init object at all (no method, no headers, no body). A failure leaves the lanes
+    honestly empty and the scrub unarmed — never a fabricated envelope."""
+    assert _run_node(_runtime_driver("""
+    fieldView = "tracks";
+    fieldWaveEnsure();
+    if(CALLS.length !== 1 || CALLS[0] !== 'fetch:/api/wavemap:null'){
+      console.log('FAIL request ' + JSON.stringify(CALLS)); process.exit(1); }
+    // the response is not ok in this harness -> honest absence, and no scrub can arm.
+    setTimeout(function(){
+      if(fieldWave !== null || fieldWaveState !== "absent"){
+        console.log('FAIL state ' + fieldWaveState); process.exit(1); }
+      if(fieldScrubArmed()){ console.log('FAIL armed'); process.exit(1); }
+      fieldScrubStart(ev(300, 100));
+      if(fieldScrub !== null || PUBLISHED.length !== 0){
+        console.log('FAIL scrub on a missing wavemap'); process.exit(1); }
+      if(fieldLanesNote() !== "waveform map unavailable — the grid view is unaffected"){
+        console.log('FAIL note ' + fieldLanesNote()); process.exit(1); }
+      console.log('OK');
+    }, 0);
+    """)) == "OK"
+
+
+def test_runtime_a_foreign_role_basis_refuses_to_scrub():
+    """A wavemap whose stored role count is not the world's is refused: no remap, no
+    truncation, no lean — and the refusal is stated, not hidden."""
+    assert _run_node(_runtime_driver("""
+    world.ready = true; fieldView = "tracks";
+    fieldWave = { ok:true, M:5, tracks: WM.tracks }; fieldWaveState = "ready";
+    if(fieldScrubArmed()){ console.log('FAIL armed'); process.exit(1); }
+    fieldScrubStart(ev(xAt(1.7), 100));
+    if(fieldScrub !== null || PUBLISHED.length !== 0){ console.log('FAIL leaned'); process.exit(1); }
+    if(fieldLanesNote() !== "stored role count does not match this world — scrub inactive"){
+      console.log('FAIL note ' + fieldLanesNote()); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_runtime_view_persistence_round_trips_and_defaults_to_grid():
+    assert _run_node(_runtime_driver("""
+    world.ready = true;
+    fieldSetView("tracks");
+    if(window.localStorage.getItem(FIELD_VIEW_KEY) !== "tracks"){ console.log('FAIL store'); process.exit(1); }
+    if(fieldViewPick(window.localStorage.getItem(FIELD_VIEW_KEY)) !== "tracks"){
+      console.log('FAIL restore'); process.exit(1); }
+    // re-selecting the SAME view is not a switch: no reset, no publish.
+    var n = PUBLISHED.length;
+    fieldSetView("tracks");
+    if(PUBLISHED.length !== n){ console.log('FAIL re-select published'); process.exit(1); }
+    fieldSetView("grid");
+    if(fieldViewPick(window.localStorage.getItem(FIELD_VIEW_KEY)) !== "grid"){
+      console.log('FAIL back'); process.exit(1); }
+    // an unknown token is ignored outright (no third view can be smuggled in).
+    var v = fieldView; fieldSetView("waveform");
+    if(fieldView !== v){ console.log('FAIL unknown view'); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
 
 
 # ============================ syntax ========================================
