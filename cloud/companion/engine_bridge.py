@@ -200,6 +200,137 @@ def track_unit_pool(world, top_n: int = 48) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# WAVEMAP (PREREG-waveform-scrub, technical annex) — the READ-ONLY material map
+# the TRACKS view draws on: per track, (a) a downsampled |peak| envelope of the
+# user's OWN audio file (given material, not engine telemetry), (b) the world's
+# STORED unit segmentation in track seconds, (c) each stored unit's STORED role
+# assignment q. Pure reduction over the frozen world + the source files it names;
+# touches NO engine state, no bank, no settlement, no writer, no F. Read-only.
+#
+# ==== THE q WALL (prereg "Honest walls", q(role|unit) sourcing) ==============
+# The directive requires q from the trained world's STORED assignment, at the
+# FINEST STORED level, with NO invented refinement. What the frozen world
+# actually stores about units and roles, surveyed exhaustively:
+#
+#   1. ``world.index.unit_role[(track_id, unit_id)] -> int``  (RealizationIndex,
+#      built at world-freeze by ``ets.writer.realize.build_index``): the unit's
+#      dominant anchor role. STORED, PER-UNIT, exact — and HARD (an argmax).
+#   2. ``world.fstate.pis[t]`` (K_t x M): the trained prototype->anchor coupling.
+#      STORED and SOFT — but PER-PROTOTYPE, not per-unit.
+#   3. ``world.tracks[t].units / provenance_index``: unit -> (slot, band, phase,
+#      source span). NO role, NO prototype label.
+#   4. ``world.protos[t]``: prototype masses/costs/histograms/centroids. The
+#      per-unit cluster labels from ``roles.extract_prototypes`` are NOT kept.
+#
+# So the unit->prototype link needed to reach (2) IS NOT STORED anywhere. It can
+# only be RE-DERIVED (nearest prototype timbre centroid, the way build_index
+# recomputes it internally) — and worse, ``build_index`` does not even use
+# ``fstate.pis`` for the role: it re-settles a per-track membership
+# (``_track_membership``: 4 ``update_pi`` sweeps from an outer-product init) and
+# argmaxes THAT. Serving row-normalized ``pis[t][p(unit)]`` would therefore mean
+# (i) inventing an unstored map and (ii) serving a soft vector from a DIFFERENT
+# coupling than the one the world's own stored per-unit role came from — a vector
+# that can disagree with ``unit_role`` about which role the unit even is. That is
+# an invented refinement plus a second role channel. Refused.
+#
+# DECISION (disclosed on the wire as ``q_source``): q(unit) is the exact
+# INDICATOR of the world's own stored per-unit assignment,
+#
+#     q[k] = 1.0 if k == world.index.unit_role[(track_id, unit_id)] else 0.0
+#
+# an exact lookup of stored object (1) — normalized by construction (sums to 1),
+# real values only, no smoothing, no refinement, no second channel. The DIVERGENCE
+# from the directive's wording ("soft role mass") is reported, not papered over:
+# no per-unit SOFT role mass exists in the stored world. The softness the directive
+# asks for is recovered WHERE IT IS REAL — at the pointer's window, as the
+# mass-weighted mixture over the stored units under it,
+#     w_r = sum_u m_u * q_u[r] / sum_u m_u,
+# every term of which is a stored value. That mixture is the consumer's (the
+# TRACKS view's) reduction of these slices; this endpoint serves the stored
+# per-unit terms and invents nothing.
+#
+# If a world carries a MINIMAL index (``unit_role`` empty — the dataclass default),
+# NOTHING stored yields a per-slice q, and the wavemap REFUSES honestly (ok:false
+# with the reason) rather than fabricate weights.
+# ---------------------------------------------------------------------------
+_WAVEMAP_VERSION = 1          # sidecar schema version (part of the cache stamp)
+_WAVEMAP_N_PEAKS = 800        # envelope buckets per lane (the FE's lane resolution)
+
+# The single wire-level disclosure of WHICH stored object q comes from. Served with
+# every wavemap so the honesty of the mapping is auditable from the payload alone.
+_WAVEMAP_Q_SOURCE = ("world.index.unit_role[(track_id, unit_id)] — the frozen "
+                     "world's STORED per-unit dominant-anchor assignment, served "
+                     "as its exact indicator vector (hard by construction; no "
+                     "per-unit SOFT role mass is stored — see the q WALL note in "
+                     "cloud/companion/engine_bridge.py)")
+
+
+def unit_role_indicator(world, track_id: int, unit_id: int, M: int):
+    """The stored role assignment of ONE unit as an exact indicator (length M).
+
+    Reads ``world.index.unit_role`` ONLY (see the q WALL note above). Returns None
+    when the world stores no assignment for that unit — the caller must then refuse,
+    never fill in a value."""
+    k = world.index.unit_role.get((int(track_id), int(unit_id)))
+    if k is None or not (0 <= int(k) < int(M)):
+        return None
+    q = [0.0] * int(M)
+    q[int(k)] = 1.0
+    return q
+
+
+def track_unit_slices(world, track, M: int):
+    """The STORED unit segmentation of ONE track, in time order, with stored q.
+
+    ``[[t0_s, t1_s, unit_id, mass, [q_0..q_{M-1}]], ...]`` — one entry per stored
+    unit: its REAL stored source span (``provenance_index`` samples / the track's
+    own sr), its unit id, its STORED mass, and the stored role indicator. Note the
+    ingestion grain: a unit is a (slot, band) cell, so the n_bands units of one
+    tatum share that tatum's span — the spans REPEAT by design (that is the world's
+    own segmentation, not a bug). Order is (src_start, src_end, unit_id): the
+    deterministic time order.
+
+    Raises ``KeyError`` (via the None guard) never — instead returns None if ANY
+    unit lacks a stored role, so the caller refuses the whole map honestly."""
+    prov = track.provenance_index
+    uid = np.asarray(prov["unit_id"], dtype=np.int64)
+    ss = np.asarray(prov["src_start"], dtype=np.int64)
+    se = np.asarray(prov["src_end"], dtype=np.int64)
+    masses = np.asarray(track.masses, dtype=np.float64)
+    sr = float(track.sr)
+    tid = int(track.track_id)
+    order = np.lexsort((uid, se, ss))
+    out = []
+    for j in order:
+        q = unit_role_indicator(world, tid, int(uid[j]), M)
+        if q is None:
+            return None
+        out.append([float(ss[j]) / sr, float(se[j]) / sr, int(uid[j]),
+                    float(masses[j]), q])
+    return out
+
+
+def peak_envelope(y, n_samples: int, n_peaks: int = _WAVEMAP_N_PEAKS):
+    """Downsample a decoded mono signal to ``n_peaks`` |peak| buckets over the
+    track's STORED sample length.
+
+    The time axis is the world's stored ``n_samples`` (the same axis the unit spans
+    live on), so lane pixels and slice boundaries cannot drift apart. A bucket with
+    no decoded sample available reads 0.0 (honest absence — never interpolated).
+    Values are float PCM magnitudes, capped at 1.0 (full scale) and NOT normalized:
+    lane heights stay comparable across tracks because that is real information
+    about the given material."""
+    a = np.abs(np.asarray(y, dtype=np.float64).reshape(-1))
+    n = int(n_samples)
+    edges = np.linspace(0, n, int(n_peaks) + 1).astype(np.int64)
+    peaks = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        seg = a[int(lo):int(hi)]
+        peaks.append(min(1.0, float(seg.max())) if seg.size else 0.0)
+    return peaks
+
+
+# ---------------------------------------------------------------------------
 # EIGENPANEL (OPEN_ENDS #23; E1/E2) — the object's own control basis.
 #
 # READ-ONLY, once at world load: authors nothing, mutates no settlement. The
@@ -731,6 +862,12 @@ class StreamPlayer:
         self._sweep_args = ((sigma, list(_SWEEP_T_GRID), eigen_n_seed, eigen_n_bar)
                             if (_SWEEP_AUTO and _missing and sigma is not None and self.M > 0) else None)
         self._static_field_cache: Optional[dict] = None
+        # WAVEMAP (PREREG-waveform-scrub): the TRACKS view's read-only material map.
+        # Lazy — the source decode is real work and must never run at load (it would
+        # sit in front of the listener's first bar). Computed on first request,
+        # memoized here and persisted to a sidecar next to the world file.
+        self._wavemap_cache: Optional[dict] = None
+        self._wavemap_lock = threading.Lock()
         # Per-listener PCM fan-out. ONE produce loop broadcasts each bar to every
         # subscriber's own queue, so a SHARED engine (the demo singleton, or a shared
         # set several visitors opened) can serve concurrent listeners without any
@@ -1177,13 +1314,168 @@ class StreamPlayer:
                         {"unit_id": int(uid), "track_id": int(tt), "band": int(band),
                          "profile": [float(x) for x in np.asarray(prof).reshape(-1)]}
                         for (uid, tt, band, prof) in entries]
-            kind = "track" if self.is_trained else "demo track"
-            names = {int(t): "%s %d" % (kind, int(t)) for t in profiles}
+            names = {int(t): self._base_track_name(int(t)) for t in profiles}
             self._static_field_cache = {"profiles": profiles, "unit_pools": pools,
                                         "track_unit_pools": track_pools,
                                         "track_names": names,
                                         "profile_armed": bool(self._profile_armed)}
         return self._static_field_cache
+
+    def _base_track_name(self, tid: int) -> str:
+        """The world-level HONEST label for one track (the ONE formula; used by
+        static_field, channel_info and the wavemap so a track can never be named two
+        ways). The frozen world carries no source filenames — a trained world's
+        tracks are ``track N``, the demo/founding world's are ``demo track N``. The
+        session-level override (real ingested filenames / an opened set's published
+        names) is applied ONCE in app.py, for every surface alike."""
+        return "%s %d" % ("track" if self.is_trained else "demo track", int(tid))
+
+    # --- WAVEMAP (PREREG-waveform-scrub) — READ-ONLY material map -----------
+    def _wavemap_cache_path(self) -> str:
+        return str(self.world_path) + ".wavemap.json"
+
+    def _wavemap_cache_stamp(self, paths: dict) -> dict:
+        """Identity of the world + source files this cached wavemap is valid for.
+        Same contract as the eigen/sweep stamps (world file size+mtime), PLUS the
+        identity of each decoded source file — so a replaced/edited audio file can
+        never be served as a stale envelope of the file it replaced."""
+        try:
+            st = os.stat(self.world_path)
+            wsig = [int(st.st_size), int(st.st_mtime)]
+        except OSError:
+            wsig = None
+        srcs = []
+        for tid in sorted(paths):
+            try:
+                s = os.stat(paths[tid])
+                srcs.append([int(tid), str(paths[tid]), int(s.st_size), int(s.st_mtime)])
+            except OSError:
+                srcs.append([int(tid), str(paths[tid]), None, None])
+        return {"v": _WAVEMAP_VERSION, "n_peaks": _WAVEMAP_N_PEAKS,
+                "M": int(self.M), "world": wsig, "sources": srcs}
+
+    def _wavemap_source_paths(self):
+        """``({track_id: path}, None)`` from the world's OWN stored sources block, or
+        ``(None, reason)``. The world names its sources; nothing else does."""
+        s = getattr(self.wf, "sources", None) or {}
+        if s.get("kind") != "corpus":
+            return None, ("this world carries embedded source units, not the "
+                          "session's audio files — no waveform to serve")
+        raw = s.get("paths") or {}
+        paths, missing = {}, []
+        for track in self.world.tracks:
+            tid = int(track.track_id)
+            p = raw.get(tid, raw.get(str(tid)))
+            if p and os.path.isfile(str(p)):
+                paths[tid] = str(p)
+            else:
+                missing.append(tid)
+        if missing:
+            return None, ("source audio for track(s) %s is not on this volume — "
+                          "no waveform to serve" % ", ".join(str(t) for t in missing))
+        return paths, None
+
+    def wavemap(self) -> dict:
+        """The TRACKS view's READ-ONLY material map (PREREG-waveform-scrub annex).
+
+        Returns the WIRE object itself:
+          ``{ok: true, M, sr, q_source, tracks: {"<tid>": {name, duration_s,
+             peaks: [~800 floats], slices: [[t0_s, t1_s, uid, m, [q...]], ...]}}}``
+        or an HONEST refusal ``{ok: false, error: <reason>}`` — never a partial or
+        filled-in map. Refusals are NOT cached (a missing file may come back).
+
+        Everything served is stored or decoded from stored sources: the peaks are the
+        user's own audio file (named by the world's own ``sources`` block, decoded with
+        the SAME ``librosa.load`` call ingestion used), the spans are
+        ``provenance_index``, the masses are ``track.masses``, and q is the world's
+        stored per-unit role assignment (see the q WALL note at module scope).
+
+        Pure read: no engine state, no bank, no settlement, no writer, no F, no
+        telemetry — so a wavemap that is never computed changes no audio byte, and a
+        computed one changes none either. Computed ONCE per world and persisted next
+        to the world file (``<world>.wavemap.json``), stamped with the world + source
+        file identities so a stale map can never be served."""
+        cached = getattr(self, "_wavemap_cache", None)
+        if cached is not None:
+            return cached
+        if not getattr(self.world.index, "unit_role", None):
+            # The world stores NO per-unit role assignment (a minimal index). Nothing
+            # stored yields a per-slice q, so we refuse rather than invent weights.
+            return {"ok": False, "error": "this world stores no per-unit role "
+                    "assignment (minimal realization index) — no honest q to serve"}
+        paths, reason = self._wavemap_source_paths()
+        if paths is None:
+            return {"ok": False, "error": reason}
+        with self._wavemap_lock:
+            cached = getattr(self, "_wavemap_cache", None)
+            if cached is not None:
+                return cached
+            stamp = self._wavemap_cache_stamp(paths)
+            blob = self._load_wavemap_cache(stamp)
+            if blob is None:
+                blob = self._compute_wavemap(paths)
+                if not blob.get("ok"):
+                    return blob                       # honest refusal; never cached
+                self._write_wavemap_cache(blob, stamp)
+            self._wavemap_cache = blob
+            return blob
+
+    def _compute_wavemap(self, paths: dict) -> dict:
+        """Decode + reduce (the slow half; runs once per world). See ``wavemap``."""
+        import librosa                                # the decode ingestion uses
+        tracks = {}
+        for track in self.world.tracks:
+            tid = int(track.track_id)
+            sr = int(track.sr)
+            n = int(track.n_samples)
+            slices = track_unit_slices(self.world, track, self.M)
+            if slices is None:
+                return {"ok": False, "error": "track %d has stored units with no "
+                        "stored role assignment — no honest q to serve" % tid}
+            try:
+                y, _ = librosa.load(paths[tid], sr=sr, mono=True)
+            except Exception as exc:                  # unreadable/corrupt source file
+                return {"ok": False, "error": "could not decode the source audio for "
+                        "track %d (%s: %s)" % (tid, type(exc).__name__, exc)}
+            # ALIGNMENT: the envelope's axis is the world's stored n_samples. A file
+            # that no longer decodes to (about) that length is not the file this track
+            # was ingested from, and drawing it would put every slice boundary in the
+            # wrong place — refuse instead. Tolerance covers decoder-version jitter only.
+            if abs(len(y) - n) > max(1, int(0.02 * sr)):
+                return {"ok": False, "error": "source audio for track %d decodes to "
+                        "%d samples but the world stores %d — the file does not match "
+                        "the ingested track" % (tid, len(y), n)}
+            tracks[str(tid)] = {"name": self._base_track_name(tid),
+                                "duration_s": float(n) / float(sr),
+                                "peaks": peak_envelope(y, n),
+                                "slices": slices}
+        return {"ok": True, "M": int(self.M), "sr": int(self.sr),
+                "q_source": _WAVEMAP_Q_SOURCE, "tracks": tracks}
+
+    def _load_wavemap_cache(self, stamp: dict):
+        """The cached wavemap for EXACTLY this world+sources, or None. Never
+        fabricates and never serves across a stamp change."""
+        try:
+            with open(self._wavemap_cache_path(), "r") as f:
+                blob = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(blob, dict) or blob.get("stamp") != stamp:
+            return None
+        wm = blob.get("wavemap")
+        if not (isinstance(wm, dict) and wm.get("ok") and isinstance(wm.get("tracks"), dict)):
+            return None
+        return wm
+
+    def _write_wavemap_cache(self, wavemap: dict, stamp: dict) -> None:
+        path = self._wavemap_cache_path()
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump({"stamp": stamp, "wavemap": wavemap}, f)
+            os.replace(tmp, path)                    # atomic
+        except OSError:
+            logger.warning("could not persist wavemap cache at %s", path)
 
     # --- THE SINGLE ENGINE-CONTROL PATH ------------------------------------
     def set_region(self, region) -> None:
@@ -1372,9 +1664,8 @@ class StreamPlayer:
         display name. Which channels can actually PULL (vs disarm) is a MEASURED
         property (PREREG Phase-1 gate), not asserted here. Reads only the frozen
         roster; touches no engine state."""
-        kind = "track" if self.is_trained else "demo track"
         chans = [{"channel": ch, "track_id": int(tid),
-                  "name": "%s %d" % (kind, int(tid))}
+                  "name": self._base_track_name(int(tid))}
                  for ch, tid in enumerate(self._channel_tids)]
         return {"n_channels": len(chans), "s_phase": int(self.s_phase),
                 "channels": chans}
