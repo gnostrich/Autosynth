@@ -1705,3 +1705,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` architecture-v6/ets/writer/realize.py (2026-07-25T06:00:01+00:00)
 - `Edit` architecture-v6/ets/writer/realize.py (2026-07-25T06:00:10+00:00)
 - `Edit` architecture-v6/ets/writer/realize.py (2026-07-25T06:00:21+00:00)
+
+### at `27a6fa8`
+- `Write` papers/PREREG-waveform-scrub.md (2026-07-30T11:37:13+00:00)
+- `Edit` BACKUPS.md (2026-07-30T11:38:49+00:00)
