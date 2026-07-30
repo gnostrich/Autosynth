@@ -290,8 +290,8 @@ def track_unit_slices(world, track, M: int):
     own segmentation, not a bug). Order is (src_start, src_end, unit_id): the
     deterministic time order.
 
-    Raises ``KeyError`` (via the None guard) never — instead returns None if ANY
-    unit lacks a stored role, so the caller refuses the whole map honestly."""
+    Returns None (never a partial list, never a filled-in value) if ANY unit of the
+    track lacks a stored role, so the caller refuses the whole map honestly."""
     prov = track.provenance_index
     uid = np.asarray(prov["unit_id"], dtype=np.int64)
     ss = np.asarray(prov["src_start"], dtype=np.int64)
