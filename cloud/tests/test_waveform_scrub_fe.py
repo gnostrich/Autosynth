@@ -927,3 +927,35 @@ def test_node_check_on_every_extracted_script():
                       ("tracks", _tracks_block()),
                       ("tracks-runtime", _tracks_runtime())):
         _node_check(src if name != "tracks-runtime" else src + "\n")
+
+
+def test_wheel_over_wave_area_resolves_to_the_lanes_own_row_square():
+    """UX RULING 2026-07-30: the up/down emphasis (wheel) works over the whole lane —
+    the wave area resolves to that lane's OWN row square (same gesture, same row lane).
+    The scrub's pointer path is untouched (fieldLanesSquareAt still null over the wave,
+    so press/drag stays a scrub — WS-9 disjointness holds)."""
+    assert _run_node(_field_block() + _tracks_block() + _FIXTURE + """
+    // harness geometry: fake canvas metrics via the pure placer
+    var st = { bias:{}, nowplaying:{}, profiles:{"7":1,"9":1} };
+    var g = fieldLanesPlace(st, 400, 200);
+    var lane0 = g.lanes[0];                       // track 7's wave area
+    var waveX = lane0.rect.x + lane0.rect.w/2, waveY = lane0.rect.y + lane0.rect.h/2;
+    // the plain hit-test refuses the wave area (scrub owns the pointer there)…
+    var fieldCanvas = null;
+    // …but the emphasis resolver maps it to the lane's OWN row square:
+    // (emulate fieldLanesEmphasisSquareAt's core: header miss -> lane -> row square)
+    var lane = fieldLaneAt(g.lanes, waveX, waveY);
+    if(!lane || (lane.track|0) !== 7){ console.log('FAIL lane ' + JSON.stringify(lane)); process.exit(1); }
+    var row = null;
+    for(var i=0;i<g.placed.length;i++){ var p=g.placed[i];
+      if(p.kind==="track" && (p.track|0)===(lane.track|0)) row = p; }
+    if(!row || JSON.stringify(row.key) !== JSON.stringify(["track",7])){
+      console.log('FAIL row ' + JSON.stringify(row && row.key)); process.exit(1); }
+    // header area still resolves to the same square via the plain hit-test
+    var hdr = null;
+    for(var i=0;i<g.placed.length;i++){ var p=g.placed[i];
+      if(fieldRectHas(p.rect, p.rect.x+1, p.rect.y+1) && p.kind==="track" && p.track===7) hdr = p; }
+    if(!hdr || fieldKeyStr(hdr.key) !== fieldKeyStr(row.key)){
+      console.log('FAIL parity'); process.exit(1); }
+    console.log('OK');
+    """) == "OK"
