@@ -2493,14 +2493,16 @@
     var m = (1 + steps) * FIELD_BIAS_STEP;
     return m > FIELD_BIAS_LIMIT ? FIELD_BIAS_LIMIT : m;
   }
-  // The gesture's leans, as ledger entries under the EXISTING grid keys: the lane's ROW
-  // (track roll-up -> channel_bias) plus its (track, role) CELLS weighted by w_r
-  // (-> track_role_bias). A zero-weight role gets NO entry (the same byte-clean omission
-  // fieldAddBias makes). No unit key, no unit id, ever.
+  // The gesture's leans, as ledger entries under the EXISTING grid keys — CELLS ONLY
+  // (AMENDMENT 2026-07-30, lane-ownership law): the (track, role) CELLS weighted by w_r
+  // (-> track_role_bias) and NOTHING else. The ROW lane is owned exclusively by the
+  // row-header gesture — the scrub never writes it (WS-9). Held header-drag + held scrub
+  // compose at the payload level as DISJOINT lanes through the one saturating ledger.
+  // A zero-weight role gets NO entry (the same byte-clean omission fieldAddBias makes).
+  // No unit key, no unit id, ever.
   function fieldScrubLeans(tid, mag, w){
     var out = {};
     if(!(mag > 0)) return out;
-    out[fieldKeyStr(["track", tid | 0])] = mag;
     for(var r = 0; r < (w ? w.length : 0); r++){
       var v = mag * (+w[r] || 0);
       if(v > 0) out[fieldKeyStr(["role", tid | 0, r])] = v;
