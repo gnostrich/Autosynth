@@ -2832,6 +2832,25 @@
     }
     return null;
   }
+  // WHEEL-anywhere-on-the-lane (operator UX ruling 2026-07-30): the up/down EMPHASIS
+  // gesture works over the whole lane, wave area included — resolving to that lane's
+  // OWN row-header square, so it is the SAME row-lean gesture on the SAME row lane
+  // (lane-ownership law intact: wheel = row, scrub pointer = cells; WS-9 disjointness
+  // unchanged — this adds surface to the row GESTURE, never a row write to the scrub).
+  function fieldLanesEmphasisSquareAt(x, y){
+    var sq = fieldLanesSquareAt(x, y);
+    if(sq) return sq;                        // header hit: the row square itself
+    if(!fieldCanvas) return null;
+    var st = fieldState();
+    var g = fieldLanesPlace(st, fieldCanvas.clientWidth, fieldCanvas.clientHeight);
+    var lane = fieldLaneAt(g.lanes, x, y);   // wave-area hit: same lane -> same row square
+    if(!lane) return null;
+    for(var i = 0; i < g.placed.length; i++){
+      var p = g.placed[i];
+      if(p.kind === "track" && (p.track | 0) === (lane.track | 0)) return p;
+    }
+    return null;
+  }
   function fieldWaveTrack(tid){
     return (fieldWave && fieldWave.tracks && fieldWave.tracks[String(tid)]) || null;
   }
@@ -3105,6 +3124,12 @@
     if(!world.ready) return;
     var rect = fieldCanvas.getBoundingClientRect();
     var sq = fieldSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    // WHEEL-anywhere-on-the-lane (operator UX ruling 2026-07-30): in TRACKS view the
+    // wave area resolves to its lane's OWN row square for the WHEEL gesture only —
+    // the same row-lean law, wider surface. The scrub's pointer path is untouched.
+    if(!sq && fieldViewMode(fieldView) === "tracks"){
+      sq = fieldLanesEmphasisSquareAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    }
     var px = fieldWheelPx(ev.deltaY, ev.deltaMode);
     if(ev.ctrlKey && !FIELD_GRID_ENABLED){               // Ctrl+scroll = drill (grid mode: no drill)
       var g = fieldZoomGate(fieldZoomWheelState, -px, performance.now());

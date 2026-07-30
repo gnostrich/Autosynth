@@ -155,3 +155,13 @@ surface). Backend endpoint is additive/read-only. Single revert restores prior s
 >
 > Everything else in the directive (tab views, switch-reset V-1..4,
 > NOT-A-PLAYHEAD law, WS-1..8) unchanged.
+
+## UX RULING (operator, 2026-07-30, verbatim): emphasis gesture over the wave area
+> "maybe the same emphasis up down thing we can have work even over the waveform area
+> and not just the rows first column area ... may make it easier to do on the fly
+> instead of click then go to first column change the bias ... this is just a ux thing"
+
+Implementation: the WHEEL gesture over a lane's wave area resolves to that lane's OWN
+row-header square — the identical row-lean law on the identical row lane, wider surface.
+Lane-ownership (AMENDMENT/WS-9) intact: wheel = row, scrub pointer = cells; the scrub
+path is untouched and still never writes the row.
