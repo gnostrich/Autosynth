@@ -1,31 +1,47 @@
-"""FE teeth for WAVEFORM SCRUB-TO-STEER (PREREG-waveform-scrub).
+"""FE teeth for WAVEFORM CLICK-TO-STEER (PREREG-waveform-scrub, AMENDMENT 2).
 
-The TRACKS view is a SECOND FRONT-END onto the material surface's EXISTING two jacks
-(channel_bias for a row/track roll-up, track_role_bias for a (track, role) cell). It
+The TRACKS view is a SECOND FRONT-END onto the material surface's EXISTING lanes. It
 adds no jack, no decision channel and no new scaling constant: every lean it produces
 is an entry in the SAME lean ledger the GRID gestures write, summed by the SAME
 saturating accumulator (fieldAddBias) and cast by the SAME single payload builder
 (fieldBiasPayload). These tests hold that construction to the directive's laws.
 
-Teeth (each must BITE — the deliberate-violation variant is exercised inline):
-  WS-5  switch-reset: after a view switch the payload is the NEUTRAL carrier,
-        byte-for-byte; switching back does not resurrect the old leans.
-  W-4   same-jack (AMENDED 2026-07-30): scrub(i, t) payload == the equivalent manual GRID CELL payload (cells only; row lane owned by the row header — WS-9)
-        built from the same numbers (byte-identical JSON).
-  WS-1  mapping honesty: w_r == the EXACT mass-weighted stored q of the selected
-        slices; an intentionally smoothed variant FAILS the same assertion.
-  WS-4  wall respect: a lane the grid omits (track absent from the channel roster) is
-        omitted from the scrub payload identically, and the scrub never rides the
-        SETTLEMENT lane (region_add stays all-zero, armed or disarmed).
-  WS-7  not-a-playhead (static half): no audio element, no transport call, no seek and
-        no unit id anywhere on the scrub path; the view's only fetch is the read-only
-        wavemap GET (no method, no body).
-  WS-6  grid-untouched: the GRID-view pure-logic block is byte-identical to the
-        pre-directive extraction (sha256 pin), as is the DISPLAY block it reuses.
-  W-1   the lane ROW HEADER is the grid's row square verbatim (same kind/key/telemetry),
-        so the existing row-lean gesture drives it unchanged.
-  V-4   default GRID; only the exact persisted "tracks" token selects the new view.
-  FLAG  FIELD_TRACKS_VIEW false pins the surface to GRID (rollback).
+AMENDMENT 2 (operator, 2026-07-30) — CLICK = PURE CHARACTER STEER — SUPERSEDES the
+original row+cell emission and the cells-only amendment: the TRACKS click emits
+w_r-weighted COLUMN leans (["col", r] -> the settlement/region lane) and NOTHING else.
+This IS the parked column-lean directive, activated with the click as its gesture, so
+the original "no settlement-lane changes" scope line no longer holds. The fixtures
+below that named the row/cell emission are rewritten, not relaxed.
+
+LANE-OWNERSHIP MATRIX (total; WS-9):
+    click/hold (TRACKS)  -> COLUMN lanes  — the only writer in TRACKS
+    row-header gesture   -> ROW lanes     — the only writer anywhere
+    grid cell gesture    -> CELL lanes    — GRID view only
+    grid column header   -> COLUMN lanes  — GRID view only
+
+Teeth (each must BITE — the deliberate-violation variant is exercised inline or by the
+mutation harness):
+  WS-1   mapping honesty: w_r == the EXACT mass-weighted stored q of the selected
+         slices (now weighting COLUMNS); an intentionally smoothed variant FAILS.
+  W-4    same-jack: click(i, t) payload == the equivalent manual GRID COLUMN gesture
+         payload built from the same numbers (byte-identical JSON).
+  WS-4   wall respect: on a region-DISARMED corpus the click is honest-absent from the
+         payload AND refuses with the grid's existing message (disclosed wall).
+  WS-5   switch-reset: after a view switch the payload is the NEUTRAL carrier,
+         byte-for-byte; switching back does not resurrect the old leans.
+  WS-6   grid-untouched: the GRID-view pure-logic block is byte-identical to the
+         pre-directive extraction (sha256 pin), as is the DISPLAY block it reuses.
+  WS-7   not-a-playhead (static half): no audio element, no transport call, no seek and
+         no unit id anywhere on the click path; the view's only fetch is the read-only
+         wavemap GET (no method, no body).
+  WS-9   lane ownership: the click writes COLUMN keys only; a held row drag and a held
+         click compose as disjoint key families with zero cross-writes.
+  W-1    the lane ROW HEADER is the grid's row square verbatim (same kind/key/telemetry).
+  V-4    default GRID; only the exact persisted "tracks" token selects the new view.
+  FLAG   FIELD_TRACKS_VIEW false pins the surface to GRID (rollback).
+
+FOLLOW-UPS IN FLIGHT (operator deploy-first ruling, 2026-07-30): the D-1 role strip and
+the full WS-10 lane-orthogonality matrix land as separate commits behind this one.
 """
 from __future__ import annotations
 
@@ -225,10 +241,10 @@ def test_scrub_window_is_the_stored_slice_grid_half_open():
     """)) == "OK"
 
 
-def test_zero_stored_role_mass_yields_no_cell_lean_not_a_uniform():
+def test_zero_stored_role_mass_yields_no_column_lean_not_a_uniform():
     """Honest disarm at the finest grain: a selection whose stored q carries no mass
-    gets ZERO cell weights (and therefore no cell entries) — never a fabricated
-    uniform 1/M."""
+    gets ZERO column weights (and therefore no entries at all) — never a fabricated
+    uniform 1/M, and never a consolation lean on some other lane."""
     assert _run_node(_driver("""
     var wm = { ok:true, M:3, tracks:{ "7":{ duration_s:1, peaks:[],
       slices:[[0.0, 1.0, 501, 0.0, [0,0,0]]] } } };
@@ -236,8 +252,7 @@ def test_zero_stored_role_mass_yields_no_cell_lean_not_a_uniform():
     if(JSON.stringify(w.w) !== JSON.stringify([0,0,0])){
       console.log('FAIL ' + JSON.stringify(w.w)); process.exit(1); }
     var leans = fieldScrubBiasMap({ track:7, t:0.5, travel:0 }, wm, 3);
-    // AMENDED (cells only): zero stored role mass -> NO leans at all — never a
-    // fabricated uniform, and never a row write (the row belongs to the header).
+    // AMENDMENT 2 (columns only): zero stored role mass -> NO leans at all.
     if(JSON.stringify(Object.keys(leans)) !== "[]"){
       console.log('FAIL keys ' + JSON.stringify(Object.keys(leans))); process.exit(1); }
     console.log('OK');
@@ -246,91 +261,121 @@ def test_zero_stored_role_mass_yields_no_cell_lean_not_a_uniform():
 
 # ============================ W-4 : same-jack ================================
 
-def test_scrub_payload_equals_the_manual_grid_cell_payload():
-    """THE law (AMENDMENT 2026-07-30, CHANGE 2): scrub(i, t) emits exactly what the
-    operator would get by leaning the GRID's (i, r) role CELLS by the same numbers —
-    and NOTHING else. No row component (lane-ownership law: the row belongs to the
-    row-header gesture). The BITE: a payload with a row or unit component differs."""
+def test_click_payload_equals_the_manual_grid_column_payload():
+    """THE law (AMENDMENT 2, CHANGE 1): click(i, t) emits exactly what the operator
+    would get by leaning the GRID's role COLUMNS by the same numbers — and NOTHING
+    else. No row component (ruled out: one gesture, one meaning), no cell component
+    (GRID-only grain). The BITEs: the pre-amendment row+cell and cells-only shapes
+    both differ from what the click now emits."""
     assert _run_node(_driver("""
     var scrub = { track:7, t:1.7, travel:0 };
-    var scrubPayload = payloadOf(fieldMergeLeans({}, fieldScrubBiasMap(scrub, WM, 3)));
+    var clickPayload = payloadOf(fieldMergeLeans({}, fieldScrubBiasMap(scrub, WM, 3)));
 
-    // the MANUAL grid gesture: ONLY the (7, r) cells leaned by MAG0 * w_r —
-    // through the SAME accumulator the wheel/drag handlers call.
+    // the MANUAL grid gesture: ONLY the role COLUMNS leaned by MAG0 * w_r — through
+    // the SAME accumulator the grid's column-header wheel/drag calls.
     var manual = {};
     for(var r=0;r<3;r++){
       var v = MAG0 * W_EXPECT[r];
-      if(v > 0) fieldAddBias(manual, fieldKeyStr(["role", 7, r]), v);
+      if(v > 0) fieldAddBias(manual, fieldKeyStr(["col", r]), v);
     }
     var manualPayload = payloadOf(manual);
-    if(scrubPayload !== manualPayload){
-      console.log('FAIL\\n  scrub  ' + scrubPayload + '\\n  manual ' + manualPayload);
+    if(clickPayload !== manualPayload){
+      console.log('FAIL\\n  click  ' + clickPayload + '\\n  manual ' + manualPayload);
       process.exit(1); }
-    if(scrubPayload === NEUTRAL){ console.log('FAIL inert'); process.exit(1); }
-    // it really is the CELL grain alone: channel_bias stays all-zero (row untouched).
-    var p = JSON.parse(scrubPayload);
+    if(clickPayload === NEUTRAL){ console.log('FAIL inert'); process.exit(1); }
+    // it really is the COLUMN grain alone: the CASTING lanes stay untouched.
+    var p = JSON.parse(clickPayload);
     if(JSON.stringify(p.channel_bias) !== JSON.stringify([0, 0])){
       console.log('FAIL cb ' + JSON.stringify(p.channel_bias)); process.exit(1); }
-    if(JSON.stringify(p.track_role_bias) !==
-       JSON.stringify([[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]])){
+    if(JSON.stringify(p.track_role_bias) !== "[]"){
       console.log('FAIL tr ' + JSON.stringify(p.track_role_bias)); process.exit(1); }
-    // the BITE: a row-bearing payload (the OLD pre-amendment shape) must differ.
-    var old = {}; fieldAddBias(old, fieldKeyStr(["track", 7]), MAG0);
-    for(var r=0;r<3;r++){
-      var v = MAG0 * W_EXPECT[r];
-      if(v > 0) fieldAddBias(old, fieldKeyStr(["role", 7, r]), v);
+    // region_add carries the w_r-weighted columns at the builder's EXISTING regionCap.
+    if(JSON.stringify(p.region_add) !== JSON.stringify([0.0625, 0.03125, 0.03125])){
+      console.log('FAIL ra ' + JSON.stringify(p.region_add)); process.exit(1); }
+    // the BITEs: both SUPERSEDED emission shapes must differ from the amended one.
+    var rowAndCells = {}; fieldAddBias(rowAndCells, fieldKeyStr(["track", 7]), MAG0);
+    var cellsOnly = {};
+    for(var r2=0;r2<3;r2++){
+      var v2 = MAG0 * W_EXPECT[r2];
+      if(v2 > 0){ fieldAddBias(rowAndCells, fieldKeyStr(["role", 7, r2]), v2);
+                  fieldAddBias(cellsOnly,  fieldKeyStr(["role", 7, r2]), v2); }
     }
-    if(payloadOf(old) === scrubPayload){ console.log('FAIL row-bite'); process.exit(1); }
-    // and the unit grain would be a DIFFERENT payload too.
+    if(payloadOf(rowAndCells) === clickPayload){ console.log('FAIL v1-bite'); process.exit(1); }
+    if(payloadOf(cellsOnly)   === clickPayload){ console.log('FAIL v2-bite'); process.exit(1); }
     var wrong = {}; fieldAddBias(wrong, fieldKeyStr(["unit", 0, 102, 7]), MAG0);
-    if(payloadOf(wrong) === scrubPayload){ console.log('FAIL bite'); process.exit(1); }
+    if(payloadOf(wrong) === clickPayload){ console.log('FAIL unit-bite'); process.exit(1); }
     console.log('OK');
     """)) == "OK"
 
 
-def test_ws9_lane_ownership_scrub_and_row_header_compose_disjoint():
-    """WS-9 (AMENDMENT 2026-07-30, CHANGE 3): the scrub writes CELL lanes only; the row
-    lane is owned by the row-header gesture. Holding BOTH composes disjointly — the row
-    value comes solely from the header drag, the cells solely from the scrub, with zero
-    cross-writes. A scrub-side row write FAILS (asserted via the leans' key set)."""
+def test_click_lean_is_independent_of_which_lane_the_window_came_from():
+    """CHARACTER, not track favouring: the emitted lean is a function of the STORED
+    MIXTURE under the pointer alone. Two different lanes whose windows carry the same
+    stored q emit the IDENTICAL payload — there is no per-track component to differ."""
     assert _run_node(_driver("""
-    // scrub-side leans: key set must contain ONLY "role" keys (any row key FAILS).
+    var wm = { ok:true, M:3, tracks:{
+      "7": { duration_s:1, peaks:[], slices:[[0,1, 11, 2.0, [0.5,0.5,0]]] },
+      "9": { duration_s:1, peaks:[], slices:[[0,1, 22, 9.0, [0.5,0.5,0]]] } } };
+    var a = payloadOf(fieldMergeLeans({}, fieldScrubBiasMap({track:7,t:0.5,travel:0}, wm, 3)));
+    var b = payloadOf(fieldMergeLeans({}, fieldScrubBiasMap({track:9,t:0.5,travel:0}, wm, 3)));
+    if(a !== b){ console.log('FAIL lane-dependent\\n ' + a + '\\n ' + b); process.exit(1); }
+    if(a === NEUTRAL){ console.log('FAIL inert'); process.exit(1); }
+    // the mass differs (2.0 vs 9.0) but the NORMALIZED mixture does not: mass weights
+    // slices WITHIN a window, it is not a track loudness that leaks into the lean.
+    if(JSON.stringify(JSON.parse(a).region_add) !== JSON.stringify([0.0625, 0.0625, 0])){
+      console.log('FAIL ra ' + a); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_ws9_lane_ownership_click_and_row_header_compose_disjoint():
+    """WS-9 under AMENDMENT 2: the click writes COLUMN lanes only; the row lane is owned
+    by the row-header gesture. Holding BOTH composes disjointly — the row value comes
+    solely from the header drag, the columns solely from the click, with zero
+    cross-writes. Any click-side row or cell write FAILS (asserted on the key set)."""
+    assert _run_node(_driver("""
+    // click-side leans: key set must contain ONLY "col" keys.
     var m = fieldScrubBiasMap({ track:7, t:1.7, travel:0 }, WM, 3);
     for(var k in m){
-      if(JSON.parse(k)[0] !== "role"){ console.log('FAIL scrub-writes-' + k); process.exit(1); }
+      if(JSON.parse(k)[0] !== "col"){ console.log('FAIL click-writes-' + k); process.exit(1); }
     }
-    // simultaneous held row-header drag (row lane) + held scrub (cell lanes):
+    // simultaneous held row-header drag (ROW lane) + held click (COLUMN lanes):
     var ledger = {};
     fieldAddBias(ledger, fieldKeyStr(["track", 7]), 0.25);      // the header's lane
-    var both = fieldMergeLeans(ledger, m);                       // + the scrub's lanes
+    var both = fieldMergeLeans(ledger, m);                       // + the click's lanes
     var p = JSON.parse(payloadOf(both));
-    // DISJOINT: row value is exactly the header's; cells exactly the scrub's.
+    // DISJOINT: the row value is exactly the header's, the columns exactly the click's,
+    // and the CELL lane nobody drove stays empty.
     if(p.channel_bias[1] !== 0){ console.log('FAIL foreign-row'); process.exit(1); }
     if(Math.abs(p.channel_bias[0] - 0.25) > 1e-12){
       console.log('FAIL row ' + p.channel_bias[0]); process.exit(1); }
-    if(JSON.stringify(p.track_role_bias) !==
-       JSON.stringify([[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]])){
+    if(JSON.stringify(p.track_role_bias) !== "[]"){
       console.log('FAIL cells ' + JSON.stringify(p.track_role_bias)); process.exit(1); }
+    if(JSON.stringify(p.region_add) !== JSON.stringify([0.0625, 0.03125, 0.03125])){
+      console.log('FAIL cols ' + JSON.stringify(p.region_add)); process.exit(1); }
+    // key families are disjoint SETS: no key is written by both gestures.
+    for(var k2 in m){ if(ledger.hasOwnProperty(k2)){ console.log('FAIL cross ' + k2); process.exit(1); } }
     console.log('OK');
     """)) == "OK"
 
 
-def test_scrub_never_emits_a_unit_grain_for_any_pointer_position():
+def test_click_never_emits_a_unit_grain_for_any_pointer_position():
     """NOT-A-PLAYHEAD / no-injection at the payload boundary: whatever the pointer does,
-    unit_bias stays empty — a unit id never becomes a lean."""
+    unit_bias stays empty and the ONLY key family emitted is the column lane."""
     assert _run_node(_driver("""
     for(var t=0; t<3.0; t+=0.05){
       for(var tv=0; tv<=200; tv+=37){
         var m = fieldScrubBiasMap({ track:7, t:t, travel:tv }, WM, 3);
         if(!m) continue;
         for(var k in m){
-          var key = JSON.parse(k);
-          if(key[0] !== "track" && key[0] !== "role"){
-            console.log('FAIL grain ' + k); process.exit(1); }
+          if(JSON.parse(k)[0] !== "col"){ console.log('FAIL grain ' + k); process.exit(1); }
         }
         var p = JSON.parse(payloadOf(fieldMergeLeans({}, m)));
         if(JSON.stringify(p.unit_bias) !== "{}"){
           console.log('FAIL ub ' + JSON.stringify(p.unit_bias)); process.exit(1); }
+        if(JSON.stringify(p.channel_bias) !== JSON.stringify([0,0])
+           || JSON.stringify(p.track_role_bias) !== "[]"){
+          console.log('FAIL casting ' + JSON.stringify(p)); process.exit(1); }
       }
     }
     console.log('OK');
@@ -353,13 +398,13 @@ def test_scrub_magnitude_is_the_fields_own_step_and_saturation_law():
       if(m < prev - 1e-12 || m > FIELD_BIAS_LIMIT){ console.log('FAIL mono ' + px); process.exit(1); }
       prev = m;
     }
-    // the ledger sum saturates through the SAME accumulator (a standing CELL lean plus
-    // a scrub can never exceed the field's own stop) — asserted on the cell lane, the
-    // only lane the AMENDED scrub writes.
-    var base = {}; fieldAddBias(base, fieldKeyStr(["role", 7, 0]), 0.95);
+    // the ledger sum saturates through the SAME accumulator (a standing COLUMN lean
+    // plus a click can never exceed the field's own stop) — asserted on the column
+    // lane, the only lane the AMENDED click writes.
+    var base = {}; fieldAddBias(base, fieldKeyStr(["col", 0]), 0.95);
     var merged = fieldMergeLeans(base, fieldScrubBiasMap({track:7,t:1.7,travel:1e6}, WM, 3));
-    if(merged['["role",7,0]'] !== FIELD_BIAS_LIMIT){
-      console.log('FAIL merge sat ' + merged['["track",7]']); process.exit(1); }
+    if(merged['["col",0]'] !== FIELD_BIAS_LIMIT){
+      console.log('FAIL merge sat ' + merged['["col",0]']); process.exit(1); }
     console.log('OK');
     """)) == "OK"
 
@@ -423,39 +468,49 @@ def test_a_released_scrub_leaves_no_residue_in_the_ledger():
 
 # ============================ WS-4 : wall respect ============================
 
-def test_scrub_omits_the_lanes_the_grid_omits_and_never_rides_settlement():
-    """The scrub inherits the grid's walls because it IS the grid's builder: a track
-    absent from the channel roster takes no row lean (there is no slot to lean), and
-    the scrub never touches the SETTLEMENT lane — region_add stays all-zero whether the
-    region is armed or honestly disarmed (a moment's profile leaning the column is
-    explicitly OUT of scope)."""
+def test_click_is_honest_absent_on_a_region_disarmed_corpus():
+    """AMENDMENT 2's DISCLOSED WALL, held to: the click rides the SETTLEMENT lane, so on
+    a corpus whose σ_φ.region is unidentifiable it emits NOTHING — the same predicate
+    that already dims and inerts the grid's column headers, running in the same builder.
+    The click is inert there; that is the ruled trade for one-gesture-one-meaning."""
     assert _run_node(_driver("""
-    // lane 7 is NOT in the channel roster -> the grid drops its row lean; so must the scrub.
-    world = { channels:[{track_id:9}], M:3, regionCap:1, regionArmed:true };
-    var leans = fieldScrubBiasMap({ track:7, t:1.7, travel:0 }, WM, 3);
-    var scrubPayload = payloadOf(fieldMergeLeans({}, leans));
-    var manual = {};
-    for(var r=0;r<3;r++){ var v = MAG0*W_EXPECT[r]; if(v>0) fieldAddBias(manual, fieldKeyStr(["role",7,r]), v); }
-    if(scrubPayload !== payloadOf(manual)){
-      console.log('FAIL parity ' + scrubPayload); process.exit(1); }
-    var p = JSON.parse(scrubPayload);
-    if(JSON.stringify(p.channel_bias) !== JSON.stringify([0])){
-      console.log('FAIL roster ' + JSON.stringify(p.channel_bias)); process.exit(1); }
-    if(JSON.stringify(p.region_add) !== JSON.stringify([0,0,0])){
-      console.log('FAIL region armed ' + JSON.stringify(p.region_add)); process.exit(1); }
+    var scrub = { track:7, t:1.7, travel:0 };
+    // ARMED: the click's columns really do ride settlement (the precondition that makes
+    // the disarmed assertion below a fact and not a tautology).
+    world = { channels:[{track_id:7},{track_id:9}], M:3, regionCap:1, regionArmed:true };
+    var armed = JSON.parse(payloadOf(fieldMergeLeans({}, fieldScrubBiasMap(scrub, WM, 3))));
+    if(JSON.stringify(armed.region_add) !== JSON.stringify([0.0625, 0.03125, 0.03125])){
+      console.log('FAIL armed ' + JSON.stringify(armed.region_add)); process.exit(1); }
 
-    // region honestly DISARMED: identical scrub payload, settlement still untouched.
+    // DISARMED: the identical gesture produces the byte-identical NEUTRAL carrier.
     world = { channels:[{track_id:7},{track_id:9}], M:3, regionCap:1, regionArmed:false };
-    var q = JSON.parse(payloadOf(fieldMergeLeans({}, fieldScrubBiasMap({track:7,t:1.7,travel:0}, WM, 3))));
-    if(JSON.stringify(q.region_add) !== JSON.stringify([0,0,0])){
-      console.log('FAIL region disarmed ' + JSON.stringify(q.region_add)); process.exit(1); }
-    if(JSON.stringify(q.channel_bias) !== JSON.stringify([0, 0])){
-      console.log('FAIL cb disarmed (row must stay untouched — cells only)'); process.exit(1); }
-    // the BITE: a COLUMN lean DOES ride settlement on an armed world — so the all-zero
-    // region_add above is a real fact about the scrub, not an inert assertion.
-    world = { channels:[{track_id:7}], M:3, regionCap:1, regionArmed:true };
+    var off = payloadOf(fieldMergeLeans({}, fieldScrubBiasMap(scrub, WM, 3)));
+    if(off !== NEUTRAL){ console.log('FAIL disarmed ' + off); process.exit(1); }
+    // ... and it does NOT quietly divert onto some other lane instead.
+    var q = JSON.parse(off);
+    if(JSON.stringify(q.channel_bias) !== JSON.stringify([0,0])
+       || JSON.stringify(q.track_role_bias) !== "[]"){
+      console.log('FAIL diverted ' + off); process.exit(1); }
+    // the GRID's column header is disarmed by the SAME predicate — one wall, one law.
     var col = {}; fieldAddBias(col, fieldKeyStr(["col", 1]), 0.5);
-    if(JSON.parse(payloadOf(col)).region_add[1] === 0){ console.log('FAIL bite'); process.exit(1); }
+    if(payloadOf(col) !== NEUTRAL){ console.log('FAIL grid col ' + payloadOf(col)); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_click_column_scale_is_the_builders_existing_region_cap():
+    """No new scaling constant reaches the wire: the click's columns are scaled by the
+    payload builder's EXISTING world.regionCap (the engine's own measured safe-envelope
+    cap), exactly as the grid's column-header lean is."""
+    assert _run_node(_driver("""
+    world = { channels:[{track_id:7}], M:3, regionCap:0.4, regionArmed:true };
+    var click = JSON.parse(payloadOf(fieldMergeLeans({}, fieldScrubBiasMap({track:7,t:1.7,travel:0}, WM, 3))));
+    var manual = {};
+    for(var r=0;r<3;r++){ var v = MAG0*W_EXPECT[r]; if(v>0) fieldAddBias(manual, fieldKeyStr(["col", r]), v); }
+    if(JSON.stringify(click.region_add) !== JSON.stringify(JSON.parse(payloadOf(manual)).region_add)){
+      console.log('FAIL parity ' + JSON.stringify(click.region_add)); process.exit(1); }
+    if(Math.abs(click.region_add[0] - 0.0625*0.4) > 1e-12){
+      console.log('FAIL cap ' + click.region_add[0]); process.exit(1); }
     console.log('OK');
     """)) == "OK"
 
@@ -471,6 +526,96 @@ def test_scrub_arming_predicate_refuses_a_foreign_role_basis():
     note = _js_functions(_tracks_runtime())["fieldLanesNote"]
     assert "scrub inactive" in note and "unavailable" in note, \
         "a missing/mismatched wavemap must be reported honestly, not faked"
+
+
+# ============================ D-1 : the role strip ===========================
+
+def test_role_strip_marks_split_achieved_from_force_by_provenance():
+    """D-1 + the two-marks law, at the source of the marks: ACHIEVED comes from the SAME
+    fieldColShares telemetry reduction the GRID's column headers glow by, FORCE comes
+    from the ledger's ["col", r] entries — and neither can borrow the other's number.
+    The BITE: a lean with no telemetry shows force but zero achieved, and telemetry with
+    no lean shows achieved but zero force."""
+    assert _run_node(_driver("""
+    // telemetry ONLY: two live (track, role) cells, no lean anywhere.
+    var st = { nowplayingTrackRole:{ "7,0":0.5, "9,0":0.5, "7,2":1.0 }, bias:{} };
+    var marks = fieldRoleStripMarks(st, 3);
+    var shares = fieldColShares(st, 3);
+    for(var r=0;r<3;r++){
+      if(marks[r].achieved !== fieldClamp01(shares.glow[r])){
+        console.log('FAIL achieved ' + r); process.exit(1); }
+      if(marks[r].share !== shares.share[r]){ console.log('FAIL share ' + r); process.exit(1); }
+      if(marks[r].force !== 0){ console.log('FAIL force-from-telemetry ' + r); process.exit(1); }
+    }
+    if(!(marks[0].achieved > 0)){ console.log('FAIL no glow'); process.exit(1); }
+
+    // lean ONLY: a held click's column lean, no telemetry at all.
+    var st2 = { nowplayingTrackRole:{}, bias:{} };
+    fieldAddBias(st2.bias, fieldKeyStr(["col", 1]), 0.5);
+    var m2 = fieldRoleStripMarks(st2, 3);
+    if(m2[1].force !== 0.5){ console.log('FAIL force ' + m2[1].force); process.exit(1); }
+    for(var r2=0;r2<3;r2++){
+      if(m2[r2].achieved !== 0){ console.log('FAIL achieved-from-lean ' + r2); process.exit(1); }
+    }
+    // the click's OWN lean shows up on the strip as force (the visible-effect law).
+    var st3 = { nowplayingTrackRole:{},
+                bias: fieldMergeLeans({}, fieldScrubBiasMap({track:7,t:1.7,travel:0}, WM, 3)) };
+    var m3 = fieldRoleStripMarks(st3, 3);
+    if(JSON.stringify([m3[0].force, m3[1].force, m3[2].force]) !==
+       JSON.stringify([0.0625, 0.03125, 0.03125])){
+      console.log('FAIL click force ' + JSON.stringify(m3)); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_role_strip_is_read_only_and_in_no_hit_test():
+    """D-1: read-only means read-only. The strip is not in `placed` (so no square
+    hit-test can return it), the wave hit-test excludes its band (so no click can start
+    there), and the WHEEL hit-test used in TRACKS view returns nothing over it."""
+    assert _run_node(_runtime_driver("""
+    var st = { nowplaying:{ 7:0.4, 9:0.9 }, nowplayingTrackRole:{}, nowplayingUnit:{},
+               profiles:{ 7:[1,0,0], 9:[0,1,1] }, names:{ 7:"seven", 9:"nine" }, bias:{} };
+    var g = fieldLanesPlace(st, 800, 400);
+    // every placed square is a ROW header — the strip contributes none.
+    for(var i=0;i<g.placed.length;i++){
+      if(g.placed[i].kind !== "track"){ console.log('FAIL kind ' + g.placed[i].kind); process.exit(1); }
+    }
+    // the strip band sits ABOVE every lane and every row header.
+    var rects = fieldRoleStripPlace(800, 3, g.layout.rhW);
+    if(rects.length !== 3){ console.log('FAIL rects'); process.exit(1); }
+    for(var r=0;r<rects.length;r++){
+      var rc = rects[r];
+      if(rc.y + rc.h > g.layout.top){ console.log('FAIL overlap lanes'); process.exit(1); }
+      if(fieldLaneAt(g.lanes, rc.x + 1, rc.y + 1) !== null){
+        console.log('FAIL click surface in the strip'); process.exit(1); }
+    }
+    // and the TRACKS wheel hit-test (which resolves the whole lane to its row square)
+    // returns NOTHING over the strip band: the strip drives no lane at all.
+    fieldView = "tracks";
+    for(var x=0; x<800; x+=17){
+      for(var y=FIELD_HEADER; y<FIELD_HEADER+FIELD_STRIP_H; y+=5){
+        if(fieldLanesEmphasisSquareAt(x, y) !== null){
+          console.log('FAIL wheel writes via the strip at ' + x + ',' + y); process.exit(1); }
+      }
+    }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_role_strip_draw_is_a_dumb_renderer_of_the_pure_marks():
+    """The strip's drawing may not invent a number: it renders exactly what
+    fieldRoleStripMarks (pure, provenance-split) computed, and it reads no telemetry
+    store of its own. Its disarm state is the GRID's own predicate."""
+    fns = _js_functions(_strip_comments(_tracks_runtime()))
+    body = fns["fieldDrawRoleStrip"]
+    assert "fieldRoleStripMarks" in body and "fieldRoleStripPlace" in body, \
+        "the strip must render the pure marks/rects, not recompute them"
+    assert "fieldRegionDisarmed()" in body, \
+        "a disarmed corpus must render the strip inert, as the grid's headers do"
+    for banned in ("nowplaying", "nowplayingUnit", "nowplayingTrackRole", "fieldColShares",
+                   "fieldScrub", "Math.random", "Math.sin"):
+        assert banned not in body, \
+            f"the strip renderer must not reach for {banned!r} — it draws the pure marks only"
 
 
 # ============================ W-1 : the row header ===========================
@@ -615,17 +760,19 @@ def test_scrub_path_has_no_audio_transport_or_seek_call():
 
 def test_no_unit_id_ever_leaves_the_scrub_path():
     """WS-8 at the FE boundary: unit ids exist in the view ONLY as READ keys of the
-    achieved heatmap's telemetry lookup. No scrub function names or carries one, and
-    the lean keys it builds are strictly the row and cell grains."""
+    achieved heatmap's telemetry lookup. No click function names or carries one, and
+    the lean keys it builds are strictly the COLUMN grain."""
     fns = _js_functions(_strip_comments(_tracks_block()))
     fns.update(_js_functions(_strip_comments(_tracks_runtime())))
     leans = fns["fieldScrubLeans"]
-    assert '["role", tid | 0, r]' in leans, \
-        "the scrub's lean keys must be the cell grain"
-    assert '["track"' not in leans, \
-        "AMENDMENT/WS-9: the scrub must never build a row lean"
-    for grain in ("unit", "uid", "unit_id"):
-        assert grain not in leans, f"a scrub lean must never name {grain!r}"
+    assert '["col", r]' in leans, "AMENDMENT 2: the click's lean keys are the COLUMN grain"
+    for grain in ("unit", "uid", "unit_id", '["track"', '["role"'):
+        assert grain not in leans, f"a click lean must never name {grain!r}"
+    # AMENDMENT 2, structurally: the emitter takes NO track argument, so it cannot write
+    # a per-track lean even by accident — the ruling is enforced by the signature.
+    sig = re.search(r"function\s+fieldScrubLeans\s*\(([^)]*)\)", _tracks_block())
+    assert sig and [a.strip() for a in sig.group(1).split(",")] == ["mag", "w"], \
+        "fieldScrubLeans must take only (mag, w) — no track id can reach a lean"
     for name in ("fieldScrubWeights", "fieldSlicesAt", "fieldScrubBiasMap",
                  "fieldScrubMag", "fieldScrubPoint", "fieldScrubStart",
                  "fieldScrubMove", "fieldScrubEnd", "fieldScrubPublish"):
@@ -794,11 +941,12 @@ def _runtime_driver(body: str) -> str:
                       _FIXTURE, _RUNTIME_HARNESS, body])
 
 
-def test_runtime_a_full_scrub_gesture_publishes_only_bias_payloads():
-    """The pointer's ENTIRE footprint, measured: a view switch publishes the neutral
-    carrier; pointer-down on a lane publishes exactly the AMENDED W-4 cells-only payload; a move
-    that changes nothing publishes nothing; a move to another stored slice publishes the
-    new conditional; release returns exactly to the standing ledger. Every publish goes
+def test_runtime_a_full_click_gesture_publishes_only_column_payloads():
+    """The pointer's ENTIRE footprint, measured on the REAL handlers: a view switch
+    publishes the neutral carrier; pointer-down on a lane publishes exactly the AMENDMENT
+    2 columns-only payload (the casting lanes stay untouched); a move that changes
+    nothing publishes nothing; a move to another stored slice publishes the new
+    conditional; release returns exactly to the standing ledger. Every publish goes
     through the ONE steer call site and nothing else is ever called."""
     out = _run_node(_runtime_driver("""
     // --- V-1: switching to TRACKS zeroes the surface and publishes the neutral carrier.
@@ -812,27 +960,28 @@ def test_runtime_a_full_scrub_gesture_publishes_only_bias_payloads():
     // --- the wavemap arrives (read-only given material + stored assignment).
     fieldWave = WM; fieldWaveState = "ready";
 
-    // --- a pointer-down on the ROW HEADER is not a scrub (the row-lean gesture owns it).
+    // --- a pointer-down on the ROW HEADER is not a click-steer (the row gesture owns it).
     fieldScrubStart(ev(10, 100));
     if(fieldScrub !== null || PUBLISHED.length !== 1){ console.log('FAIL header'); process.exit(1); }
 
-    // --- pointer-down on lane 0 at t = 1.7 (the two overlapping stored slices).
+    // --- pointer-down on lane 0 at t = 1.7 (the two overlapping stored slices):
+    //     w = [0.5, 0.25, 0.25] * mag 0.125 -> the COLUMN lane, and nothing else.
     fieldScrubStart(ev(xAt(1.7), 100));
-    if(!fieldScrub || fieldScrub.track !== 7){ console.log('FAIL no scrub'); process.exit(1); }
+    if(!fieldScrub || fieldScrub.track !== 7){ console.log('FAIL no click'); process.exit(1); }
     if(PUBLISHED.length !== 2){ console.log('FAIL down publish'); process.exit(1); }
-    if(PUBLISHED[1] !== '{"channel_bias":[0,0],"unit_bias":{},"track_role_bias":' +
-       '[[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]],"region":[0,0,0]}'){
+    if(PUBLISHED[1] !== '{"channel_bias":[0,0],"unit_bias":{},"track_role_bias":[],' +
+       '"region":[0.0625,0.03125,0.03125]}'){
       console.log('FAIL down payload ' + PUBLISHED[1]); process.exit(1); }
 
     // --- a move inside the SAME selection with sub-step travel says nothing new.
     fieldScrubMove(ev(xAt(1.7) + 1.2, 100));
     if(PUBLISHED.length !== 2){ console.log('FAIL idempotence ' + PUBLISHED.length); process.exit(1); }
 
-    // --- a move to another STORED slice (t = 0.625) with 2 further travel steps.
+    // --- a move to another STORED slice (t = 0.625, q = [1,0,0]) with 2 travel steps.
     fieldScrubMove(ev(xAt(0.625), 100));
     if(PUBLISHED.length !== 3){ console.log('FAIL move publish'); process.exit(1); }
     if(PUBLISHED[2] !== '{"channel_bias":[0,0],"unit_bias":{},' +
-       '"track_role_bias":[[7,0,0.375]],"region":[0,0,0]}'){
+       '"track_role_bias":[],"region":[0.375,0,0]}'){
       console.log('FAIL move payload ' + PUBLISHED[2]); process.exit(1); }
 
     // --- RELEASE: back to the standing ledger (empty) instantly, no residue.
@@ -880,6 +1029,44 @@ def test_runtime_the_wavemap_read_is_a_bodyless_get_and_failure_disarms():
       console.log('OK');
     }, 0);
     """)) == "OK"
+
+
+def test_runtime_a_region_disarmed_corpus_refuses_the_click_and_says_so():
+    """AMENDMENT 2's disclosed wall, at the handler: on a region-disarmed corpus the
+    click does not start, publishes NOTHING, and reports the grid's existing disarm
+    message verbatim — an honest inert control, never a lean that cannot land."""
+    assert _run_node(_runtime_driver("""
+    var SAID = [];
+    fieldSetStatus = function(m){ SAID.push(m); };
+    world.regionArmed = false;                   // σ_φ.region unidentifiable on this corpus
+    fieldView = "tracks"; fieldWave = WM; fieldWaveState = "ready";
+    fieldScrubStart(ev(xAt(1.7), 100));
+    if(fieldScrub !== null){ console.log('FAIL started'); process.exit(1); }
+    if(PUBLISHED.length !== 0){ console.log('FAIL published ' + PUBLISHED[0]); process.exit(1); }
+    if(SAID.length !== 1 || SAID[0] !== FIELD_REGION_DISARM_MSG){
+      console.log('FAIL message ' + JSON.stringify(SAID)); process.exit(1); }
+    // ARMED again: the identical gesture DOES steer (so the refusal above is a real
+    // wall, not a dead code path).
+    world.regionArmed = true;
+    fieldScrubStart(ev(xAt(1.7), 100));
+    if(!fieldScrub || PUBLISHED.length !== 1){ console.log('FAIL armed'); process.exit(1); }
+    if(PUBLISHED[0].indexOf('"region":[0.0625,0.03125,0.03125]') < 0){
+      console.log('FAIL armed payload ' + PUBLISHED[0]); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_the_disarm_message_is_the_grids_own_string_verbatim():
+    """One wall, one wording: the click reuses the GRID's existing column-disarm message
+    literally — no second phrasing of the same measured fact."""
+    js = _inline_js()
+    msg = "region DISARMED — column steer inactive on this corpus"
+    assert f'var FIELD_REGION_DISARM_MSG = "{msg}"' in js, \
+        "the click's disarm message must be the grid's own string"
+    # the grid's own handlers still carry it (the source of the wording).
+    fns = _js_functions(js)
+    assert msg in fns["fieldOnWheel"] and msg in fns["fieldTouchMove"], \
+        "the grid's column-disarm message must still be the one being reused"
 
 
 def test_runtime_a_foreign_role_basis_refuses_to_scrub():

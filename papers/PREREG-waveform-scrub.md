@@ -165,3 +165,54 @@ Implementation: the WHEEL gesture over a lane's wave area resolves to that lane'
 row-header square — the identical row-lean law on the identical row lane, wider surface.
 Lane-ownership (AMENDMENT/WS-9) intact: wheel = row, scrub pointer = cells; the scrub
 path is untouched and still never writes the row.
+
+## AMENDMENT 2 (operator, 2026-07-30, verbatim) — CLICK = PURE CHARACTER STEER
+> AMENDMENT to ets-directive-waveform-scrub-view — CLICK = PURE CHARACTER STEER
+> Incremental; apply on top of the directive + cells-only amendment.
+> Supersedes the TRACKS-view emission rules of both. Log to LEDGER.
+> RULING (operator)
+> The TRACKS-view click/hold steers CHARACTER ONLY. No programmed track favoring:
+> recruiting more of the pointed sound already lifts the pointed track's material
+> indirectly (more slots of that character get cast; its material competes in more of
+> them). Explicit per-track bias remains a separate, already-existing control (row
+> headers). One gesture, one meaning.
+> CHANGE 1 — TRACKS emission: COLUMNS ONLY
+> Click/hold at time t on track i:
+> * compute w_r = normalized stored role mass q(r | slices under t) (real stored values
+>   only, as before);
+> * emit w_r-weighted COLUMN biases through the EXISTING settlement-lane (region)
+>   entries — and NOTHING else. No row component (ruled out). No cell component in
+>   TRACKS view (cells remain GRID-only, surgical).
+> * sigma-clamped + slew-limited per existing law; soft, saturating; held = sustained
+>   lean; release = existing decay-to-neutral law.
+> * disarmed/degenerate column lanes: honest-absent from payload.
+> This supersedes the prior out-of-scope line ("no settlement-lane changes") — this
+> amendment IS the parked column-lean directive, with the click as its gesture.
+> CHANGE 2 — display
+> D-1 TRACKS view gains a slim read-only ROLE STRIP (the column marks with the existing
+> two-marks law) so the click's effect is visible: marks lean on hold, decay on release.
+> Real telemetry only. D-2 Row headers in TRACKS view unchanged (manual track bias,
+> their own marks). The click never moves them; if the mix shifts toward the pointed
+> track, that shows in the read-only fills/heatmap — achieved truth, not a written bias.
+> CHANGE 3 — LANE-OWNERSHIP MATRIX (now total)
+> click/hold (TRACKS) -> COLUMN lanes (settlement) — only writer in TRACKS
+> row-header drag -> ROW lanes (casting) — only writer anywhere
+> grid cell gesture -> CELL lanes (casting) — GRID view only
+> column-header gesture -> COLUMN lanes — GRID view only
+> (view-switch reset V-1 already prevents cross-view double-driving)
+> CHANGE 4 — HYGIENE CHECK: naturalness / no bias muddle (must bite)
+> WS-10 lane-orthogonality audit: a) each lane family has EXACTLY ONE writing gesture
+> per view (assert the matrix above; any second writer to a lane FAILS type-check);
+> b) simultaneous gestures (e.g. held click + held row drag) compose as disjoint
+> sigma-clamped lanes at the single sanctioned entry; no cross-writes, no arbitration
+> code anywhere; c) release-everything => payload == neutral carrier, byte-identical to
+> no carrier (no residue, no accumulation across repeated gestures); d) one uniform
+> decay law across all lean lanes (no per-gesture easing); e) every visible bias mark
+> maps to exactly one owning gesture; every achieved mark maps to telemetry only.
+> Everything else (tab views, switch-reset V-1..4, NOT-A-PLAYHEAD law, heatmap,
+> WS-1..9 as scoped to their surviving lanes) unchanged.
+
+### Amendment-2 honest wall (disclosed): on a region-DISARMED corpus the click emits
+NOTHING (columns honest-absent) — the TRACKS click is inert there, with the existing
+disarm messaging surfaced on the strip. The prior casting-lane scrub would have steered;
+this is the ruled trade for one-gesture-one-meaning.
