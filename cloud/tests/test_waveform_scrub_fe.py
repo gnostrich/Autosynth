@@ -13,11 +13,15 @@ This IS the parked column-lean directive, activated with the click as its gestur
 the original "no settlement-lane changes" scope line no longer holds. The fixtures
 below that named the row/cell emission are rewritten, not relaxed.
 
-LANE-OWNERSHIP MATRIX (total; WS-9):
+LANE-OWNERSHIP MATRIX (total; WS-9/WS-10 — MEASURED by driving the real hit-test and
+the real wheel handler over every part of the surface, not re-described here):
     click/hold (TRACKS)  -> COLUMN lanes  — the only writer in TRACKS
     row-header gesture   -> ROW lanes     — the only writer anywhere
+                            (in TRACKS the WHEEL reaches it from the whole lane, per
+                             the operator's UX ruling — same law, wider surface)
     grid cell gesture    -> CELL lanes    — GRID view only
     grid column header   -> COLUMN lanes  — GRID view only
+    D-1 role strip       -> writes NOTHING (read-only; in no hit-test)
 
 Teeth (each must BITE — the deliberate-violation variant is exercised inline or by the
 mutation harness):
@@ -36,12 +40,23 @@ mutation harness):
          wavemap GET (no method, no body).
   WS-9   lane ownership: the click writes COLUMN keys only; a held row drag and a held
          click compose as disjoint key families with zero cross-writes.
+  WS-10  lane-orthogonality audit:
+         (a) one writing gesture per lane family per view — swept over the surface by
+             driving the REAL handlers; a second writer to a family FAILS;
+         (b) held click + held row gesture compose disjointly at the single entry, and
+             no arbitration code exists in either direction;
+         (c) release-everything == the neutral carrier, byte-identical, with no residue
+             and no accumulation over repeated gestures (the STANDING wheel lean is
+             disclosed as such and returns to neutral byte-identically);
+         (d) one uniform law: one accumulator, one step quantum, one saturation stop,
+             no per-gesture easing/timer/decay anywhere;
+         (e) every bias mark maps to exactly one owning gesture and every achieved mark
+             to telemetry only — enforced where the marks are BORN (the pure placers).
+  D-1    the role strip is read-only: absent from every hit-test, writes nothing, and
+         its achieved/force marks are provenance-split in the pure function.
   W-1    the lane ROW HEADER is the grid's row square verbatim (same kind/key/telemetry).
   V-4    default GRID; only the exact persisted "tracks" token selects the new view.
   FLAG   FIELD_TRACKS_VIEW false pins the surface to GRID (rollback).
-
-FOLLOW-UPS IN FLIGHT (operator deploy-first ruling, 2026-07-30): the D-1 role strip and
-the full WS-10 lane-orthogonality matrix land as separate commits behind this one.
 """
 from __future__ import annotations
 
@@ -109,6 +124,25 @@ def _send_steer_now_src() -> str:
     """The REAL publish path (the widened force vector + the field's two grains). Only
     the terminal `sendSteer` fetch is stubbed in the runtime harness."""
     return _block("  function sendSteerNow(){", "    sendSteer(payload);\n  }")
+
+
+def _func_src(name: str, src: str | None = None) -> str:
+    """The FULL declaration of a top-level function (signature + body), brace-matched —
+    so a real handler can be executed in node exactly as it ships."""
+    src = _inline_js() if src is None else src
+    m = re.search(r"function\s+%s\s*\(" % re.escape(name), src)
+    assert m, f"function {name} missing/renamed"
+    i = src.index("{", m.end() - 1)
+    depth, j = 0, i
+    while j < len(src):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    return src[m.start():j + 1]
 
 
 def _strip_comments(src: str) -> str:
@@ -928,16 +962,35 @@ var fieldSettled = [], fieldNowPlaying = { 7:0.4, 9:0.9 }, fieldNowPlayingUnit =
     fieldBias = {}, fieldStack = [], fieldHover = null,
     fieldWheelBiasState = { key:null, acc:0 };
 var fieldView = "grid", fieldWave = null, fieldWaveState = "idle", fieldScrub = null;
+var fieldZoomWheelState = { acc:0, lastStepMs:-1e9 };
+var performance = { now: function(){ return 0; } };
 function ev(x, y){ return { clientX:x, clientY:y, pointerId:1 }; }
-// lane geometry for this box: rhW = 160, laneH = 189, lane 0 = track 7 (duration 10s)
+// a REAL wheel event over (x, y): dy<0 = wheel up = amplify, one full bias step.
+function wheelEv(x, y, dy){ return { clientX:x, clientY:y, deltaY:dy, deltaMode:0,
+                                     ctrlKey:false, preventDefault:function(){} }; }
+// lane geometry for this box: rhW = 160, lane 0 = track 7 (duration 10s)
 function xAt(t){ return 160 + (t / 10) * 640; }
+// which lane FAMILY a ledger key belongs to ("track" = row, "role" = cell, "col" =
+// column, "unit" = the dormant unit grain). The matrix is asserted on these.
+function famOf(k){ return JSON.parse(k)[0]; }
+function famsOf(obj){
+  var s = {};
+  for(var k in obj){ if(obj.hasOwnProperty(k)) s[famOf(k)] = 1; }
+  return Object.keys(s).sort();
+}
 """
+
+
+def _gesture_src() -> str:
+    """The REAL shared hit-test + wheel handler, so the lane-ownership matrix is
+    measured by driving what ships — not by re-describing it."""
+    return "\n".join([_func_src("fieldSquareAt"), _func_src("fieldOnWheel")])
 
 
 def _runtime_driver(body: str) -> str:
     # newline-joined: the runtime block ends on a line comment.
     return "\n".join([_field_block(), _tracks_block(), _effective_bias_src(),
-                      _tracks_runtime(), _send_steer_now_src(),
+                      _tracks_runtime(), _send_steer_now_src(), _gesture_src(),
                       _FIXTURE, _RUNTIME_HARNESS, body])
 
 
@@ -1103,6 +1156,232 @@ def test_runtime_view_persistence_round_trips_and_defaults_to_grid():
     if(fieldView !== v){ console.log('FAIL unknown view'); process.exit(1); }
     console.log('OK');
     """)) == "OK"
+
+
+# ================= WS-10 : lane-orthogonality audit (a..e) ===================
+#
+# The matrix is MEASURED by driving the real hit-test and the real wheel handler over
+# every part of the surface, not by re-describing them in the test.
+
+def test_ws10a_one_writing_gesture_per_lane_family_per_view():
+    """WS-10(a): sweep the WHOLE surface in each view and record which lane family each
+    gesture can write. TRACKS: the wheel writes ROW anywhere it lands (header or wave,
+    per the UX ruling) and NOTHING over the read-only strip; the click writes COLUMN and
+    only over the wave. GRID: the wheel writes ROW / CELL / COLUMN by region and the
+    click is inert everywhere. A second writer to any family FAILS."""
+    assert _run_node(_runtime_driver("""
+    fieldWave = WM; fieldWaveState = "ready";
+    function sweep(view){
+      fieldView = view;
+      var wheelFams = {}, clickFams = {}, wheelOverStrip = 0;
+      for(var x = 2; x < 800; x += 23){
+        for(var y = 2; y < 400; y += 11){
+          // --- the WHEEL gesture (row/cell/column writer; writes the ledger) ---
+          fieldBias = {}; fieldWheelBiasState = { key:null, acc:0 };
+          fieldOnWheel(wheelEv(x, y, -FIELD_WHEEL_BIAS_PX));
+          var wf = famsOf(fieldBias);
+          for(var i=0;i<wf.length;i++){
+            wheelFams[wf[i]] = 1;
+            if(y >= FIELD_HEADER && y < FIELD_HEADER + FIELD_STRIP_H) wheelOverStrip++;
+          }
+          // --- the CLICK gesture (column writer; writes only the transient map) ---
+          fieldScrub = null; fieldScrubSent = null;
+          fieldScrubStart(ev(x, y));
+          var cm = fieldScrubBiasMap(fieldScrub, fieldWave, world.M | 0);
+          var cf = famsOf(cm || {});
+          for(var j=0;j<cf.length;j++) clickFams[cf[j]] = 1;
+          if(fieldScrub && !fieldLaneAt(fieldLanesPlace(fieldState(), 800, 400).lanes, x, y)
+             && view === "tracks"){
+            console.log('FAIL click outside a wave lane at ' + x + ',' + y); process.exit(1); }
+          fieldScrub = null;
+          // the click NEVER touches the persistent ledger, in either view.
+          if(Object.keys(fieldBias).length && famsOf(fieldBias).indexOf("col") >= 0
+             && view === "tracks"){
+            console.log('FAIL wheel wrote a column in TRACKS at ' + x + ',' + y); process.exit(1); }
+        }
+      }
+      return { wheel: Object.keys(wheelFams).sort(), click: Object.keys(clickFams).sort(),
+               strip: wheelOverStrip };
+    }
+    var T = sweep("tracks");
+    if(JSON.stringify(T.wheel) !== JSON.stringify(["track"])){
+      console.log('FAIL tracks wheel ' + JSON.stringify(T.wheel)); process.exit(1); }
+    if(JSON.stringify(T.click) !== JSON.stringify(["col"])){
+      console.log('FAIL tracks click ' + JSON.stringify(T.click)); process.exit(1); }
+    if(T.strip !== 0){ console.log('FAIL strip wrote ' + T.strip); process.exit(1); }
+
+    var G = sweep("grid");
+    if(JSON.stringify(G.wheel) !== JSON.stringify(["col","role","track"])){
+      console.log('FAIL grid wheel ' + JSON.stringify(G.wheel)); process.exit(1); }
+    if(JSON.stringify(G.click) !== JSON.stringify([])){
+      console.log('FAIL grid click ' + JSON.stringify(G.click)); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_ws10b_simultaneous_gestures_compose_disjoint_with_no_arbitration():
+    """WS-10(b): a HELD click and a HELD row gesture at the same time compose as
+    disjoint sigma-clamped lanes at the single sanctioned entry — the row value is the
+    row gesture's alone, the columns the click's alone, no key is written by both, and
+    neither handler contains any code that looks at the other (no arbitration)."""
+    assert _run_node(_runtime_driver("""
+    fieldView = "tracks"; fieldWave = WM; fieldWaveState = "ready";
+    // hold the CLICK on lane 0 at t = 1.7 ...
+    fieldScrubStart(ev(xAt(1.7), 100));
+    if(!fieldScrub){ console.log('FAIL no click'); process.exit(1); }
+    // ... and, still holding, work the ROW gesture on the same lane (wheel up = amplify).
+    fieldOnWheel(wheelEv(40, 100, -FIELD_WHEEL_BIAS_PX));
+    var last = JSON.parse(PUBLISHED[PUBLISHED.length - 1]);
+    // DISJOINT at the payload: the row carries ONLY the row gesture's step, the columns
+    // ONLY the click's weighted mixture, and the cell lane nobody drove stays empty.
+    if(Math.abs(last.channel_bias[0] - FIELD_BIAS_STEP) > 1e-12){
+      console.log('FAIL row ' + JSON.stringify(last.channel_bias)); process.exit(1); }
+    if(last.channel_bias[1] !== 0){ console.log('FAIL foreign row'); process.exit(1); }
+    if(JSON.stringify(last.track_role_bias) !== "[]"){
+      console.log('FAIL cells ' + JSON.stringify(last.track_role_bias)); process.exit(1); }
+    if(JSON.stringify(last.region) !== JSON.stringify([0.0625, 0.03125, 0.03125])){
+      console.log('FAIL cols ' + JSON.stringify(last.region)); process.exit(1); }
+    // DISJOINT at the state: no key is written by both gestures.
+    var clickMap = fieldScrubBiasMap(fieldScrub, fieldWave, world.M | 0);
+    for(var k in clickMap){
+      if(fieldBias.hasOwnProperty(k)){ console.log('FAIL cross-write ' + k); process.exit(1); } }
+    if(JSON.stringify(famsOf(fieldBias)) !== JSON.stringify(["track"])){
+      console.log('FAIL ledger ' + JSON.stringify(famsOf(fieldBias))); process.exit(1); }
+    if(JSON.stringify(famsOf(clickMap)) !== JSON.stringify(["col"])){
+      console.log('FAIL clickmap ' + JSON.stringify(famsOf(clickMap))); process.exit(1); }
+    // releasing the CLICK leaves the ROW gesture's lean exactly as it was (no coupling).
+    fieldScrubEnd();
+    var after = JSON.parse(PUBLISHED[PUBLISHED.length - 1]);
+    if(Math.abs(after.channel_bias[0] - FIELD_BIAS_STEP) > 1e-12){
+      console.log('FAIL row after release ' + JSON.stringify(after.channel_bias)); process.exit(1); }
+    if(JSON.stringify(after.region) !== JSON.stringify([0,0,0])){
+      console.log('FAIL cols after release ' + JSON.stringify(after.region)); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_ws10b_no_arbitration_code_exists_between_the_gestures():
+    """WS-10(b), static half: there is no arbitration ANYWHERE — neither handler reads
+    the other's state, and no priority/precedence/suppression machinery exists."""
+    fns = _js_functions(_strip_comments(_inline_js()))
+    for name in ("fieldOnWheel", "fieldTouchMove", "fieldTouchStart", "fieldTouchEnd"):
+        body = fns[name]
+        assert "fieldScrub" not in body, \
+            f"{name} must not look at the click's state (that would be arbitration)"
+    for name in ("fieldScrubStart", "fieldScrubMove", "fieldScrubEnd", "fieldScrubPublish"):
+        body = fns[name]
+        assert "fieldWheelBiasState" not in body and "fieldAddBias" not in body, \
+            f"{name} must not look at or write the row gesture's state"
+    for banned in ("priority", "precedence", "arbitrat", "suppressGesture", "gestureLock"):
+        assert banned not in _strip_comments(_inline_js()).lower(), \
+            f"no arbitration machinery may exist ({banned})"
+
+
+def test_ws10c_release_everything_is_the_byte_identical_neutral_carrier():
+    """WS-10(c): with every held gesture released the payload IS the neutral carrier,
+    byte-identical to no carrier — and repeated gestures accumulate NOTHING. Disclosed
+    honestly: the row/column WHEEL lean is a STANDING lean by the field's pre-existing
+    law (it is not a held gesture); it returns to neutral by the reverse gesture or the
+    view-switch reset, and that return is byte-identical too."""
+    assert _run_node(_runtime_driver("""
+    var NEUTRAL_WIRE = '{"channel_bias":[0,0],"unit_bias":{},"track_role_bias":[],"region":[0,0,0]}';
+    fieldView = "tracks"; fieldWave = WM; fieldWaveState = "ready";
+    // TEN complete click gestures: each release must land EXACTLY on neutral.
+    for(var i = 0; i < 10; i++){
+      fieldScrubStart(ev(xAt(1.7), 100));
+      fieldScrubMove(ev(xAt(0.625), 100));
+      fieldScrubMove(ev(xAt(2.7), 100));
+      fieldScrubEnd();
+      var p = PUBLISHED[PUBLISHED.length - 1];
+      if(p !== NEUTRAL_WIRE){ console.log('FAIL cycle ' + i + ' ' + p); process.exit(1); }
+      if(JSON.stringify(fieldBias) !== "{}"){
+        console.log('FAIL residue ' + i + ' ' + JSON.stringify(fieldBias)); process.exit(1); }
+    }
+    // the STANDING lean (row wheel): up one step, then back down one step -> neutral,
+    // byte-identical. No drift, no leftover sub-step remainder.
+    fieldOnWheel(wheelEv(40, 100, -FIELD_WHEEL_BIAS_PX));
+    if(PUBLISHED[PUBLISHED.length - 1] === NEUTRAL_WIRE){
+      console.log('FAIL standing lean did nothing'); process.exit(1); }
+    fieldOnWheel(wheelEv(40, 100, FIELD_WHEEL_BIAS_PX));
+    if(PUBLISHED[PUBLISHED.length - 1] !== NEUTRAL_WIRE){
+      console.log('FAIL back to neutral ' + PUBLISHED[PUBLISHED.length-1]); process.exit(1); }
+    if(JSON.stringify(fieldBias) !== "{}"){
+      console.log('FAIL ledger residue ' + JSON.stringify(fieldBias)); process.exit(1); }
+    // ... and the view switch zeroes everything regardless (V-1), also byte-identically.
+    fieldOnWheel(wheelEv(40, 100, -FIELD_WHEEL_BIAS_PX));
+    fieldScrubStart(ev(xAt(1.7), 100));
+    fieldSetView("grid");
+    if(PUBLISHED[PUBLISHED.length - 1] !== NEUTRAL_WIRE){
+      console.log('FAIL switch ' + PUBLISHED[PUBLISHED.length-1]); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_ws10d_one_uniform_magnitude_and_release_law_across_the_lanes():
+    """WS-10(d): every lean lane shares ONE law — one accumulator (fieldAddBias, the
+    single clamp), one step quantum (FIELD_BIAS_STEP), one stop (FIELD_BIAS_LIMIT), and
+    one release rule. No per-gesture easing, no timers, no second decay constant."""
+    js = _strip_comments(_inline_js())
+    # (i) exactly one accumulator writes a lean ledger: no direct ledger assignment.
+    assert len(re.findall(r"function\s+fieldAddBias\s*\(", js)) == 1, \
+        "there must be exactly one bias accumulator"
+    stray = [m for m in re.findall(r"(\w*[Bb]ias)\s*\[[^\]]+\]\s*=", js)
+             if m not in ("bias",)]          # `bias[keyStr] =` is fieldAddBias's own line
+    assert stray == [], f"a lean ledger is being written outside fieldAddBias: {stray}"
+    # (ii) both gesture families derive magnitude from the SAME constants.
+    fns = _js_functions(js)
+    for name in ("fieldOnWheel", "fieldTouchMove", "fieldScrubMag"):
+        assert "FIELD_BIAS_STEP" in fns[name], f"{name} must use the shared step quantum"
+    limit_users = [n for n in ("fieldAddBias", "fieldScrubMag") if "FIELD_BIAS_LIMIT" in fns[n]]
+    assert set(limit_users) == {"fieldAddBias", "fieldScrubMag"}, \
+        "the saturation stop must be the shared FIELD_BIAS_LIMIT"
+    # (iii) no easing/timer/decay machinery in any gesture or publish path.
+    for name in ("fieldOnWheel", "fieldTouchMove", "fieldScrubStart", "fieldScrubMove",
+                 "fieldScrubEnd", "fieldScrubPublish", "fieldSetView", "fieldAddBias",
+                 "fieldScrubMag", "fieldScrubLeans", "fieldMergeLeans"):
+        body = fns[name]
+        for banned in ("setTimeout", "setInterval", "requestAnimationFrame", "ease",
+                       "tween", "lerp", "spring", "decay", "Date.now"):
+            assert banned not in body, f"{name} must carry no per-gesture {banned}"
+
+
+def test_ws10e_every_mark_has_exactly_one_owner():
+    """WS-10(e): each visible mark maps to exactly one owning gesture, and every achieved
+    mark to telemetry only. Enforced where the marks are BORN (the pure placers), so a
+    renderer cannot quietly cross the wires: `settled` may only come from a telemetry
+    store, `bias`/`force` only from the ledger."""
+    tracks = _strip_comments(_tracks_block())
+    fns = _js_functions(tracks)
+    place = fns["fieldLanesPlace"]
+    assert "settled:fieldClamp01((st.nowplaying && st.nowplaying[t]) || 0)" in place, \
+        "the row's ACHIEVED mark must come from the nowplaying telemetry store"
+    assert "bias:st.bias[fieldKeyStr(tkey)] || 0" in place, \
+        "the row's FORCE mark must come from the ledger"
+    strip = fns["fieldRoleStripMarks"]
+    assert "fieldColShares(st, M)" in strip and "shares.glow" in strip, \
+        "the column's ACHIEVED mark must come from the shared telemetry reduction"
+    assert 'st.bias[fieldKeyStr(["col", r])]' in strip, \
+        "the column's FORCE mark must come from the ledger"
+    assert "st.bias" not in strip.split("achieved:")[1].split("force:")[0], \
+        "the achieved mark must not read the ledger"
+    # the leaf renderers keep the split: achieved-drawers read telemetry only, the
+    # force-drawer reads the gesture only.
+    rt = _js_functions(_strip_comments(_tracks_runtime()))
+    assert "nowplayingUnit" in rt["fieldDrawHeat"] and "st.bias" not in rt["fieldDrawHeat"], \
+        "the heatmap is an ACHIEVED mark: telemetry in, no lean"
+    # the FORCE mark may not read ANY telemetry — checked case-insensitively so the
+    # module-level stores (fieldNowPlaying, fieldSettled, ...) cannot sneak in either.
+    force_mark = rt["fieldDrawScrubMark"].lower()
+    for banned in ("nowplaying", "roleact", "settled", "fieldsettled", "colshares",
+                   "telemetry"):
+        assert banned not in force_mark, \
+            f"the force mark must not read telemetry ({banned})"
+    # ... and symmetrically, no achieved-mark drawer may read the ledger or the gesture.
+    for name in ("fieldDrawHeat", "fieldDrawWave"):
+        body = rt[name]
+        for banned in ("st.bias", "fieldBias", "fieldScrub"):
+            assert banned not in body, \
+                f"{name} is an ACHIEVED/GIVEN mark and must not read {banned}"
 
 
 # ============================ syntax ========================================
