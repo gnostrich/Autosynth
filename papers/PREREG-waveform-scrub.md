@@ -107,12 +107,14 @@ untouched.
   leaves the box except as the engine's output stream.
 
 ## Honest walls (disclosed up front)
-- **q(role|unit) sourcing:** the directive requires the trained world's STORED soft
-  assignment. If the stored provenance carries only a coarser assignment than per-unit
-  (e.g. per-prototype), the mapping uses the finest STORED level and the gate fixture
-  (WS-1) asserts equality against exactly that stored object — never an invented
-  refinement. If NO stored soft assignment exists at any usable level, the build STOPS
-  and reports the wall (no fabricated weights).
+- **q(role|unit) sourcing (REWRITTEN post-audit, S-1 ratified):** the finest STORED
+  per-unit assignment is the HARD label `world.index.unit_role` (per-prototype `pis` is
+  refused: the unit→prototype link is unstored, and `pis` is a different coupling than
+  the one `unit_role` came from — using it would be an invented refinement AND a second
+  role channel). W-2's softness is the tatum-WINDOW MIXTURE: the n_bands stored units
+  under t, combined by their stored masses — every term a stored value. WS-1 gates this
+  exactly; no per-unit soft object is claimed to exist. Expressive shape disclosed: no
+  time resolution finer than a tatum, no band selectivity within the stack.
 - **Slice window:** the "window at t" is the stored unit span(s) containing t — the
   pre-registered slice grid is the world's own unit segmentation, not a new grid.
 
@@ -124,3 +126,32 @@ full cloud suite green; ets-auditor adversarial PASS; live verification on ets-w
 ## Rollback
 FE view is flag-gated (`FIELD_TRACKS_VIEW`, default on; off = GRID-only, pre-directive
 surface). Backend endpoint is additive/read-only. Single revert restores prior state.
+
+## AMENDMENT (operator, 2026-07-30, verbatim) — CELLS-ONLY + lane ownership
+
+> # AMENDMENT to ets-directive-waveform-scrub-view — CELLS-ONLY + lane ownership
+> # Incremental; apply on top of the already-sent directive. Log to LEDGER.
+>
+> ## CHANGE 1 — W-2 emission: CELLS ONLY (lane-ownership law)
+> The scrub emits CELL biases (i,r) weighted by w_r — and NOTHING else.
+> The scrub does NOT write the row lane. The row lane is owned exclusively
+> by the row-header gesture. One gesture, one lane set. Held header-drag +
+> held scrub compose at the payload level as DISJOINT lanes (each
+> sigma-clamped on its own lane, existing multi-lane law); no arbitration,
+> no cross-writes.
+> Semantics: scrub = "track i's version of what this moment is made of";
+> a general track lean = the row header, not the scrub.
+>
+> ## CHANGE 2 — W-4 equivalence fixture updated
+> scrub(i,t) payload == the equivalent manual CELL gesture payload in GRID
+> view (the w_r-weighted cells and nothing else). Row component removed
+> from the fixture's expected payload.
+>
+> ## CHANGE 3 — new check WS-9 (must bite)
+> WS-9 lane-ownership: instrument the payload; scrub events write cell
+> lanes only (no row-lane component from the scrub path). Fixture holding
+> row-header drag AND scrub simultaneously must show disjoint composition
+> with zero cross-writes. Any scrub-side row write FAILS.
+>
+> Everything else in the directive (tab views, switch-reset V-1..4,
+> NOT-A-PLAYHEAD law, WS-1..8) unchanged.

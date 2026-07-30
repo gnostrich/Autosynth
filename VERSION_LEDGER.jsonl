@@ -1327,3 +1327,5 @@
 {"head": "a7a3e54", "path": ".claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py", "tool": "Edit", "ts": "2026-07-30T12:12:27+00:00"}
 {"head": "1d18dca", "path": "cloud/tests/test_wavemap_mapping_honesty.py", "tool": "Edit", "ts": "2026-07-30T12:16:23+00:00"}
 {"head": "ae451e2", "path": "cloud/companion/engine_bridge.py", "tool": "Edit", "ts": "2026-07-30T12:18:50+00:00"}
+{"head": "c253e2b", "path": "cloud/companion/static/index.html", "tool": "Edit", "ts": "2026-07-30T12:51:58+00:00"}
+{"head": "c253e2b", "path": "cloud/tests/test_waveform_scrub_fe.py", "tool": "Edit", "ts": "2026-07-30T12:53:05+00:00"}

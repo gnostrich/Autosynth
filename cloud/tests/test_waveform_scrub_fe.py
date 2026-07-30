@@ -10,7 +10,7 @@ saturating accumulator (fieldAddBias) and cast by the SAME single payload builde
 Teeth (each must BITE — the deliberate-violation variant is exercised inline):
   WS-5  switch-reset: after a view switch the payload is the NEUTRAL carrier,
         byte-for-byte; switching back does not resurrect the old leans.
-  W-4   same-jack: scrub(i, t) payload == the equivalent manual GRID row+cell payload
+  W-4   same-jack (AMENDED 2026-07-30): scrub(i, t) payload == the equivalent manual GRID CELL payload (cells only; row lane owned by the row header — WS-9)
         built from the same numbers (byte-identical JSON).
   WS-1  mapping honesty: w_r == the EXACT mass-weighted stored q of the selected
         slices; an intentionally smoothed variant FAILS the same assertion.
@@ -236,8 +236,9 @@ def test_zero_stored_role_mass_yields_no_cell_lean_not_a_uniform():
     if(JSON.stringify(w.w) !== JSON.stringify([0,0,0])){
       console.log('FAIL ' + JSON.stringify(w.w)); process.exit(1); }
     var leans = fieldScrubBiasMap({ track:7, t:0.5, travel:0 }, wm, 3);
-    // the ROW lean still stands (the roll-up does not route through q); NO cell entries.
-    if(JSON.stringify(Object.keys(leans)) !== JSON.stringify(['["track",7]'])){
+    // AMENDED (cells only): zero stored role mass -> NO leans at all — never a
+    // fabricated uniform, and never a row write (the row belongs to the header).
+    if(JSON.stringify(Object.keys(leans)) !== "[]"){
       console.log('FAIL keys ' + JSON.stringify(Object.keys(leans))); process.exit(1); }
     console.log('OK');
     """)) == "OK"
@@ -245,19 +246,18 @@ def test_zero_stored_role_mass_yields_no_cell_lean_not_a_uniform():
 
 # ============================ W-4 : same-jack ================================
 
-def test_scrub_payload_equals_the_manual_grid_row_and_cell_payload():
-    """THE law: scrub(i, t) emits exactly what the operator would get by leaning the
-    GRID's row i and its role cells by the same numbers — same keys, same builder,
-    byte-identical JSON. The BITE: a payload built with any other key shape (e.g. the
-    unit grain) is shown to differ."""
+def test_scrub_payload_equals_the_manual_grid_cell_payload():
+    """THE law (AMENDMENT 2026-07-30, CHANGE 2): scrub(i, t) emits exactly what the
+    operator would get by leaning the GRID's (i, r) role CELLS by the same numbers —
+    and NOTHING else. No row component (lane-ownership law: the row belongs to the
+    row-header gesture). The BITE: a payload with a row or unit component differs."""
     assert _run_node(_driver("""
     var scrub = { track:7, t:1.7, travel:0 };
     var scrubPayload = payloadOf(fieldMergeLeans({}, fieldScrubBiasMap(scrub, WM, 3)));
 
-    // the MANUAL grid gesture: row 7 leaned by MAG0, then its (7, r) cells leaned by
-    // MAG0 * w_r — through the SAME accumulator the wheel/drag handlers call.
+    // the MANUAL grid gesture: ONLY the (7, r) cells leaned by MAG0 * w_r —
+    // through the SAME accumulator the wheel/drag handlers call.
     var manual = {};
-    fieldAddBias(manual, fieldKeyStr(["track", 7]), MAG0);
     for(var r=0;r<3;r++){
       var v = MAG0 * W_EXPECT[r];
       if(v > 0) fieldAddBias(manual, fieldKeyStr(["role", 7, r]), v);
@@ -267,16 +267,50 @@ def test_scrub_payload_equals_the_manual_grid_row_and_cell_payload():
       console.log('FAIL\\n  scrub  ' + scrubPayload + '\\n  manual ' + manualPayload);
       process.exit(1); }
     if(scrubPayload === NEUTRAL){ console.log('FAIL inert'); process.exit(1); }
-    // and it really is the two sanctioned grains, nothing else.
+    // it really is the CELL grain alone: channel_bias stays all-zero (row untouched).
     var p = JSON.parse(scrubPayload);
-    if(JSON.stringify(p.channel_bias) !== JSON.stringify([MAG0, 0])){
+    if(JSON.stringify(p.channel_bias) !== JSON.stringify([0, 0])){
       console.log('FAIL cb ' + JSON.stringify(p.channel_bias)); process.exit(1); }
     if(JSON.stringify(p.track_role_bias) !==
        JSON.stringify([[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]])){
       console.log('FAIL tr ' + JSON.stringify(p.track_role_bias)); process.exit(1); }
-    // the BITE: the unit grain (a uid-keyed lean) would be a DIFFERENT payload.
+    // the BITE: a row-bearing payload (the OLD pre-amendment shape) must differ.
+    var old = {}; fieldAddBias(old, fieldKeyStr(["track", 7]), MAG0);
+    for(var r=0;r<3;r++){
+      var v = MAG0 * W_EXPECT[r];
+      if(v > 0) fieldAddBias(old, fieldKeyStr(["role", 7, r]), v);
+    }
+    if(payloadOf(old) === scrubPayload){ console.log('FAIL row-bite'); process.exit(1); }
+    // and the unit grain would be a DIFFERENT payload too.
     var wrong = {}; fieldAddBias(wrong, fieldKeyStr(["unit", 0, 102, 7]), MAG0);
     if(payloadOf(wrong) === scrubPayload){ console.log('FAIL bite'); process.exit(1); }
+    console.log('OK');
+    """)) == "OK"
+
+
+def test_ws9_lane_ownership_scrub_and_row_header_compose_disjoint():
+    """WS-9 (AMENDMENT 2026-07-30, CHANGE 3): the scrub writes CELL lanes only; the row
+    lane is owned by the row-header gesture. Holding BOTH composes disjointly — the row
+    value comes solely from the header drag, the cells solely from the scrub, with zero
+    cross-writes. A scrub-side row write FAILS (asserted via the leans' key set)."""
+    assert _run_node(_driver("""
+    // scrub-side leans: key set must contain ONLY "role" keys (any row key FAILS).
+    var m = fieldScrubBiasMap({ track:7, t:1.7, travel:0 }, WM, 3);
+    for(var k in m){
+      if(JSON.parse(k)[0] !== "role"){ console.log('FAIL scrub-writes-' + k); process.exit(1); }
+    }
+    // simultaneous held row-header drag (row lane) + held scrub (cell lanes):
+    var ledger = {};
+    fieldAddBias(ledger, fieldKeyStr(["track", 7]), 0.25);      // the header's lane
+    var both = fieldMergeLeans(ledger, m);                       // + the scrub's lanes
+    var p = JSON.parse(payloadOf(both));
+    // DISJOINT: row value is exactly the header's; cells exactly the scrub's.
+    if(p.channel_bias[1] !== 0){ console.log('FAIL foreign-row'); process.exit(1); }
+    if(Math.abs(p.channel_bias[0] - 0.25) > 1e-12){
+      console.log('FAIL row ' + p.channel_bias[0]); process.exit(1); }
+    if(JSON.stringify(p.track_role_bias) !==
+       JSON.stringify([[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]])){
+      console.log('FAIL cells ' + JSON.stringify(p.track_role_bias)); process.exit(1); }
     console.log('OK');
     """)) == "OK"
 
@@ -319,11 +353,12 @@ def test_scrub_magnitude_is_the_fields_own_step_and_saturation_law():
       if(m < prev - 1e-12 || m > FIELD_BIAS_LIMIT){ console.log('FAIL mono ' + px); process.exit(1); }
       prev = m;
     }
-    // the ledger sum saturates through the SAME accumulator (a standing row lean plus
-    // a scrub can never exceed the field's own stop).
-    var base = {}; fieldAddBias(base, fieldKeyStr(["track", 7]), 0.95);
+    // the ledger sum saturates through the SAME accumulator (a standing CELL lean plus
+    // a scrub can never exceed the field's own stop) — asserted on the cell lane, the
+    // only lane the AMENDED scrub writes.
+    var base = {}; fieldAddBias(base, fieldKeyStr(["role", 7, 0]), 0.95);
     var merged = fieldMergeLeans(base, fieldScrubBiasMap({track:7,t:1.7,travel:1e6}, WM, 3));
-    if(merged['["track",7]'] !== FIELD_BIAS_LIMIT){
+    if(merged['["role",7,0]'] !== FIELD_BIAS_LIMIT){
       console.log('FAIL merge sat ' + merged['["track",7]']); process.exit(1); }
     console.log('OK');
     """)) == "OK"
@@ -400,7 +435,6 @@ def test_scrub_omits_the_lanes_the_grid_omits_and_never_rides_settlement():
     var leans = fieldScrubBiasMap({ track:7, t:1.7, travel:0 }, WM, 3);
     var scrubPayload = payloadOf(fieldMergeLeans({}, leans));
     var manual = {};
-    fieldAddBias(manual, fieldKeyStr(["track", 7]), MAG0);
     for(var r=0;r<3;r++){ var v = MAG0*W_EXPECT[r]; if(v>0) fieldAddBias(manual, fieldKeyStr(["role",7,r]), v); }
     if(scrubPayload !== payloadOf(manual)){
       console.log('FAIL parity ' + scrubPayload); process.exit(1); }
@@ -415,8 +449,8 @@ def test_scrub_omits_the_lanes_the_grid_omits_and_never_rides_settlement():
     var q = JSON.parse(payloadOf(fieldMergeLeans({}, fieldScrubBiasMap({track:7,t:1.7,travel:0}, WM, 3))));
     if(JSON.stringify(q.region_add) !== JSON.stringify([0,0,0])){
       console.log('FAIL region disarmed ' + JSON.stringify(q.region_add)); process.exit(1); }
-    if(JSON.stringify(q.channel_bias) !== JSON.stringify([MAG0, 0])){
-      console.log('FAIL cb disarmed'); process.exit(1); }
+    if(JSON.stringify(q.channel_bias) !== JSON.stringify([0, 0])){
+      console.log('FAIL cb disarmed (row must stay untouched — cells only)'); process.exit(1); }
     // the BITE: a COLUMN lean DOES ride settlement on an armed world — so the all-zero
     // region_add above is a real fact about the scrub, not an inert assertion.
     world = { channels:[{track_id:7}], M:3, regionCap:1, regionArmed:true };
@@ -586,8 +620,10 @@ def test_no_unit_id_ever_leaves_the_scrub_path():
     fns = _js_functions(_strip_comments(_tracks_block()))
     fns.update(_js_functions(_strip_comments(_tracks_runtime())))
     leans = fns["fieldScrubLeans"]
-    assert '["track", tid | 0]' in leans and '["role", tid | 0, r]' in leans, \
-        "the scrub's lean keys must be the row and cell grains"
+    assert '["role", tid | 0, r]' in leans, \
+        "the scrub's lean keys must be the cell grain"
+    assert '["track"' not in leans, \
+        "AMENDMENT/WS-9: the scrub must never build a row lean"
     for grain in ("unit", "uid", "unit_id"):
         assert grain not in leans, f"a scrub lean must never name {grain!r}"
     for name in ("fieldScrubWeights", "fieldSlicesAt", "fieldScrubBiasMap",
@@ -760,7 +796,7 @@ def _runtime_driver(body: str) -> str:
 
 def test_runtime_a_full_scrub_gesture_publishes_only_bias_payloads():
     """The pointer's ENTIRE footprint, measured: a view switch publishes the neutral
-    carrier; pointer-down on a lane publishes exactly the W-4 row+cell payload; a move
+    carrier; pointer-down on a lane publishes exactly the AMENDED W-4 cells-only payload; a move
     that changes nothing publishes nothing; a move to another stored slice publishes the
     new conditional; release returns exactly to the standing ledger. Every publish goes
     through the ONE steer call site and nothing else is ever called."""
@@ -784,7 +820,7 @@ def test_runtime_a_full_scrub_gesture_publishes_only_bias_payloads():
     fieldScrubStart(ev(xAt(1.7), 100));
     if(!fieldScrub || fieldScrub.track !== 7){ console.log('FAIL no scrub'); process.exit(1); }
     if(PUBLISHED.length !== 2){ console.log('FAIL down publish'); process.exit(1); }
-    if(PUBLISHED[1] !== '{"channel_bias":[0.125,0],"unit_bias":{},"track_role_bias":' +
+    if(PUBLISHED[1] !== '{"channel_bias":[0,0],"unit_bias":{},"track_role_bias":' +
        '[[7,0,0.0625],[7,1,0.03125],[7,2,0.03125]],"region":[0,0,0]}'){
       console.log('FAIL down payload ' + PUBLISHED[1]); process.exit(1); }
 
@@ -795,7 +831,7 @@ def test_runtime_a_full_scrub_gesture_publishes_only_bias_payloads():
     // --- a move to another STORED slice (t = 0.625) with 2 further travel steps.
     fieldScrubMove(ev(xAt(0.625), 100));
     if(PUBLISHED.length !== 3){ console.log('FAIL move publish'); process.exit(1); }
-    if(PUBLISHED[2] !== '{"channel_bias":[0.375,0],"unit_bias":{},' +
+    if(PUBLISHED[2] !== '{"channel_bias":[0,0],"unit_bias":{},' +
        '"track_role_bias":[[7,0,0.375]],"region":[0,0,0]}'){
       console.log('FAIL move payload ' + PUBLISHED[2]); process.exit(1); }
 
