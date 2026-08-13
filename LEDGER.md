@@ -1838,35 +1838,12 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:21+00:00)
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:31+00:00)
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:41+00:00)
-- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:59+00:00)
 
-## 2026-08-13 — Operator rulings on Amendment 1's two flags: both CONFIRMED
-- Slew adoption **approved as built** (measure the feel, don't tune it; item-5
-  knob only later, based on the number).
-- Fluctuation floor **confirmed, no switch** (participation-ratio would be a
-  category error on a scalar). "Arrived = the remaining distance is smaller
-  than the breathing."
-- **Standing requirement for Train B:** the plateau is now the only failure mode
-  a user sees — stall rendering gets the same care as the happy path.
-- **Banked, out of scope:** web sliders may not be slew-limited at all (panel
-  slew never imported in `cloud/`) → next deadweight/faithfulness sweep.
-  slew never imported in `cloud/`) → next deadweight/faithfulness sweep.
-
-## 2026-08-13 — LIVE MODE Amendment 2: LIVE IDLES SILENT (operator, verbatim)
-- `Append` papers/PREREG-live-mode.md — B-0 idle state + B-1 first-click
-  immediacy; LM-9 (idle-silence) and LM-10 (first-click) added.
-- **Collision resolved:** my Amendment-1 register had used LM-9 for the
-  no-timetable check; the operator's LM-9/LM-10 are authoritative, so mine is
-  renumbered **LM-11** (content unchanged). No operator number shadowed.
-- **Design consequence recorded:** idle silence is a TRANSPORT-gated hold, never
-  an empty/neutral carrier — a neutral carrier means *no restriction* (the free
-  blend), which is precisely what B-0 forbids. Keeps LM-1's neutral law
-  un-overloaded and adds no new muting path.
-- `Append` REGISTRY.jsonl — `live-mode-amendment-2-idles-silent-2026-08-13`.
-
-> **LEDGER-INTEGRITY DEFECT (banked, 2026-08-13):** the provenance auto-appender
-> rewrites this file's tail and has now DELETED hand-written narrative sections
-> twice (restored from commits `c580f08` and `d6ab026`). The authoritative record
-> for the LIVE MODE build is therefore `papers/PREREG-live-mode.md` +
-> `REGISTRY.jsonl`, both of which the hook does not touch. Filed for the same
-> sweep as the web-slider slew divergence — not patched mid-train.
+### at `72e674c`
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:59:58+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/REGISTRY.jsonl (2026-08-13T17:08:50+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/LEDGER.md (2026-08-13T17:09:23+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:04+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:10+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:19+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:23+00:00)
