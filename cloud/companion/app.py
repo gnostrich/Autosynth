@@ -1474,6 +1474,19 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/telemetry":
             self._stream_telemetry(session)
             return
+        # LIVE MODE (Train B2): the current STRAIGHT-phase transport state,
+        # MEASURED off the produce loop's own placement telemetry (never a
+        # predicted or timer-derived position — see StreamPlayer.live_state).
+        if path == "/api/live/state":
+            p = self.hub.playable_for(session)
+            if p is None:
+                self._json(200, {"ok": True, "mode": "idle", "track": None,
+                                 "unit": None, "slice_index": None,
+                                 "starved": False,
+                                 "reason": self._no_world_reason(session)})
+                return
+            self._json(200, {"ok": True, **p.live_state()})
+            return
         self._send(404, b"not found", "text/plain")
 
     def _serve_static(self, rel: str, ctype: str):
@@ -1834,6 +1847,56 @@ class _Handler(BaseHTTPRequestHandler):
             if p is not None:
                 p.stop()
             self._json(200, {"ok": True, "playing": False})
+            return
+
+        # --- LIVE mode (papers/PREREG-live-mode.md, Train B2 — playable
+        # milestone only: straight play under a full fence; no bridge, no
+        # fence release, no convergence arrival, no journey bar, no fidelity
+        # metric — those are later trains). Both routes follow the exact
+        # idiom of /api/play and /api/stop above: resolve the SAME playable
+        # engine (one engine, one audio path), delegate to its own methods,
+        # never a second decision channel.
+        if path == "/api/live/start":
+            p = self.hub.playable_for(session)
+            if p is None:
+                self._json(409, {"ok": False, "error": "no playable world"})
+                return
+            data = {}
+            if body:
+                try:
+                    data = json.loads(body.decode())
+                except Exception:
+                    data = {}
+            track, t = data.get("track"), data.get("t")
+            if track is None or t is None:
+                self._json(400, {"ok": False,
+                                 "error": "body must be {track:<int>, t:<seconds>}"})
+                return
+            from cloud.companion.live import LiveCarrierUnavailable
+            try:
+                out = p.live_start(int(track), float(t))
+            except LiveCarrierUnavailable as exc:
+                # A-2/A2.3: refuse HONESTLY rather than ever falling back to
+                # unfenced (free-blend) play — B-0 forbids that sound in LIVE.
+                self._json(503, {"ok": False, "error": str(exc)})
+                return
+            except (ValueError, TypeError) as exc:
+                self._json(400, {"ok": False, "error": str(exc)})
+                return
+            except Exception as exc:
+                log.exception("live_start failed")
+                self._json(500, {"ok": False,
+                                 "error": f"{type(exc).__name__}: {exc}"})
+                return
+            self._json(200, {"ok": True, "mode": "straight", **out})
+            return
+        if path == "/api/live/stop":
+            # V-1: leaving LIVE (or re-entering it) must not leave a fence
+            # behind. Idempotent whether the fence was set or already idle.
+            p = self.hub.playable_for(session)
+            if p is not None:
+                p.live_stop()
+            self._json(200, {"ok": True, "mode": "idle"})
             return
 
         # --- shared-set catalog (opt-in, per set; region-tilt only for visitors) ---
