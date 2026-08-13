@@ -1840,3 +1840,15 @@ in commit c580f08)
   a user sees — stall rendering gets the same care as the happy path.
 - **Banked, out of scope:** web sliders may not be slew-limited at all (panel
   slew never imported in `cloud/`) → next deadweight/faithfulness sweep.
+
+## 2026-08-13 — LIVE MODE Amendment 2: LIVE IDLES SILENT (operator, verbatim)
+- `Append` papers/PREREG-live-mode.md — B-0 idle state + B-1 first-click
+  immediacy; LM-9 (idle-silence) and LM-10 (first-click) added.
+- **Collision resolved:** my Amendment-1 register had used LM-9 for the
+  no-timetable check; the operator's LM-9/LM-10 are authoritative, so mine is
+  renumbered **LM-11** (content unchanged). No operator number shadowed.
+- **Design consequence recorded:** idle silence is a TRANSPORT-gated hold, never
+  an empty/neutral carrier — a neutral carrier means *no restriction* (the free
+  blend), which is precisely what B-0 forbids. Keeps LM-1's neutral law
+  un-overloaded and adds no new muting path.
+- `Append` REGISTRY.jsonl — `live-mode-amendment-2-idles-silent-2026-08-13`.
