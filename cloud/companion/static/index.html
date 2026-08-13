@@ -3768,9 +3768,16 @@
   // forked: idle -> start the shared audio path, paused -> resume it, already playing ->
   // untouched. B-1-amended/LM-10 read literally: "straight play begins... at once" means
   // the ONE shared audio path actually runs, not just that a fence now exists server-side.
+  // A LIVE click always gets a FRESH stream. Entering LIVE parks the engine (B-0's
+  // idle hold), which starves any stream that was already open — the deck then reads
+  // as "playing" while its audio path is dead, so the old "start only if idle" test
+  // left a click silent after a fraction of a second of leftover buffer, with the
+  // timer still running. Tearing the stream down and reopening it on every fence is
+  // also the honest thing for a re-click: the new fence starts at the new spot, so a
+  // stream still carrying the old fence's buffered audio would play the wrong place.
   function fieldLiveEnsureTransport(){
-    if(state === "idle") startPlayback();
-    else if(state === "paused") resumePlayback();
+    if(state !== "idle") stopPlayback();
+    startPlayback();
   }
   // FIRST CLICK = IMMEDIATE START, NO BRIDGE (B-1 amended / LM-10): straight play begins
   // at the clicked spot at once, and NOTHING is sent to the tilt carrier — this function
