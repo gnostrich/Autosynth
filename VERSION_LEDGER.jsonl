@@ -1362,3 +1362,4 @@
 {"head": "abebb47", "path": ".claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py", "tool": "Edit", "ts": "2026-07-30T14:00:44+00:00"}
 {"head": "abebb47", "path": ".claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py", "tool": "Edit", "ts": "2026-07-30T14:01:34+00:00"}
 {"head": "abebb47", "path": ".claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py", "tool": "Edit", "ts": "2026-07-30T14:01:49+00:00"}
+{"head": "06b9e0a", "path": "papers/PREREG-live-mode.md", "tool": "Write", "ts": "2026-08-13T16:28:38+00:00"}
