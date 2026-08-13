@@ -341,3 +341,132 @@ say so — it is a one-line change to the criterion, and it is not assumed here.
 | **LM-5** | **replaced**: single bar from profile telemetry only; frozen telemetry ⇒ frozen bar; stall renders as stall (deliberate-violation fixture must bite) |
 | LM-6, LM-7, LM-8 | unchanged |
 | **new LM-9** | **no-timetable check**: no `N_BRIDGE_BARS`, no ramp table, no timeout anywhere in the LIVE path; a planted timeout-to-arrival must FAIL the check |
+
+## A1.6 Operator rulings on the two flags (2026-08-13) — both CONFIRMED
+
+**Ruling 1 — slew adoption: approved as built.** Adopting the registered law and
+its registered constant at LIVE's cadence, then *measuring* the resulting feel,
+is the correct procedure; inventing a new rate because the panel's is not wired
+into the web path would have been the hand-set-constant class. The feel
+divergence is **a measurement to report, not a defect to fix**. If the measured
+feel is too slow for the deck, the item-5 fixed-length knob arrives through the
+front door as its own registered amendment — *later, based on the number*.
+
+**Ruling 2 — floor: fluctuation reading confirmed, no switch.** The type-check
+settles it: the participation-ratio floor answers a *rank* question ("how many
+directions are real in a vector's spread" — it sizes M and k). Arrival is a
+*scalar convergence* question. The fluctuation floor is definitionally the one
+that types; participation-ratio would have been a category error on a scalar.
+
+> **"Arrived" = "the remaining distance is smaller than the breathing."** You are
+> there when the difference between here and the destination is no more than the
+> music's own natural wander.
+
+Consistency argument recorded with it: at arrival the fence closes and straight
+play resumes, and that transition is seamless **precisely because** the residual
+gap is sub-wobble.
+
+### A1.6.1 STANDING REQUIREMENT FOR TRAIN B (operator)
+
+With the timetable retired, **the plateau is now the only failure mode the user
+ever sees.** Native pace means *the corpus is allowed to say no*. Therefore the
+stall rendering — and the "corpus has no road" note — is built with **the same
+care as the happy path**: it is a first-class state, not an error branch. It
+gets its own must-bite fixture (LM-5), its own copy, and its own visual
+treatment. A stall that renders as vague progress, or as a bug, fails the train.
+
+### A1.6.2 INCIDENTAL FINDING BANKED (separate from LIVE)
+
+The panel-package slew never having been imported in `cloud/` implies **the web
+sliders may not be slew-limited at all** — a spec-vs-web divergence. Banked here
+for the next deadweight/faithfulness sweep; **explicitly out of scope for LIVE**
+and not to be fixed opportunistically inside this build.
+
+---
+
+# AMENDMENT 2 — LIVE IDLES SILENT
+
+Operator, 2026-08-13. Incremental; adds B-0 and amends B-1.
+
+## A2.1 The amendment (verbatim)
+
+> AMENDMENT 2 to ets-directive-live-deck-mode — LIVE IDLES SILENT
+> Incremental. Log to LEDGER.
+>
+> 1. B-0 (new) IDLE STATE: entering LIVE = SILENT. No fence set => no play
+>    (transport-gated hold), NOT free settlement — the unfenced blend must
+>    never sound in LIVE. Lanes render (given audio waveforms), glow dark,
+>    hint: "click a spot to start playing from there."
+> 2. B-1 amended — FIRST CLICK = IMMEDIATE START, NO BRIDGE: from idle
+>    silence there is no source state to travel from; the fence closes at
+>    (track i, spot t) and straight play begins there at once. Bridges
+>    apply only from the second click onward (a playing state exists).
+> 3. Check LM-9 idle-silence: in LIVE with no fence, zero slices are cast
+>    and the tape does not advance (fixture); any unfenced settlement
+>    audible in LIVE FAILS.
+> 4. Check LM-10 first-click-immediacy: from idle, click => straight play
+>    begins within one bar at the clicked spot; no bridge machinery, no
+>    lean emitted (fixture asserts tilt payload neutral on first click).
+> V-1 reset unchanged: leaving LIVE drops the fence; re-entering = idle
+> silence again. Everything else stands.
+
+## A2.2 CHECK-NUMBER COLLISION — resolved by renumbering MINE, not the operator's
+
+Amendment 1's register (§A1.5) introduced a check I numbered **LM-9**
+(no-timetable check). The operator's Amendment 2 assigns **LM-9 = idle-silence**
+and **LM-10 = first-click-immediacy**. The operator's numbering is authoritative.
+
+- **LM-9** = idle-silence (operator)
+- **LM-10** = first-click-immediacy (operator)
+- **LM-11** = the no-timetable check (renumbered from my LM-9; content unchanged:
+  no bridge-length constant, no ramp table, no timeout anywhere in the LIVE
+  path; a planted timeout-to-arrival must FAIL)
+
+## A2.3 DESIGN CONSEQUENCE — idle is TRANSPORT, not a carrier state
+
+This is the substantive point in B-0 and it must not be misbuilt:
+
+Under the registered fence rule (`track_mask.get(track, 0.0) >= openness`), a
+**neutral / absent carrier means NO restriction** — i.e. the *free unfenced
+blend*, which is exactly what B-0 forbids from sounding in LIVE. So:
+
+> **Idle silence CANNOT be expressed as an empty or neutral ClampTerms.** It is a
+> **transport-gated hold**: in LIVE with no fence, the produce loop does not cast
+> slices and the tape does not advance. Nothing is rendered, so nothing can
+> sound.
+
+Two things this protects:
+
+1. **LM-1 stays intact.** The neutral-carrier law ("neutral ⇒ byte-identical to
+   no carrier") remains a statement about the *engine*, untouched by LIVE's idle.
+   Had idle been built as "empty fence = silence", the carrier's neutral meaning
+   would have been overloaded with a second, contradictory sense.
+2. **No new muting path.** Silence comes from *not producing*, not from a gain of
+   zero, not from a mute, not from a fabricated empty buffer. The existing
+   transport hold is the mechanism.
+
+## A2.4 FIRST CLICK EMITS NO LEAN
+
+B-1-amended plus LM-10: from idle there is no source character to travel *from*,
+so the first click closes the fence and starts straight play — **and emits no
+tilt payload at all** (the fixture asserts the tilt payload is neutral on first
+click). The w_r column lean latches only from the **second** click onward, when a
+playing state exists to bridge from. The bridge machinery is not merely skipped
+visually on the first click; it is not engaged.
+
+## A2.5 Amended check list (current, after both amendments)
+
+| check | meaning |
+|---|---|
+| LM-0 | additive-guard: GRID/TRACKS byte-identical; LIVE in separate modules |
+| LM-1 | carrier-neutral: neutral ClampTerms ⇒ byte-identical output **(kill)** |
+| LM-2 | carrier-typing + single construction point **(kill)** |
+| LM-3 | straight-truth: full fence emits the track's consecutive slices; playhead from placements, not a timer |
+| LM-4 | schedule-as-data, re-scoped to release/convergence **events**; no schedule logic in engine modules |
+| LM-5 | single journey bar from profile telemetry only; frozen telemetry ⇒ frozen bar; **stall renders as stall** |
+| LM-6 | fidelity measured + stored per world; UI label matches the stored verdict |
+| LM-7 | V-1 reset extended to LIVE; leaving drops the fence; re-entering = idle silence |
+| LM-8 | tilt-path purity scoped to LIVE (WS-7/WS-8) |
+| **LM-9** | **idle-silence: no fence ⇒ zero slices cast, tape does not advance; any unfenced settlement audible in LIVE FAILS** |
+| **LM-10** | **first-click-immediacy: idle ⇒ straight play within one bar at the clicked spot; no bridge machinery, tilt payload neutral** |
+| **LM-11** | no-timetable (renumbered from Amendment 1's LM-9) |
