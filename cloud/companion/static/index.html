@@ -3398,6 +3398,17 @@
     if(!g || (ev.touches && ev.touches.length)) return;
     if(g.moved > FIELD_TAP_SLOP_PX) return;              // it was a bias drag, done
     if(g.header){ fieldZoomOut(); return; }              // header tap = drill out
+    // LIVE (PREREG-live-mode, Train B1): touch-to-start. GRID/TRACKS only ever act here
+    // through g.key (a square resolved by fieldSquareAt at touch-down); fieldSquareAt
+    // refuses every square in LIVE, so g.key is always null there and this is the ONLY
+    // place a LIVE tap does anything — it cannot change GRID/TRACKS' own tap behaviour
+    // below, which is untouched.
+    if(fieldViewMode(fieldView) === "live"){
+      if(!world.ready) return;
+      var lp = fieldLivePointAt(g.x, g.y);
+      if(lp) fieldLiveStart(lp.track, lp.t);
+      return;
+    }
     if(!world.ready || g.key === null) return;
     // TAP on a square: show its hover highlight + tooltip only — no drill, no emit.
     fieldHover = g.key;
@@ -3568,14 +3579,20 @@
                /api/live/start {track, t} on the carrier's OWN endpoint. No tilt payload,
                no /api/steer call — fieldSquareAt already refuses every square while this
                view is showing (see above), so the wheel/drag/touch paths that write
-               fieldBias cannot fire here regardless.
+               fieldBias cannot fire here regardless. Mouse click (fieldLiveOnClick) and
+               touch tap (the LIVE-only branch in fieldTouchEnd) both resolve the SAME
+               fieldLivePointAt and call the SAME fieldLiveStart — one entry, two inputs.
+               On a confirmed fence, fieldLiveEnsureTransport reuses btnPlay's own idle
+               -> startPlayback / paused -> resumePlayback dispatch verbatim, so "straight
+               play begins... at once" (B-1-amended) is the shared audio path actually
+               running, not just a server-side fence; a failed/absent fence never starts
+               it (B-0). Leaving LIVE (fieldLiveStop) reuses stopPlayback verbatim too, so
+               the deck never keeps playing once its own view is gone.
        PLAYHEAD = read-only: fieldLiveState is written ONLY by fieldLivePoll's GET
                /api/live/state, never by a local clock. A frozen backend state freezes
                the mark; there is no interpolation anywhere in this section.
      NOT built in this train (disclosed, not faked): the bridge (openness release/
-     convergence-close), the journey bar, the fidelity label, and touch-to-start (the
-     existing touch handlers preventDefault their synthetic click, so this train's LIVE
-     start is pointer/mouse "click" only — see the builder report). */
+     convergence-close), the journey bar, and the fidelity label. */
   var FIELD_LIVE_POLL_MS = 300;      // display-refresh cadence for the state GET — a UI
                                       // redraw rate, not a schedule/physics constant; no
                                       // engine/schedule logic lives in this file at all.
@@ -3702,9 +3719,19 @@
   function fieldLivePollStop(){
     if(fieldLivePollTimer){ clearInterval(fieldLivePollTimer); fieldLivePollTimer = null; }
   }
+  // The Play control's OWN dispatch (btnPlay's click handler), reused verbatim — never
+  // forked: idle -> start the shared audio path, paused -> resume it, already playing ->
+  // untouched. B-1-amended/LM-10 read literally: "straight play begins... at once" means
+  // the ONE shared audio path actually runs, not just that a fence now exists server-side.
+  function fieldLiveEnsureTransport(){
+    if(state === "idle") startPlayback();
+    else if(state === "paused") resumePlayback();
+  }
   // FIRST CLICK = IMMEDIATE START, NO BRIDGE (B-1 amended / LM-10): straight play begins
   // at the clicked spot at once, and NOTHING is sent to the tilt carrier — this function
-  // touches sendSteer/sendSteerNow/fieldBias/fieldAddBias nowhere at all.
+  // touches sendSteer/sendSteerNow/fieldBias/fieldAddBias nowhere at all. The shared
+  // transport is kicked ONLY after the fence is confirmed (never on a failed/absent
+  // backend — B-0 forbids unfenced play, so a failed fence must never start audio).
   function fieldLiveStart(track, t){
     fetch("/api/live/start", {
       method:"POST",
@@ -3720,17 +3747,21 @@
                            unit: (j.unit === undefined ? null : j.unit),
                            sliceIndex: fieldLiveState.sliceIndex, starved:false };
         fieldLivePollStart();
+        fieldLiveEnsureTransport();
       }
       fieldDraw();
     }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
   }
-  // LM-7 / V-1 extended: leaving LIVE drops its fence. Instant, no fade (the same law as
-  // the lean reset): the local mark goes idle immediately; the server call fires and is
-  // not awaited, the same fire-and-forget idiom the transport's own stop control uses.
+  // LM-7 / V-1 extended: leaving LIVE drops its fence AND stops the shared audio path —
+  // the same Stop control call (stopPlayback), reused verbatim, so leaving LIVE never
+  // leaves audio running. Instant, no fade (the same law as the lean reset): the local
+  // mark goes idle immediately; the fence-drop POST fires and is not awaited (the same
+  // fire-and-forget idiom stopPlayback's own /api/stop call already uses).
   function fieldLiveStop(){
     fieldLivePollStop();
     fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
     fetch("/api/live/stop", { method:"POST" }).catch(noop);
+    stopPlayback();
   }
   function fieldLiveOnClick(ev){
     if(fieldViewMode(fieldView) !== "live") return;
