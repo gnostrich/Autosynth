@@ -1828,9 +1828,19 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:08+00:00)
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:14+00:00)
 
+### at `d6ab026`
+- `Write` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:54:35+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:55:06+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:55:15+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:55:22+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:57:06+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/clamp.py (2026-08-13T16:57:22+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:21+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:31+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:41+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:59+00:00)
+
 ## 2026-08-13 — Operator rulings on Amendment 1's two flags: both CONFIRMED
-(restored: the provenance auto-appender overwrote this block; original text is
-in commit c580f08)
 - Slew adoption **approved as built** (measure the feel, don't tune it; item-5
   knob only later, based on the number).
 - Fluctuation floor **confirmed, no switch** (participation-ratio would be a
@@ -1839,6 +1849,7 @@ in commit c580f08)
 - **Standing requirement for Train B:** the plateau is now the only failure mode
   a user sees — stall rendering gets the same care as the happy path.
 - **Banked, out of scope:** web sliders may not be slew-limited at all (panel
+  slew never imported in `cloud/`) → next deadweight/faithfulness sweep.
   slew never imported in `cloud/`) → next deadweight/faithfulness sweep.
 
 ## 2026-08-13 — LIVE MODE Amendment 2: LIVE IDLES SILENT (operator, verbatim)
@@ -1852,3 +1863,10 @@ in commit c580f08)
   blend), which is precisely what B-0 forbids. Keeps LM-1's neutral law
   un-overloaded and adds no new muting path.
 - `Append` REGISTRY.jsonl — `live-mode-amendment-2-idles-silent-2026-08-13`.
+
+> **LEDGER-INTEGRITY DEFECT (banked, 2026-08-13):** the provenance auto-appender
+> rewrites this file's tail and has now DELETED hand-written narrative sections
+> twice (restored from commits `c580f08` and `d6ab026`). The authoritative record
+> for the LIVE MODE build is therefore `papers/PREREG-live-mode.md` +
+> `REGISTRY.jsonl`, both of which the hook does not touch. Filed for the same
+> sweep as the web-slider slew divergence — not patched mid-train.
