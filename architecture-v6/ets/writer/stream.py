@@ -48,6 +48,7 @@ import numpy as np
 from ..functional import solver as sv
 from . import phi as PHI
 from .realize import FiberThreader, RealizationIndex
+from .clamp import ClampTerms
 from .settle import settle_tape, _tape_state
 from .tape import ClampSet, OutputGrid, TapeNode
 from .tilt import TiltTerms, untilted
@@ -72,6 +73,10 @@ class BarResult:
     monotone: bool
     n_iter: int
     wall_time_s: float = 0.0                        # production time (latency math)
+    starved: Tuple[Tuple[int, int, int], ...] = ()  # (bar, role, band) whose fence
+                                                    # emptied the choice set and was
+                                                    # widened for that slot — recorded,
+                                                    # never a silent no-op (prereg §2.1)
 
 
 class StreamWriter:
@@ -150,11 +155,21 @@ class StreamWriter:
         return O
 
     def write_bar(self, tilt: Optional[TiltTerms] = None,
-                  clamps: Optional[ClampSet] = None) -> BarResult:
+                  clamps: Optional[ClampSet] = None,
+                  fence: Optional[ClampTerms] = None) -> BarResult:
         """Settle, sample, and commit the next bar. ``clamps`` address slots
         WITHIN this bar (0..S-1 local indices), the single intervention channel
         (I-7). Returns the committed BarResult; raises StreamHalt on a failed
-        certificate or state-bound violation."""
+        certificate or state-bound violation.
+
+        ``fence`` is the FEASIBLE-SET RESTRICTION carrier (PREREG-live-mode.md
+        PART A) — a DIFFERENT species from ``clamps``: it restricts which
+        candidates the fiber choice may draw from, then the unchanged measure
+        runs over the survivors (A-5), where an I-7 ``clamps`` cell instead
+        forces its exact unit and bypasses the choice entirely. This is pure
+        passthrough: the carrier is handed to the threader and nothing here
+        interprets it. None ⇒ no restriction ⇒ byte-identical (A-2/LM-1), and
+        it is re-set every bar so a fence can never outlive its caller."""
         import time
         t0 = time.perf_counter()
         if tilt is None:
@@ -181,6 +196,8 @@ class StreamWriter:
 
         # (3) fiber block: the SAME threading mechanism as batch, tilted+seeded.
         self.threader.tilt = tilt
+        self.threader.clamp = fence          # per-bar; None ⇒ no restriction
+        del self.threader.starved[:]         # this bar's starvation only
         rows: List[Tuple[int, int, int, int, float]] = []
         continues: List[bool] = []
         for s_local in range(grid.n_slots):
@@ -222,7 +239,8 @@ class StreamWriter:
         return BarResult(bar=bar, O=O, rows=rows, continues=continues, phi=phis,
                          converged=res.converged, monotone=res.monotone,
                          n_iter=res.n_iter,
-                         wall_time_s=time.perf_counter() - t0)
+                         wall_time_s=time.perf_counter() - t0,
+                         starved=tuple(self.threader.starved))
 
     @property
     def bar_samples(self) -> int:
