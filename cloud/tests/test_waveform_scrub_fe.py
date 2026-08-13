@@ -842,7 +842,11 @@ def test_scrub_publishes_only_through_the_single_steer_call_site():
     """WS-3: the scrub reaches the engine through the EXISTING single entry point
     (sendSteerNow -> the one /api/steer POST), never a second one."""
     fns = _js_functions(_strip_comments(_tracks_runtime()))
-    for name in ("fieldScrubPublish", "fieldScrubEnd", "fieldSetView"):
+    # fieldScrubEnd is NOT in this list any more: under the moving-anchor law a
+    # release PLANTS the gesture, changing nothing on the wire, so it must NOT
+    # publish. The publishers are fieldScrubPublish (travel + drag), fieldScrubStart
+    # (which also clears on an anchor tap) and fieldSetView.
+    for name in ("fieldScrubPublish", "fieldScrubStart", "fieldSetView"):
         assert "sendSteerNow()" in fns[name], f"{name} must publish via sendSteerNow"
     for name in ("fieldScrubStart", "fieldScrubMove"):
         assert "fieldScrubPublish()" in fns[name], f"{name} must publish via the one path"
@@ -1037,11 +1041,17 @@ def test_runtime_a_full_click_gesture_publishes_only_column_payloads():
        '"track_role_bias":[],"region":[0.375,0,0]}'){
       console.log('FAIL move payload ' + PUBLISHED[2]); process.exit(1); }
 
-    // --- RELEASE: back to the standing ledger (empty) instantly, no residue.
+    // --- RELEASE PLANTS (moving-anchor law): the lean STAYS, and nothing is
+    // published because nothing on the wire changed.
     fieldScrubEnd();
-    if(fieldScrub !== null){ console.log('FAIL held after release'); process.exit(1); }
-    if(PUBLISHED.length !== 4){ console.log('FAIL release publish'); process.exit(1); }
-    if(PUBLISHED[3] !== PUBLISHED[0]){ console.log('FAIL release ' + PUBLISHED[3]); process.exit(1); }
+    if(!fieldScrub || fieldScrub.planted !== true){ console.log('FAIL not planted'); process.exit(1); }
+    if(PUBLISHED.length !== 3){ console.log('FAIL release published'); process.exit(1); }
+    // --- TAP THE ANCHOR (it sits where the gesture was left, t = 0.625): back to the
+    //     standing ledger (empty) instantly, no residue.
+    fieldScrubStart(ev(xAt(0.625), 100));
+    if(fieldScrub !== null){ console.log('FAIL anchor survived its own tap'); process.exit(1); }
+    if(PUBLISHED.length !== 4){ console.log('FAIL clear publish'); process.exit(1); }
+    if(PUBLISHED[3] !== PUBLISHED[0]){ console.log('FAIL clear ' + PUBLISHED[3]); process.exit(1); }
     if(JSON.stringify(fieldBias) !== "{}"){ console.log('FAIL residue ' + JSON.stringify(fieldBias)); process.exit(1); }
 
     // --- switching back: neutral again, and the old leans do not come back.
@@ -1249,8 +1259,10 @@ def test_ws10b_simultaneous_gestures_compose_disjoint_with_no_arbitration():
       console.log('FAIL ledger ' + JSON.stringify(famsOf(fieldBias))); process.exit(1); }
     if(JSON.stringify(famsOf(clickMap)) !== JSON.stringify(["col"])){
       console.log('FAIL clickmap ' + JSON.stringify(famsOf(clickMap))); process.exit(1); }
-    // releasing the CLICK leaves the ROW gesture's lean exactly as it was (no coupling).
+    // CLEARING the click (release plants it; the anchor tap removes it) leaves the
+    // ROW gesture's lean exactly as it was — no coupling in either direction.
     fieldScrubEnd();
+    fieldScrubStart(ev(xAt(1.7), 100));
     var after = JSON.parse(PUBLISHED[PUBLISHED.length - 1]);
     if(Math.abs(after.channel_bias[0] - FIELD_BIAS_STEP) > 1e-12){
       console.log('FAIL row after release ' + JSON.stringify(after.channel_bias)); process.exit(1); }
@@ -1291,7 +1303,8 @@ def test_ws10c_release_everything_is_the_byte_identical_neutral_carrier():
       fieldScrubStart(ev(xAt(1.7), 100));
       fieldScrubMove(ev(xAt(0.625), 100));
       fieldScrubMove(ev(xAt(2.7), 100));
-      fieldScrubEnd();
+      fieldScrubEnd();                        // plants
+      fieldScrubStart(ev(xAt(2.7), 100));     // taps the anchor: clears
       var p = PUBLISHED[PUBLISHED.length - 1];
       if(p !== NEUTRAL_WIRE){ console.log('FAIL cycle ' + i + ' ' + p); process.exit(1); }
       if(JSON.stringify(fieldBias) !== "{}"){

@@ -2682,7 +2682,8 @@
   var fieldView  = "grid";   // selected view ("grid" | "tracks"); GRID is the default (V-4)
   var fieldWave  = null;     // /api/wavemap payload: GIVEN material (peaks) + STORED slices/q
   var fieldWaveState = "idle";  // idle | loading | ready | absent (honest, never a fake wave)
-  var fieldScrub = null;     // the HELD scrub gesture {track, t, travel, x} — null at rest
+  var fieldScrub = null;     // the gesture {track, t, travel, x, planted} — null at rest.
+                             // `planted` marks a released anchor that now travels.
 
   // The lean ledger the payload is cast from: the persistent row/column/cell ledger PLUS
   // the HELD scrub's transient contribution, summed through the EXISTING accumulator. At
@@ -3109,6 +3110,7 @@
   }
   // ---- SCRUB (W-2): the pointer's ONLY effect is this lean map ----------------
   var fieldScrubSent = null;   // last PUBLISHED scrub lean map (JSON) — idempotence only
+  var FIELD_ANCHOR_HIT_PX = 12;   // how near a tap must land to CLEAR the anchor
   function fieldScrubPoint(x, y){
     if(!fieldScrubArmed() || !fieldCanvas) return null;
     var g = fieldLanesPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
@@ -3116,7 +3118,8 @@
     if(!lane) return null;
     var tr = fieldWaveTrack(lane.track);
     if(!tr) return null;
-    return { track: lane.track, t: fieldLaneTime(lane.rect, x, tr.duration_s) };
+    return { track: lane.track, t: fieldLaneTime(lane.rect, x, tr.duration_s),
+             w: lane.rect.w, dur: tr.duration_s };
   }
   // Publish the held gesture through the ONE steer call. An unchanged lean map says
   // nothing new, so it is not re-sent (idempotence, not a gate: the engine already
@@ -3138,6 +3141,20 @@
     // lane, so on a region-disarmed corpus it would settle no differently — refuse the
     // gesture and say so, rather than accumulate an inert lean (AMENDMENT 2's wall).
     if(fieldRegionDisarmed()){ fieldSetStatus(FIELD_REGION_DISARM_MSG, false); return; }
+    // TAP THE ANCHOR AGAIN = REMOVE IT (operator, 2026-08-13). The same one gesture
+    // plants, replants and clears; only the target tells them apart.
+    // Compared in the lane's OWN time, not in canvas pixels: `p.t` came from the very
+    // same resolution the anchor's own t did, so the two are directly comparable and
+    // the test never has to reproduce a pixel mapping. The pixel radius is converted
+    // once, through the lane's own duration.
+    if(fieldScrub && fieldScrub.planted && p.track === fieldScrub.track){
+      var tol = (p.w > 0 && p.dur > 0) ? FIELD_ANCHOR_HIT_PX / p.w * p.dur : 0;
+      if(tol > 0 && Math.abs(p.t - fieldScrub.t) <= tol){
+        fieldScrub = null; fieldScrubSent = null; fieldAnchorClock = null;
+        fieldMarkSettling(); sendSteerNow(); fieldDraw();
+        return;
+      }
+    }
     fieldScrub = { track:p.track, t:p.t, travel:0, x:ev.clientX - rect.left };
     fieldScrubSent = null;
     try{ fieldCanvas.setPointerCapture(ev.pointerId); }catch(e){}
@@ -3157,12 +3174,38 @@
     }
     fieldScrubPublish();
   }
-  // RELEASE: the gesture's contribution becomes exactly 0, instantly, with no tween and
-  // no residue in the ledger (the codebase's held-gesture release law; V-3).
+  // RELEASE PLANTS THE ANCHOR (operator, 2026-08-13): letting go no longer drops the
+  // lean. The gesture stays exactly where it was left and then TRAVELS WITH THE TRACK,
+  // so the lean keeps re-reading the character at its moving position — "as if I were
+  // dragging it, leaving it, or doing the same elsewhere". Nothing else about the
+  // gesture changes: same lane resolution, same magnitude law, same columns-only
+  // emission through the one steer call. Clearing is its own tap (see fieldScrubStart).
   function fieldScrubEnd(){
     if(!fieldScrub) return;
-    fieldScrub = null; fieldScrubSent = null;
-    fieldMarkSettling(); sendSteerNow(); fieldDraw();
+    fieldScrub.planted = true;
+    fieldAnchorClock = null;                    // start the travel from the next tick
+    fieldDraw();                                // the ledger is unchanged: nothing to send
+  }
+  // THE ANCHOR TRAVELS. It advances with heard time while the deck is playing, and
+  // freezes when it is not — so a stopped engine never leaves a lean drifting through
+  // material nobody heard. Advancing re-reads the stored character under the anchor,
+  // which is the whole point: the bias moves with the passage.
+  var fieldAnchorClock = null;
+  function fieldAnchorTick(){
+    if(!fieldScrub || !fieldScrub.planted) { fieldAnchorClock = null; return; }
+    if(state !== "playing"){ fieldAnchorClock = null; return; }   // frozen, not drifting
+    var now = Date.now();
+    if(fieldAnchorClock === null){ fieldAnchorClock = now; return; }
+    var dt = (now - fieldAnchorClock) / 1000;
+    fieldAnchorClock = now;
+    var tr = fieldWaveTrack(fieldScrub.track);
+    fieldScrub.t += dt;
+    if(tr && tr.duration_s > 0 && fieldScrub.t >= tr.duration_s){
+      fieldScrub = null; fieldScrubSent = null;   // ran off the end: the anchor is gone
+      fieldMarkSettling(); sendSteerNow(); fieldDraw();
+      return;
+    }
+    fieldScrubPublish();          // idempotent until the anchor crosses into a new slice
   }
   // ---- VIEW SWITCH (V-1..V-4) -------------------------------------------------
   var fieldViewsEl = $("fieldViews"), fieldViewGridBtn = $("fieldViewGrid"),
@@ -3610,7 +3653,8 @@
     if(!lane) return null;
     var tr = fieldWaveTrack(lane.track);
     if(!tr) return null;
-    return { track: lane.track, t: fieldLaneTime(lane.rect, x, tr.duration_s) };
+    return { track: lane.track, t: fieldLaneTime(lane.rect, x, tr.duration_s),
+             w: lane.rect.w, dur: tr.duration_s };
   }
   // PURE: the STORED slice the backend's reported unit id names, on this lane's own
   // wavemap — or null if unknown/absent (never invented, never interpolated toward it).
@@ -5371,6 +5415,7 @@
   worldLoadStart = Date.now();
   loadHealth().then(loadStatus).then(loadWorld);
   setInterval(pollTick, HEALTH_MS);       // heartbeat + world-ready + dead detection
+  setInterval(fieldAnchorTick, 250);      // the planted anchor's travel (frozen unless playing)
 })();
 </script>
 </body>
