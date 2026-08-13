@@ -47,15 +47,26 @@ except Exception as e:
 
 p.live_stop()
 post_stop_state = p.live_state()
+p.stop()          # live_start started the shared produce loop; quiesce it
 
-# BYTE-IDENTITY REGRESSION (my own plumbing's neutral law, distinct from
-# Part A's own LM-1): a player that went through the whole live_start
-# (refused) / live_stop dance must produce EXACTLY the same first bar as a
-# twin player that never touched a /api/live/* route at all -- proving
-# _compose_bar's new clamp_call_kwargs(...) step is a true no-op when
-# self._live["clamp"] is None (the byte-identical write_bar(tilt=tilt) call
-# it always was).
-touched_pcm, touched_roles = p.produce_one_bar()
+# BYTE-IDENTITY REGRESSION (this plumbing's neutral law, distinct from Part
+# A's own LM-1): a player put into LIVE's idle state -- fence None -- must
+# produce EXACTLY the same first bar as a twin that never touched a
+# /api/live/* route at all, proving _compose_bar's clamp_call_kwargs(...)
+# step is a true no-op when self._live["clamp"] is None (the byte-identical
+# write_bar(tilt=tilt) call it always was).
+#
+# NOTE (why not `p` itself, as this probe originally did): a SUCCESSFUL
+# live_start also calls StreamPlayer.start(), so `p`'s shared produce loop
+# has been running and its writer is no longer at bar 0. That is the engine
+# working correctly, not a divergence -- comparing `p`'s next bar against a
+# fresh twin's FIRST bar would measure the loop's progress, not the fence's
+# neutrality. `q` therefore exercises the same idle/clamp-None code path
+# with no loop ever started. When live_start refused (the pre-carrier wall)
+# no loop was started either, which is why the original shape passed then.
+q = StreamPlayer(WORLD, seed=0, is_trained=True, eigen_n_seed=2, eigen_n_bar=2)
+q.live_stop()                       # LIVE idle: mode set, clamp None
+touched_pcm, touched_roles = q.produce_one_bar()
 twin = StreamPlayer(WORLD, seed=0, is_trained=True, eigen_n_seed=2, eigen_n_bar=2)
 twin_pcm, twin_roles = twin.produce_one_bar()
 
@@ -87,18 +98,21 @@ def test_unknown_track_raises_value_error_not_something_else():
     assert "999" in err
 
 
-def test_a_real_click_reaches_the_carrier_boundary_and_refuses_honestly():
-    """The load-bearing assertion: live_start(0, 0.05) must run track lookup
-    + track_unit_slices + resolve_start_index + pin_unit_ids against the REAL
-    engine/world (no exception from any of that), and THEN — because Part A
-    hasn't landed in architecture-v6 either — refuse specifically at the
-    clamp0 construction step. If this ever fails with a DIFFERENT exception
-    type, that's a real bug in the slice-resolution plumbing, not the
-    expected-and-disclosed carrier-availability wall."""
+def test_a_real_click_reaches_the_carrier_and_sets_the_fence():
+    """The load-bearing assertion, INVERTED once the carrier landed: live_start(
+    0, 0.05) must run track lookup + track_unit_slices + resolve_start_index +
+    pin_unit_ids against the REAL engine/world AND complete the clamp0
+    construction — the fence is set, straight mode is entered.
+
+    HISTORY (kept deliberately): this test previously pinned the honest refusal
+    at the clamp0 boundary, because Part A's carrier had not landed and, once it
+    had, nothing bound it at the streaming frontier. That wall was real and is
+    now closed by write_bar's `fence` passthrough. A regression to a refusal is
+    a genuine failure, not an expected wall — which is exactly what this
+    assertion now enforces."""
     d = _d()
-    assert d["start_ok"] is False, d
-    assert d["start_error"] is not None and not d["start_error"].startswith("WRONG_TYPE:"), d
-    assert "clamp0" in d["start_error"] or "ets.writer.clamp" in d["start_error"], d
+    assert d["start_ok"] is True, d
+    assert d["start_error"] is None, d
 
 
 def test_stop_after_a_refused_start_is_still_clean_idle():
@@ -117,12 +131,18 @@ def test_unfenced_production_stays_byte_identical_to_an_untouched_player():
     assert d["roles_identical"] is True
 
 
-def test_real_write_bar_carries_no_clampterms_parameter_yet():
+def test_real_write_bar_carries_the_clampterms_fence_parameter():
     """§2 of the prereg, checked against the REAL (arch-v6) StreamWriter.
     write_bar, in an isolated subprocess (see test_live_carrier.py's module
-    docstring for why this must never run in the shared pytest process)."""
+    docstring for why this must never run in the shared pytest process).
+
+    The frontier writer must expose exactly one ClampTerms-annotated parameter,
+    which is what the mode's kwarg introspection binds the carrier to. Zero such
+    parameters means the fence cannot reach a live bar at all (the wall this
+    test used to pin); more than one means the carrier has two entry points,
+    which would break the single-mechanism rule."""
     d = _d()
-    assert d["no_clamp_kwarg_yet"] is True, d
+    assert d["no_clamp_kwarg_yet"] is False, d
 
 
 # --- build_full_fence's own wiring, with a FAKE clamp0 injected -----------
