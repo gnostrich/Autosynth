@@ -470,3 +470,112 @@ visually on the first click; it is not engaged.
 | **LM-9** | **idle-silence: no fence ⇒ zero slices cast, tape does not advance; any unfenced settlement audible in LIVE FAILS** |
 | **LM-10** | **first-click-immediacy: idle ⇒ straight play within one bar at the clicked spot; no bridge machinery, tilt payload neutral** |
 | **LM-11** | no-timetable (renumbered from Amendment 1's LM-9) |
+
+---
+
+# AMENDMENT 3 — RATCHET GLIDE (default bridge)
+
+Operator, 2026-08-13. Applies on top of Amendments 1 (native pace) and 2 (idle
+silent). Sampler / F / world untouched; engine modules untouched.
+
+## A3.1 The amendment (verbatim)
+
+> ## THE LAW (operator ruling)
+> Bridges may wander sideways, never backwards. As a journey runs, track
+> best_gap = the smallest achieved-vs-target character gap reached so far.
+> The admissible region for subsequent bars is a CORRIDOR:
+>     gap(bar) <= best_gap + slack,   slack = the registered fluctuation
+>     noise floor for this world (the wobble) — NO new constant.
+> Progress locks in; roaming, texture, and breathing continue INSIDE the
+> corridor (slack >= natural bar-to-bar wobble by construction, so idle
+> breathing never triggers the ratchet). Cadence = the settle tick / bar,
+> NEVER beat-level; the ratchet lives in character space and never clips,
+> snaps, or edits audio.
+>
+> ## MECHANISM (mode-level policy, carrier as the only mechanism)
+> R-1 Per bar, the LIVE mode computes a candidate mask admitting material
+>     whose settled character keeps gap <= best_gap + slack, and ships it
+>     as ClampTerms data (the existing carrier; walls as mechanism). No
+>     ratchet logic inside engine modules — the mode computes, the carrier
+>     carries (mirror of LM-4).
+> R-2 best_gap updates ONLY from achieved-profile telemetry (monotone
+>     non-increasing); never from a clock, schedule, or easing.
+> R-3 Stall honesty preserved: no road within the corridor at the current
+>     best_gap => the corridor simply stops tightening; the existing stall
+>     rendering applies. The ratchet NEVER force-splices (that remains
+>     timed mode's explicit, separate, future business).
+> R-4 Scope: bridges only. Straight phase, first-click start, idle
+>     silence, arrival rule (gap under floor), V-1 reset — all unchanged.
+>     On re-click mid-bridge, best_gap RESETS to the new journey's start
+>     gap (fresh corridor; no carried ratchet across destinations).
+> R-5 Default: ratcheted glide is the bridge default. Pure native glide
+>     (no ratchet) remains available as a registered mode flag for
+>     comparison/measurement, not exposed in UI v0.
+>
+> ## CHECKS (each must bite)
+> RG-1 telemetry-only tightening: corridor bound derives from best-achieved
+>      gap + registered floor ONLY; a fixture advancing a clock with frozen
+>      telemetry must show a frozen corridor; any time-driven tightening
+>      FAILS.
+> RG-2 breathing preserved: with a stationary target and converged state,
+>      natural wobble must never trigger mask churn (fixture: idle at
+>      arrival; corridor stable; no candidate flapping).
+> RG-3 no-backwards: a fixture forcing a would-be regression beyond
+>      best_gap + slack must show those candidates masked; sideways motion
+>      within the corridor must remain admissible (both directions of the
+>      assertion bite).
+> RG-4 no-splice: ratchet active + no admissible road => stall renders;
+>      fence does NOT close; no timeout arrival.
+> RG-5 reset: mid-bridge re-click resets best_gap (fixture); view switch
+>      drops everything per V-1/LM-7 (extended to ratchet state).
+> RG-6 engine-purity: static check — no ratchet/corridor logic in engine
+>      modules; carrier data only.
+>
+> ## OUT OF SCOPE
+> Alternation/pins (composition, step 2 — parked). Timed glide (separate
+> future amendment; allowed to splice out loud when it comes). Cut-hardness
+> dial. Any UI knob for slack (it IS the registered floor; not tunable).
+
+## A3.2 Register — what this does and does not disturb
+
+**The mechanism is already built.** Train A's carrier takes exactly the data
+this needs: `clamp0(track_mask={tid: m}, openness=…, unit_pin=…)`. The corridor
+is a per-bar `track_mask` computed by the MODE and shipped as carrier data. The
+engine's `_admits` rule (`track_mask.get(track, 0.0) >= openness`) is untouched,
+so RG-6 is satisfied by construction rather than by a new guard — the same way
+LM-4 is.
+
+**One floor, two uses, no new constant.** The registered fluctuation floor (the
+wobble, confirmed over participation-ratio in §A1.6) now serves both:
+
+| use | rule |
+|---|---|
+| arrival (B-3, Amendment 1) | `gap < floor` — the remaining distance is smaller than the breathing |
+| corridor slack (Amendment 3) | `gap(bar) <= best_gap + floor` |
+
+The second is why breathing can never trip the ratchet: slack **is** the
+measured wobble, so a bar that only breathes is inside the corridor by
+definition. RG-2 is the fixture that proves this rather than assuming it.
+
+**Monotone by telemetry only.** `best_gap` is non-increasing and moves only when
+achieved-profile telemetry says so (R-2). No clock, no schedule, no easing — the
+same discipline that killed the timetable in Amendment 1. RG-1 is its must-bite.
+
+**Ratchet ≠ splice.** R-3/RG-4: when the corridor has no road, the corridor
+stops tightening and the **existing stall rendering** applies. The fence does
+not close, and there is no timeout arrival. Force-splicing is explicitly the
+future timed mode's business, "allowed to splice out loud when it comes".
+
+**Scope is bridges only (R-4).** Straight phase, first-click start, idle silence,
+the arrival rule and V-1 reset are all unchanged — so this amendment does **not**
+disturb the playable milestone currently in flight (idle → click → straight
+play). Mid-bridge re-click resets `best_gap` to the new journey's start gap: a
+fresh corridor, no ratchet carried across destinations.
+
+**Check namespace:** `RG-1..RG-6` is a new namespace and collides with nothing
+in `LM-*`. No renumbering needed this time.
+
+**R-5 flag:** pure native glide (no ratchet) stays available as a *registered
+mode flag* for comparison and measurement, not exposed in UI v0 — a measurement
+instrument, not a user knob. Slack itself is never a UI knob: it IS the
+registered floor.
