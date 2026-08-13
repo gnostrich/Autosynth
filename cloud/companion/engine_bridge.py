@@ -735,7 +735,9 @@ class StreamPlayer:
         self._live: dict = {"mode": "off", "clamp": None, "track": None,
                             "uid_index": {}, "current_unit": None,
                             "current_slice_index": None, "starved": False,
-                            "pin_units": (), "bars_elapsed": 0}
+                            "pin_units": (), "bars_elapsed": 0,
+                          "slices": (), "core_units": frozenset(),
+                          "n_widened": 0, "off_window": 0, "n_cast": 0}
         self._live_lock = threading.Lock()
         self._lock = threading.Lock()
         self._playing = threading.Event()
@@ -1772,18 +1774,25 @@ class StreamPlayer:
         clamp_terms = None
         with self._live_lock:
             live = dict(self._live)
-        if live.get("mode") == "straight" and live.get("pin_units"):
-            window = live_mod.bar_window_unit_ids(
-                live["pin_units"], live.get("bars_elapsed", 0), self.s_phase)
-            if window:
-                clamp_terms = live_mod.build_full_fence(live["track"], window)
+        if live.get("mode") == "straight" and live.get("slices"):
+            win = live_mod.bar_window(live["slices"],
+                                      live.get("bars_elapsed", 0),
+                                      self.s_phase,
+                                      demanded_roles=range(int(self.world.M)))
+            if win["exhausted"]:
+                self.live_enter()              # ran off the end: idle silence
+            else:
+                admitted = tuple(win["core"]) + tuple(win["widened"])
+                clamp_terms = live_mod.build_full_fence(live["track"], admitted)
                 with self._live_lock:
                     if self._live.get("mode") == "straight":
                         self._live["clamp"] = clamp_terms
                         self._live["bars_elapsed"] = \
                             int(self._live.get("bars_elapsed", 0)) + 1
-            else:
-                self.live_stop()               # ran off the end of the track
+                        # R2(b): what the bar could only get by widening —
+                        # inside the fenced track, outside the forward core.
+                        self._live["core_units"] = frozenset(win["core"])
+                        self._live["n_widened"] = len(win["widened"])
         clamp_kwargs = live_mod.clamp_call_kwargs(self.engine.writer.write_bar,
                                                    clamp_terms)
         r = self.engine.writer.write_bar(tilt=tilt, **clamp_kwargs)
@@ -2150,7 +2159,11 @@ class StreamPlayer:
                           # the whole pinned run + the bar cursor over it; the
                           # produce loop narrows this to ONE bar's window each
                           # bar so straight play walks the track forward
-                          "pin_units": tuple(unit_ids), "bars_elapsed": 0}
+                          "pin_units": tuple(unit_ids), "bars_elapsed": 0,
+                          # the track's OWN stored slices (span/uid/role), so
+                          # each bar can cut its tatum window and widen per role
+                          "slices": slices, "core_units": frozenset(),
+                          "n_widened": 0, "off_window": 0, "n_cast": 0}
         self.start()               # ensure the shared produce loop is running
         return {"track": track, "unit": start_unit}
 
@@ -2168,7 +2181,9 @@ class StreamPlayer:
             self._live = {"mode": "idle", "clamp": None, "track": None,
                           "uid_index": {}, "current_unit": None,
                           "current_slice_index": None, "starved": False,
-                          "pin_units": (), "bars_elapsed": 0}
+                          "pin_units": (), "bars_elapsed": 0,
+                          "slices": (), "core_units": frozenset(),
+                          "n_widened": 0, "off_window": 0, "n_cast": 0}
 
     def live_stop(self) -> None:
         """LEAVING LIVE (V-1): drop the fence AND release the transport back to
@@ -2178,7 +2193,9 @@ class StreamPlayer:
             self._live = {"mode": "off", "clamp": None, "track": None,
                           "uid_index": {}, "current_unit": None,
                           "current_slice_index": None, "starved": False,
-                          "pin_units": (), "bars_elapsed": 0}
+                          "pin_units": (), "bars_elapsed": 0,
+                          "slices": (), "core_units": frozenset(),
+                          "n_widened": 0, "off_window": 0, "n_cast": 0}
 
     def live_state(self) -> dict:
         """Measured, not asserted (the route contract): the unit/slice this
