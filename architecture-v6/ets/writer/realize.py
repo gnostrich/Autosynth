@@ -27,6 +27,15 @@ Clamped cells (I-7) pass through verbatim: a ``unit_demands`` clamp forces its
 exact unit at its slot; a ``role_columns`` clamp already shaped O_tape and thus
 its realization. There is no exception path — a clamp is just a cell.
 
+FEASIBLE-SET RESTRICTION (prereg PREREG-live-mode.md PART A; ``clamp.py``'s
+``ClampTerms``, the sanctioned SECOND carrier alongside ``TiltTerms``). This is
+a DIFFERENT mechanism from the I-7 cell clamp above: it does not force a slot's
+realization, it narrows which fiber CANDIDATES ``FiberThreader._choose`` is
+even allowed to draw from, before the SAME F-derived measure and the SAME
+gumbel draw run over the survivors (A-5 — no new energies, no new dynamics).
+See ``FiberThreader.clamp`` and ``_admits`` below; the rule itself is exactly
+prereg §2.1 and lives nowhere else in the engine.
+
 The emitted gauge is IDENTITY (u=0, lanes constant): one section, no transpose,
 no phase shift, unit gauge loudness. Loudness STRUCTURE is not gauge: it rides on
 each placement as its settled mass (settlement output; see ``realize``). The
@@ -42,6 +51,7 @@ import numpy as np
 from ..functional import f as ff
 from ..functional import solver as sv
 from ..render.schedule import Schedule, Section, IDENTITY, PLACEMENT_DTYPE
+from .clamp import ClampTerms
 from .tilt import fiber_choice_logits as fiber_logits
 
 
@@ -262,6 +272,39 @@ def _frozen(a: np.ndarray) -> np.ndarray:
     return a
 
 
+def _admits(clamp: ClampTerms, c: Tuple[int, int]) -> bool:
+    """THE fence rule (prereg §2.1) — the only engine logic ClampTerms adds,
+    and the only place it is evaluated (both `_choose_original` and
+    `_choose_fast` call this SAME function, so there is one decision channel,
+    not two). ``c = (track_id, unit_id)`` is a fiber candidate exactly as
+    `choices`/`pool.keys` already carry it — the continuation entry is a
+    candidate of this same shape, so it is fenced too, with no exemption.
+
+    Survives iff its track's mask value is at least `openness`, and, when a
+    pin names its track, iff its unit lies in the pinned range. No schedule,
+    no bar-count, no timeout: `clamp` is one already-decided (mask, openness,
+    pin) snapshot handed in from outside (prereg Amendment 1 / LM-11).
+
+    This is the LITERAL formula, with NO special case for an empty
+    `track_mask` — an empty mask therefore behaves EXACTLY like a mask that
+    explicitly names every track at 0.0 (both give `.get(tid, 0.0) == 0.0`),
+    which starves whenever `openness > 0`. The "empty mask is neutral"
+    clause of the NEUTRAL LAW (clamp.py, A-2/LM-1) is upheld one layer up, at
+    the single construction point (`clamp0` never returns a non-None object
+    with an empty mask) — not duplicated here as a second decision channel.
+    A `ClampTerms` reaching this function with an empty mask can only be a
+    direct-construction bypass of `clamp0` (exactly what the LM-2 static
+    check exists to catch in real code); this function does not paper over
+    that misuse by guessing what was meant."""
+    tid, uid = int(c[0]), int(c[1])
+    if clamp.track_mask.get(tid, 0.0) < clamp.openness:
+        return False
+    pin = clamp.unit_pin
+    if pin is not None and pin[0] == tid and uid not in pin[1]:
+        return False
+    return True
+
+
 # ---- the fiber block: one threading mechanism for batch AND stream ---------
 
 class FiberThreader:
@@ -297,12 +340,25 @@ class FiberThreader:
     """
 
     def __init__(self, index: RealizationIndex, fstate, s_phase: int,
-                 tilt=None, rng=None):
+                 tilt=None, rng=None, clamp: Optional[ClampTerms] = None):
         self.index = index
         self.B = fstate.B
         self.s_phase = int(s_phase)
         self.tilt = tilt
         self.rng = rng
+        # ClampTerms (prereg-live-mode PART A): the feasible-set restriction
+        # `_choose` filters `choices`/the pool by (see `_admits`). None (the
+        # default, exactly like `tilt=None`/`rng=None`) means "no clamp at
+        # all" — the fence branch is skipped entirely wherever it appears
+        # below, so a None clamp costs nothing and touches nothing (A-2/LM-1).
+        self.clamp = clamp
+        # STARVED (k, b) events: (bar, k, b) where the fence would have
+        # emptied an otherwise-nonempty choice set. Disclosed, never a silent
+        # no-op — the unrestricted set is used for that (bar, k, b) instead
+        # (prereg §2.1 STARVATION). Bounded by material x grid, same as the
+        # other memos below (I-8): at most one entry per (bar, k, b) actually
+        # visited, never a function of elapsed time beyond that.
+        self.starved: List[Tuple[int, int, int]] = []
         self.run_head: Dict[int, Tuple[int, int]] = {}    # band -> unit in flight
         self.last_used: Dict[Tuple[int, int], int] = {}   # unit -> last COMMITTED bar
         self._pending: Dict[Tuple[int, int], int] = {}    # placed this (uncommitted) bar
@@ -380,6 +436,20 @@ class FiberThreader:
         if not choices:
             fallback = idx.unit_of.get((k, b))    # minimal index / degenerate
             return (fallback, False) if fallback is not None else None
+
+        # ClampTerms fence (prereg §2.1): restricts `choices` ONLY, before the
+        # measure below ever runs — the continuation entry (index 0 above, if
+        # present) is a candidate like any other and is fenced too.
+        clamp = self.clamp
+        if clamp is not None:
+            kept = [i for i, c in enumerate(choices) if _admits(clamp, c)]
+            if kept:
+                choices = [choices[i] for i in kept]
+                is_cont = [is_cont[i] for i in kept]
+            else:
+                self.starved.append((bar, k, b))
+                # the unrestricted `choices`/`is_cont` stand for this (k, b) —
+                # never a silent no-op, never a fabricated unit (prereg §2.1).
 
         # F's own fiber energies (LAMBDA live; term math from f.py).
         phases = np.array([idx.unit_phase.get(c, psi) for c in choices])
@@ -565,7 +635,8 @@ class FiberThreader:
 
     def _choose_fast(self, k: int, b: int, psi: float, bar: int):
         """The vectorized fiber choice (see `_choose`; bit-identical to
-        `_choose_original`)."""
+        `_choose_original`, INCLUDING under a ClampTerms fence — see the
+        block below the tilt branch)."""
         idx = self.index
         if self._unit_row is None:
             self._fast_tables()
@@ -590,10 +661,12 @@ class FiberThreader:
         else:
             energies = base
             cont = pool.cont0
+        # candidate keys in the SAME (head-then-pool) order as `energies`/
+        # `cont` — and the SAME order `_choose_original` builds `choices` in.
+        keys: List[Tuple[int, int]] = ([nxt] if h else []) + pool.keys
 
-        if self.tilt is None:
-            logits = -energies                     # T→0 deterministic reduction
-        else:
+        reuse = cbias = None
+        if self.tilt is not None:
             reuse = np.empty(n + h)
             if h:
                 reuse[0] = self._reuse(nxt, bar)
@@ -608,7 +681,6 @@ class FiberThreader:
             # `_choose_original` (see the note there); the array length matches
             # the choice set, so the rng draw size below is unchanged.
             fb = getattr(self.tilt, "channel_logbias", None)
-            cbias = None
             if fb:
                 tw = fb.get("track") or {}
                 uw = fb.get("unit") or {}
@@ -622,6 +694,36 @@ class FiberThreader:
                         cbias[1:] = pc
                     else:
                         cbias = pc
+
+        # ClampTerms fence (prereg §2.1): the SAME `_admits` predicate
+        # `_choose_original` uses, applied in the SAME (head, pool) order, to
+        # every per-candidate array in lockstep — so a survivor count of m
+        # feeds `fiber_logits`/the rng draw exactly `m` entries, matching the
+        # reference path's post-filter arrays element for element (the memo
+        # in `_pool_energies` bakes in the "cos is elementwise" property
+        # `test_cos_is_elementwise_here` already pins, so compute-then-filter
+        # here equals filter-then-compute there).
+        clamp = self.clamp
+        if clamp is not None:
+            admit = np.fromiter((_admits(clamp, c) for c in keys),
+                                dtype=bool, count=len(keys))
+            if admit.any():
+                if not admit.all():
+                    energies = energies[admit]
+                    cont = cont[admit]
+                    keys = [c for c, m in zip(keys, admit) if m]
+                    if reuse is not None:
+                        reuse = reuse[admit]
+                    if cbias is not None:
+                        cbias = cbias[admit]
+            else:
+                self.starved.append((bar, k, b))
+                # the unrestricted arrays stand for this (k, b) — never a
+                # silent no-op, never a fabricated unit (prereg §2.1).
+
+        if self.tilt is None:
+            logits = -energies                     # T→0 deterministic reduction
+        else:
             logits = fiber_logits(energies, cont, reuse, self.tilt,
                                   channel_bias=cbias)
 
@@ -630,9 +732,7 @@ class FiberThreader:
         else:
             gumbel = -np.log(-np.log(self.rng.uniform(size=len(logits))))
             j = int(np.argmax(logits + gumbel))    # exact categorical draw
-        if h and j == 0:
-            return (nxt, True)
-        return (pool.keys[j - h], False)
+        return (keys[j], bool(cont[j] == 1.0))
 
     def place_slot(self, s: int, col: np.ndarray, clamp_unit=None):
         """Realize output slot ``s`` from its settled column ``col`` (M,).
@@ -672,8 +772,8 @@ class FiberThreader:
 
 # ---- settled occupancy -> Schedule ----------------------------------------
 
-def realize(O: np.ndarray, tape, fstate, index: RealizationIndex
-            ) -> Tuple[Schedule, dict]:
+def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
+            clamp: Optional[ClampTerms] = None) -> Tuple[Schedule, dict]:
     """Turn the settled tape occupancy into a Schedule (unit->slot+mass + gauge).
 
     THE SETTLED FIELD IS CARRIED WHOLE — no threshold, no flat gain. At slot s
@@ -696,6 +796,13 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex
     A unit-demand clamp (I-7) passes through verbatim with neutral mass 1.0:
     the demand names an exact unit for the whole slot; its loudness is the
     demand's, not a settled (slot, band) cell's.
+
+    ``clamp`` (default None) is the OTHER clamp species — ClampTerms, the
+    feasible-set restriction (prereg-live-mode PART A). It never touches O,
+    the settlement, or a cell's realized mass; it only narrows which fiber
+    candidates `FiberThreader._choose` may draw from (see `_admits`). None
+    (the default, matching every other clamp/tilt parameter in this module)
+    is byte-identical to no restriction at all (A-2/LM-1).
     """
     n_slots = int(tape.grid.n_slots)
     clamps = tape.clamps
@@ -712,7 +819,7 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex
     # decision (spec §8); the render only applies it (I-11). Batch mode is the
     # deterministic T→0 reduction (tilt=None, rng=None); the streaming writer
     # drives this SAME mechanism with the Layer-0 tilt and temperature.
-    threader = FiberThreader(index, fstate, S_phase)
+    threader = FiberThreader(index, fstate, S_phase, clamp=clamp)
 
     rows: List[Tuple[int, int, int, int, float]] = []
     bar_prev = 0
@@ -743,5 +850,10 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex
         "n_slots": n_slots,
         "n_tracks_used": int(len({r[1] for r in rows})),
         "clamped_unit_slots": sorted(clamps.unit_demands),
+        # ClampTerms starvation receipt (prereg §2.1): every (bar, k, b) where
+        # the fence would have emptied an otherwise-nonempty choice set, and
+        # the unrestricted set was used instead. Empty whenever `clamp` is
+        # None (the fence branch never runs) or never starves.
+        "starved": list(threader.starved),
     }
     return sched, meta
