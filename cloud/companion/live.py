@@ -80,24 +80,110 @@ def uid_index_map(slices: Sequence[Sequence]) -> dict:
 
 # --- the carrier itself -------------------------------------------------
 
-# STRAIGHT PLAY IS A MOVING POINTER, NOT A BAG (measured fix, 2026-08-13).
-# The first build pinned a track's WHOLE remaining set of units, so the fiber
-# choice was free to pick ANY of them each slot: the tape stayed inside the
-# clicked track but hopped around inside it (measured live: 16593 -> 13281 ->
-# 9945 -> 11664 -> 3169 where consecutive ids were required). B-1 says "bars
-# pinned to that track's CONSECUTIVE slices" — so the pin must advance with the
-# bar. `bar_window_unit_ids` is that cursor: the units this ONE bar may use.
+# STRAIGHT PLAY IS A MOVING POINTER, NOT A BAG (measured fix, 2026-08-13), AND
+# THE POINTER WALKS TATUMS, NOT ROWS (second measured fix, same day).
 #
-# Window width is derived, never dialled: one bar covers `s_phase` slots, and a
-# slot may place one unit per band, so `s_phase` consecutive slices is the
-# narrowest window that can fill a bar without forcing starvation. It is a
-# consequence of the world's own geometry, not a tuning knob.
+# First defect: the fence pinned a track's WHOLE remaining unit set, so the fiber
+# choice roamed inside the track (measured live: 16593 -> 13281 -> 9945 -> 11664
+# -> 3169 where consecutive ids were required). B-1 says "bars pinned to that
+# track's CONSECUTIVE slices", so the pin must advance with the bar.
+#
+# Second defect, from the world's own grain: a unit is a (slot, band) CELL, so
+# the n_bands units of one tatum SHARE that tatum's span (track_unit_slices'
+# docstring: "the spans REPEAT by design"). A window of `s_phase` ROWS is
+# therefore a fraction of one bar's tatums and carries only some bands — which
+# is precisely why the bar's (role, band) demands starved. The core window is
+# cut in TATUMS: one bar covers `s_phase` tatums, and every unit of those tatums
+# is admitted. Nothing is dialled; both numbers are the world's own geometry.
+#
+# PER-ROLE WIDENING (AMENDMENT 4, operator-approved): a bar may still demand a
+# role the core tatums do not carry. The fence then widens WITHIN THE SAME TRACK
+# — the nearest unit of that role, by time — never to another track. That
+# widening is the "fence-definition change" R1 permits; it is not an escape.
+# Units admitted by widening rather than by the core window are counted as
+# OFF-WINDOW for R2(b) and feed the B-5 fidelity verdict.
+
+def _tatum_groups(slices: Sequence[Sequence]) -> list:
+    """`slices` grouped into consecutive same-span runs — the world's tatums, in
+    time order. Each group is the list of that tatum's row indices (its n_bands
+    (slot, band) cells)."""
+    groups: list = []
+    last = None
+    for idx, row in enumerate(slices):
+        span = (float(row[0]), float(row[1]))
+        if span != last:
+            groups.append([])
+            last = span
+        groups[-1].append(idx)
+    return groups
+
+
+def _role_of(row: Sequence) -> Optional[int]:
+    """The stored role of one slice row: argmax of its stored q indicator. None
+    when the row carries no usable indicator — never a guessed role."""
+    q = row[4] if len(row) > 4 else None
+    try:
+        q = list(q)
+    except TypeError:
+        return None
+    if not q:
+        return None
+    best, best_v = 0, float(q[0])
+    for k in range(1, len(q)):
+        if float(q[k]) > best_v:
+            best, best_v = k, float(q[k])
+    return int(best)
+
+
+def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
+               demanded_roles: Optional[Sequence[int]] = None) -> dict:
+    """This bar's fence content, as ``{"core": (...), "widened": (...),
+    "exhausted": bool}``.
+
+    ``core``    — every unit of this bar's `s_phase` tatums, walking forward.
+    ``widened`` — for each demanded role the core does not carry, that track's
+                  OWN nearest unit of the role (by tatum distance). Empty when
+                  the core already covers every demanded role.
+    ``exhausted`` — the cursor has walked past the end of the track; the caller
+                  returns to idle silence rather than wrapping or repeating.
+    """
+    groups = _tatum_groups(slices)
+    w = max(1, int(s_phase))
+    start = max(0, int(bars_elapsed)) * w
+    core_groups = groups[start:start + w]
+    if not core_groups:
+        return {"core": (), "widened": (), "exhausted": True}
+
+    core_idx = [i for g in core_groups for i in g]
+    core = tuple(int(slices[i][2]) for i in core_idx)
+
+    widened: list = []
+    if demanded_roles:
+        have = {_role_of(slices[i]) for i in core_idx}
+        centre = start + len(core_groups) // 2
+        for k in demanded_roles:
+            k = int(k)
+            if k in have:
+                continue
+            # nearest tatum carrying role k, searching outward from the core
+            best_i, best_d = None, None
+            for gi, g in enumerate(groups):
+                for i in g:
+                    if _role_of(slices[i]) != k:
+                        continue
+                    d = abs(gi - centre)
+                    if best_d is None or d < best_d:
+                        best_i, best_d = i, d
+            if best_i is not None:
+                widened.append(int(slices[best_i][2]))
+    return {"core": core, "widened": tuple(widened), "exhausted": False}
+
+
 def bar_window_unit_ids(unit_ids: Sequence[int], bars_elapsed: int,
                         s_phase: int) -> Tuple[int, ...]:
-    """The consecutive slice window this bar may draw from: `s_phase` units
-    starting at `bars_elapsed * s_phase` into the pinned run. Past the end of
-    the track the window is empty — the caller stops rather than wrapping or
-    inventing material."""
+    """Row-cut window kept for the fixtures that pin the pointer's forward walk
+    on a flat id list (no span/role information available there). The live path
+    uses ``bar_window`` above, which cuts by tatum and widens per role."""
     w = max(1, int(s_phase))
     start = max(0, int(bars_elapsed)) * w
     return tuple(int(u) for u in unit_ids[start:start + w])
