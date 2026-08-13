@@ -2197,6 +2197,16 @@ class StreamPlayer:
                           "slices": (), "core_units": frozenset(),
                           "n_widened": 0, "off_window": 0, "n_cast": 0}
 
+    def live_stop(self) -> None:
+        """LEAVING LIVE (V-1): drop the fence AND release the transport back to
+        the other views. Mode returns to "off" — never "idle", which would keep
+        the produce loop parked for GRID/TRACKS as well."""
+        with self._live_lock:
+            self._live = {"mode": "off", "clamp": None, "track": None,
+                          "uid_index": {}, "current_unit": None,
+                          "current_slice_index": None, "starved": False,
+                          "pin_units": (), "bars_elapsed": 0}
+
     def live_state(self) -> dict:
         """Measured, not asserted (the route contract): the unit/slice this
         reports comes from ``_finish_bar``'s own reduction of the produced
