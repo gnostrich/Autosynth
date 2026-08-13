@@ -2154,12 +2154,28 @@ class StreamPlayer:
         self.start()               # ensure the shared produce loop is running
         return {"track": track, "unit": start_unit}
 
-    def live_stop(self) -> None:
-        """V-1 / AMENDMENT 2 B-0: drop the fence and hold LIVE idle-silent.
-        Idle is enforced by ``_loop`` itself (the transport-gated hold — see
-        its docstring), never by an empty/neutral ClampTerms."""
+    def live_enter(self) -> None:
+        """ENTERING the LIVE view: drop any fence and hold the transport
+        idle-silent (AMENDMENT 2 B-0). The hold is enforced by ``_loop``
+        itself, never by an empty/neutral ClampTerms.
+
+        This is deliberately SEPARATE from ``live_stop``. The idle hold means
+        "the user is in LIVE and has not clicked yet" — it must NOT outlive the
+        LIVE view, or GRID/TRACKS inherit a silenced engine (the cross-tab
+        handback defect: one StreamPlayer serves all three views, so a hold set
+        on leaving LIVE silenced the other two)."""
         with self._live_lock:
             self._live = {"mode": "idle", "clamp": None, "track": None,
+                          "uid_index": {}, "current_unit": None,
+                          "current_slice_index": None, "starved": False,
+                          "pin_units": (), "bars_elapsed": 0}
+
+    def live_stop(self) -> None:
+        """LEAVING LIVE (V-1): drop the fence AND release the transport back to
+        the other views. Mode returns to "off" — never "idle", which would keep
+        the produce loop parked for GRID/TRACKS as well."""
+        with self._live_lock:
+            self._live = {"mode": "off", "clamp": None, "track": None,
                           "uid_index": {}, "current_unit": None,
                           "current_slice_index": None, "starved": False,
                           "pin_units": (), "bars_elapsed": 0}

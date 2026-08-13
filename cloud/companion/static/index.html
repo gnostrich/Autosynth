@@ -3712,6 +3712,7 @@
     }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
   }
   function fieldLivePollStart(){
+    fieldLiveEnter();                       // B-0 hold, scoped to this view
     if(fieldLivePollTimer) return;
     fieldLivePoll();
     fieldLivePollTimer = setInterval(fieldLivePoll, FIELD_LIVE_POLL_MS);
@@ -3757,6 +3758,15 @@
   // leaves audio running. Instant, no fade (the same law as the lean reset): the local
   // mark goes idle immediately; the fence-drop POST fires and is not awaited (the same
   // fire-and-forget idiom stopPlayback's own /api/stop call already uses).
+  // ENTER (B-0): hold the transport idle-silent for the LIVE view ONLY. The
+  // matching release lives in fieldLiveStop, so the hold can never outlive LIVE
+  // and silence GRID/TRACKS — one player serves all three views, and a hold set
+  // on the way OUT was exactly the cross-tab defect. Lives here, in LIVE's own
+  // lifecycle, rather than in fieldSetView: switching views is not itself a
+  // request-making act (pinned by the views-only-request fixture).
+  function fieldLiveEnter(){
+    fetch("/api/live/enter", { method:"POST" }).catch(noop);
+  }
   function fieldLiveStop(){
     fieldLivePollStop();
     fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };

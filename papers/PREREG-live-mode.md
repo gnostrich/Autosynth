@@ -579,3 +579,92 @@ in `LM-*`. No renumbering needed this time.
 mode flag* for comparison and measurement, not exposed in UI v0 — a measurement
 instrument, not a user knob. Slack itself is never a UI knob: it IS the
 registered floor.
+
+---
+
+# AMENDMENT 4 — HARD FENCE (riders on the per-role widening fix)
+
+Operator, 2026-08-13, approving the pure-fence fix (per-role widening WITHIN the
+track) with three riders.
+
+## A4.1 The riders (verbatim)
+
+> Fix approved as pure fence (per-role widening within-track). Three riders:
+> R1 HARD FENCE (must land with this fix): "reaches outside" = fence is
+>    currently soft = the real breach. Assert: no cast outside ClampTerms
+>    ever; starvation surfaces as fence-definition change or honest error,
+>    never silent escape. New check LM-11: fixture with deliberately
+>    starving fence must show in-fence handling or explicit error; any
+>    out-of-fence cast FAILS.
+> R2 LM-3 REVISED (honest, not deleted): STRAIGHT = forward-walking time
+>    core + per-role admits. Assert (a) core window walks forward
+>    monotonically and dominates; (b) off-window cast fraction measured +
+>    logged per world, folded into the B-5 fidelity verdict and label.
+> R3 FUTURE AMENDMENT LOGGED (not this train): STRAIGHT-EXACT — pin the
+>    settlement occupancy to the window's stored role masses (Pi-clamp,
+>    T4, A-3 carrier extension). Removes starvation at cause; restores
+>    consecutive-slice exactness by construction. Prereg when Train B lands.
+> B-5 labeling stance confirmed: measured, never sold as the original.
+
+## A4.2 R1 REVERSES A CLAUSE I REGISTERED — recorded, not quietly swapped
+
+Prereg §2.1 registered: *"if the fence would empty the choice set, the bar's
+fence is recorded as STARVED in telemetry and the unrestricted set is used for
+that bar."* That clause is **struck**. The operator is right that it made the
+fence SOFT: a fence you can fall out of is not a wall, and recording the escape
+does not make the escape legitimate. Disclosure is not permission.
+
+**The new law:** no cast outside ClampTerms, ever. Starvation resolves as
+either
+
+1. a **fence-definition change** — the fence widens *explicitly, within its own
+   terms* (the approved per-role widening within the track), or
+2. an **honest error** — the bar refuses rather than escaping.
+
+Casting nothing into a slot the fence cannot fill is *in-fence handling*
+(silence is inside every fence). Reaching to another track is not.
+
+## A4.3 CHECK-NUMBER COLLISION (second occurrence) — mine moves again
+
+`LM-11` was my renumbered no-timetable check (Amendment 2 §A2.2, itself
+renumbered from my original LM-9). The operator now assigns **LM-11 = hard
+fence**. Operator numbering is authoritative, so mine moves again:
+
+- **LM-11** = hard fence (operator, this amendment)
+- **LM-12** = no-timetable check (mine, content unchanged since Amendment 1)
+
+## A4.4 R2 — LM-3 revised, and why the fix is NOT a TRACKS duplicate
+
+The operator caught the trap in my first proposal: fixing starvation with a
+settlement lean would have rebuilt the TRACKS click inside LIVE — LIVE would
+become "TRACKS plus a fence that mostly starves". Rejected.
+
+The measured cause was narrower: the window was cut by **time only**. A bar's
+settlement demands material by (role, band); eight consecutive slices often
+contain no unit of a demanded role, so the fence emptied. The fix widens the
+fence **within the same track** — for each demanded role, admit that track's own
+nearest material of that role. Still one track, still walking forward, still a
+pure fence, no lean, no settlement steer.
+
+**LM-3 revised** (honest, not deleted):
+
+| part | assertion |
+|---|---|
+| (a) | the core time window walks forward **monotonically** and **dominates** the bar's casts |
+| (b) | the **off-window cast fraction** is measured and logged per world, and folded into the B-5 fidelity verdict and label |
+
+Off-window here means *within the fenced track but outside the forward time
+window* — never another track, which R1 forbids outright.
+
+## A4.5 R3 — future amendment logged, NOT built in this train
+
+**STRAIGHT-EXACT**: pin the settlement occupancy itself to the window's stored
+role masses (a Π-clamp, T4, as an A-3 carrier extension). That removes
+starvation *at cause* rather than absorbing it, and restores consecutive-slice
+exactness by construction. To be pre-registered when Train B lands. Explicitly
+not this train.
+
+## A4.6 B-5 stance confirmed
+
+Measured, never sold as the original. The off-window fraction from R2(b) feeds
+the same verdict, so the label reflects what the reconstruction actually did.
