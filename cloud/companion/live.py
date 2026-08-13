@@ -80,13 +80,37 @@ def uid_index_map(slices: Sequence[Sequence]) -> dict:
 
 # --- the carrier itself -------------------------------------------------
 
+# STRAIGHT PLAY IS A MOVING POINTER, NOT A BAG (measured fix, 2026-08-13).
+# The first build pinned a track's WHOLE remaining set of units, so the fiber
+# choice was free to pick ANY of them each slot: the tape stayed inside the
+# clicked track but hopped around inside it (measured live: 16593 -> 13281 ->
+# 9945 -> 11664 -> 3169 where consecutive ids were required). B-1 says "bars
+# pinned to that track's CONSECUTIVE slices" — so the pin must advance with the
+# bar. `bar_window_unit_ids` is that cursor: the units this ONE bar may use.
+#
+# Window width is derived, never dialled: one bar covers `s_phase` slots, and a
+# slot may place one unit per band, so `s_phase` consecutive slices is the
+# narrowest window that can fill a bar without forcing starvation. It is a
+# consequence of the world's own geometry, not a tuning knob.
+def bar_window_unit_ids(unit_ids: Sequence[int], bars_elapsed: int,
+                        s_phase: int) -> Tuple[int, ...]:
+    """The consecutive slice window this bar may draw from: `s_phase` units
+    starting at `bars_elapsed * s_phase` into the pinned run. Past the end of
+    the track the window is empty — the caller stops rather than wrapping or
+    inventing material."""
+    w = max(1, int(s_phase))
+    start = max(0, int(bars_elapsed)) * w
+    return tuple(int(u) for u in unit_ids[start:start + w])
+
+
 def build_full_fence(track: int, unit_ids: Sequence[int]):
     """Construct the B-1 FULL FENCE for straight play: fully fenced to
     ``track`` (``track_mask={track: 1.0}, openness=1.0``), pinned to
-    ``unit_ids`` (that track's own consecutive units from the clicked spot
-    onward). Lazy import — Part A may land seconds after this module does;
-    raises ``LiveCarrierUnavailable`` rather than ever proceeding without a
-    real fence."""
+    ``unit_ids`` — which for straight play is ONE BAR's consecutive window
+    (see ``bar_window_unit_ids``), rebuilt each bar so the tape walks the
+    track forward instead of roaming inside it. Lazy import — Part A may land
+    seconds after this module does; raises ``LiveCarrierUnavailable`` rather
+    than ever proceeding without a real fence."""
     try:
         from ets.writer.clamp import clamp0
     except ImportError as exc:
