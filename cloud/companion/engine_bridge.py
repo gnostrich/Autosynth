@@ -1779,7 +1779,8 @@ class StreamPlayer:
                                       live.get("bars_elapsed", 0),
                                       self.s_phase,
                                       demanded_roles=range(int(self.world.M)),
-                                      start_group=live.get("start_group", 0))
+                                      start_group=live.get("start_group", 0),
+                                      plan=live.get("plan"))
             if win["exhausted"]:
                 self.live_enter()              # ran off the end: idle silence
             else:
@@ -2166,6 +2167,8 @@ class StreamPlayer:
                           "slices": slices,
                           # straight play starts where the user CLICKED
                           "start_group": live_mod.group_of_index(slices, j0),
+                          # built ONCE here, not per bar (the measured stall)
+                          "plan": live_mod.build_plan(slices),
                           "core_units": frozenset(),
                           "n_widened": 0, "off_window": 0, "n_cast": 0}
         self.start()               # ensure the shared produce loop is running
