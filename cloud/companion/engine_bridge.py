@@ -734,7 +734,8 @@ class StreamPlayer:
         #   "straight" — B-1 amended: a full fence is set; straight play runs.
         self._live: dict = {"mode": "off", "clamp": None, "track": None,
                             "uid_index": {}, "current_unit": None,
-                            "current_slice_index": None, "starved": False}
+                            "current_slice_index": None, "starved": False,
+                            "pin_units": (), "bars_elapsed": 0}
         self._live_lock = threading.Lock()
         self._lock = threading.Lock()
         self._playing = threading.Event()
@@ -1760,9 +1761,29 @@ class StreamPlayer:
         # never touched) -> clamp_call_kwargs returns {} WITHOUT introspecting
         # anything, so this call stays the exact write_bar(tilt=tilt) it is
         # today (byte-identical; LM-0/LM-1).
-        with self._live_lock:
-            clamp_terms = self._live.get("clamp")
         from . import live as live_mod
+        # STRAIGHT PLAY WALKS FORWARD (B-1: "bars pinned to that track's
+        # CONSECUTIVE slices"). The fence is rebuilt EVERY bar from a moving
+        # cursor over the pinned run, so the choice set for this bar is this
+        # bar's slices — not the track's whole remaining set, which let the
+        # tape roam inside the track (the measured 2026-08-13 defect). Past the
+        # end of the run the window empties and LIVE returns to idle silence
+        # rather than wrapping, repeating, or inventing material.
+        clamp_terms = None
+        with self._live_lock:
+            live = dict(self._live)
+        if live.get("mode") == "straight" and live.get("pin_units"):
+            window = live_mod.bar_window_unit_ids(
+                live["pin_units"], live.get("bars_elapsed", 0), self.s_phase)
+            if window:
+                clamp_terms = live_mod.build_full_fence(live["track"], window)
+                with self._live_lock:
+                    if self._live.get("mode") == "straight":
+                        self._live["clamp"] = clamp_terms
+                        self._live["bars_elapsed"] = \
+                            int(self._live.get("bars_elapsed", 0)) + 1
+            else:
+                self.live_stop()               # ran off the end of the track
         clamp_kwargs = live_mod.clamp_call_kwargs(self.engine.writer.write_bar,
                                                    clamp_terms)
         r = self.engine.writer.write_bar(tilt=tilt, **clamp_kwargs)
@@ -2125,7 +2146,11 @@ class StreamPlayer:
         with self._live_lock:
             self._live = {"mode": "straight", "clamp": fence, "track": track,
                           "uid_index": idx_map, "current_unit": None,
-                          "current_slice_index": None, "starved": False}
+                          "current_slice_index": None, "starved": False,
+                          # the whole pinned run + the bar cursor over it; the
+                          # produce loop narrows this to ONE bar's window each
+                          # bar so straight play walks the track forward
+                          "pin_units": tuple(unit_ids), "bars_elapsed": 0}
         self.start()               # ensure the shared produce loop is running
         return {"track": track, "unit": start_unit}
 
@@ -2136,7 +2161,8 @@ class StreamPlayer:
         with self._live_lock:
             self._live = {"mode": "idle", "clamp": None, "track": None,
                           "uid_index": {}, "current_unit": None,
-                          "current_slice_index": None, "starved": False}
+                          "current_slice_index": None, "starved": False,
+                          "pin_units": (), "bars_elapsed": 0}
 
     def live_state(self) -> dict:
         """Measured, not asserted (the route contract): the unit/slice this
