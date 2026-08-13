@@ -1819,3 +1819,14 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
   split read as scoped to LIVE (flagged to the operator, §4).
 - `Append` REGISTRY.jsonl — `live-mode-2026-08-13` (kill conditions: LM-1/LM-2
   red ⇒ carrier redesign, no mode work).
+
+## 2026-08-13 — LIVE MODE Amendment 1: NATIVE PACE (operator, verbatim)
+- `Append` papers/PREREG-live-mode.md — Amendment 1 recorded verbatim; retires
+  N_BRIDGE_BARS/ramp/dual-bar; LM-4 re-scoped, LM-5 replaced, LM-9 added.
+- **Wall surfaced:** "the existing global slew" is not running in the web path
+  (`RegionSlew` lives in the panel package; `cloud/` never imports it). The
+  build ADOPTS the registered law + constant at the LIVE per-bar cadence; the
+  wall-clock consequence is measured and reported, never tuned.
+- **Flagged:** which pre-registered floor the convergence criterion uses
+  (measured-fluctuation, since the gap is scalar) — operator can override.
+- `Append` REGISTRY.jsonl — `live-mode-amendment-1-native-pace-2026-08-13`.

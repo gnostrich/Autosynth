@@ -234,3 +234,110 @@ regression of a live feature — it is **not** assumed here.
 - Step 3 Train B (mode/UI + LM-0, LM-3..LM-8): pending.
 - Step 4 deploy + one-page report (checks table, fidelity verdict, what is NOT
   claimed): pending.
+
+---
+
+# AMENDMENT 1 — NATIVE PACE (v0)
+
+Operator, 2026-08-13. Supersedes the B-2/B-3 schedule mechanics registered
+above, and retires §3's `N_BRIDGE_BARS` / ramp-shape constants with them.
+
+## A1.1 The amendment (verbatim)
+
+> AMENDMENT to ets-directive-live-deck-mode — NATIVE PACE (v0)
+> Incremental; supersedes B-2/B-3 schedule mechanics. Log to LEDGER.
+>
+> 1. B-2 REVISED — NO TIMETABLE: on click, source fence RELEASES (openness
+>    -> 0 by the existing global slew, no N-bar schedule) + w_r column lean
+>    latches (unchanged). Bridge duration is EMERGENT: the corpus's own
+>    inertia under the committed tape. No new constants anywhere.
+> 2. B-3 REVISED — ARRIVAL BY CONVERGENCE: destination fence closes when
+>    the achieved-vs-target character gap falls under the MEASURED NOISE
+>    FLOOR (the existing pre-registered floor convention; no new threshold).
+>    Stall/plateau renders honestly (corpus has no road); no timeout that
+>    fakes arrival.
+> 3. B-4 REVISED — SINGLE journey bar (achieved gap only); the dual bar is
+>    retired with the schedule. LM-5 replaced: bar derives from profile
+>    telemetry only; frozen telemetry -> frozen bar; stall renders as stall.
+> 4. LM-4 re-scoped: openness transitions ride the carrier as data (release
+>    + convergence-close events); still no schedule logic in engine modules.
+> 5. FUTURE (not built): optional fixed-length transition (N bars, one
+>    registered knob) as a separate amendment if performers want it.
+> Fidelity label (B-5/LM-6) unchanged. Everything else stands.
+
+## A1.2 What this retires
+
+- **`N_BRIDGE_BARS = 8`, the linear ramp shape, and the midpoint mask swap
+  are RETIRED.** They are struck from §3 and must not appear in any module.
+- **The dual journey bar is RETIRED.** One bar: achieved gap only.
+- **LM-5 is REPLACED** by: the bar derives from profile telemetry only; frozen
+  telemetry ⇒ frozen bar; a stall renders **as a stall**, never as progress.
+- **LM-4 is RE-SCOPED**: the carrier now carries *events* (release,
+  convergence-close) rather than a ramp table. Engine modules still contain no
+  schedule logic — the static check stands, now against event data.
+
+The carrier itself (Part A / Train A) is **unchanged**: it still carries
+per-track masks + `openness` + pins as data. Only who moves `openness`, and
+when, changes — and that mover is upstream of the engine either way.
+
+## A1.3 WALL SURFACED — "the existing global slew" is not running in the web path
+
+Read from the code, not assumed:
+
+- `architecture-v6/ets/panel/envelope.py::RegionSlew` **exists** and is the
+  registered slew law (bounded-rate follower, `SLEW_MAX_STEP = 0.20` per emit,
+  registered under PREREG-uiv5-padfeel BUG-1).
+- It lives in the **panel** package. `cloud/companion/` — the web instrument
+  this build ships — **does not import or run it**. Grep for `slew` across
+  `cloud/` returns nothing. The web path has no live slew law today.
+
+So "the existing global slew" cannot be *referenced*; it can only be
+**adopted**. This build adopts it, which honors "no new constants anywhere"
+(the constant is pre-existing and registered) — it does **not** invent a rate:
+
+> LIVE's `openness` release follows `RegionSlew`'s registered law and its
+> registered `SLEW_MAX_STEP = 0.20`, applied at the LIVE path's own emit
+> cadence (per bar, the cadence at which the carrier is rebuilt), not the
+> panel's 30 Hz timer.
+
+**Honest consequence, disclosed not tuned:** because the cadence differs, the
+wall-clock release time differs from the panel's ~80–150 ms feel. At one emit
+per bar, a full release (1.0 → 0.0 at 0.20/emit) takes 5 bars of *release*, and
+the bridge's total duration remains emergent (the corpus's inertia dominates).
+This is **measured and reported** in the Train B report, never adjusted to hit a
+target feel. If the operator wants a different cadence or rate, that is a new
+amendment with a registered knob (their item 5), not a silent tune.
+
+## A1.4 The convergence criterion (B-3) — which existing floor, stated
+
+The repo holds two pre-registered floor conventions. The amendment says
+"the MEASURED NOISE FLOOR (the existing pre-registered floor convention)":
+
+- the **participation-ratio floor** `(Σw)²/Σw² ≥ 2` (`anchors.py::effective_rank`,
+  live as `fieldClearsFloor`) — a floor on a *weight vector's* effective support;
+- the **measured-fluctuation floor** σ (the σ_φ calibration convention) — a floor
+  on a *scalar quantity's* own untilted fluctuation.
+
+The arrival criterion compares a **scalar gap** (achieved character vs target
+character), so the fluctuation convention is the one that types:
+
+> **ARRIVAL** iff the achieved-vs-target gap on the column-share telemetry
+> (`fieldColShares`, the same reduction the D-1 role strip already reads) falls
+> **below that telemetry's own measured bar-to-bar fluctuation**, measured on
+> this world under no lean. Measured first, compared second. No new threshold
+> constant is introduced; the floor is a measurement.
+> **STALL** = the gap plateaus above its own floor. It renders as a stall
+> ("corpus has no road"). There is **no timeout and no fake arrival**.
+
+Flagged for the operator: if they meant the participation-ratio floor instead,
+say so — it is a one-line change to the criterion, and it is not assumed here.
+
+## A1.5 Amended check list
+
+| check | status after Amendment 1 |
+|---|---|
+| LM-0, LM-1, LM-2, LM-3 | unchanged |
+| **LM-4** | re-scoped: release + convergence-close arrive as carrier **events**; static check still forbids schedule logic in engine modules |
+| **LM-5** | **replaced**: single bar from profile telemetry only; frozen telemetry ⇒ frozen bar; stall renders as stall (deliberate-violation fixture must bite) |
+| LM-6, LM-7, LM-8 | unchanged |
+| **new LM-9** | **no-timetable check**: no `N_BRIDGE_BARS`, no ramp table, no timeout anywhere in the LIVE path; a planted timeout-to-arrival must FAIL the check |
