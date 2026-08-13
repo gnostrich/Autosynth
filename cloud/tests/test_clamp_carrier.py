@@ -8,6 +8,13 @@ teeth for the two registered kill conditions and the LM-3 groundwork fixture).
   LM-2  carrier-typing: a unit/time target through the LIVE tilt gate raises
         TypeError; the same target on ClampTerms passes; the single-
         construction-point static scan bites on a planted second site.
+  LM-11 HARD FENCE (Amendment 4, A4.2 — this operator number is reassigned
+        here from Amendment 2's no-timetable check, see A4.3; that check now
+        lives at LM-12 below): no cast outside ClampTerms, ever. When a fence
+        admits nothing for a demanded (role, band), the slot casts NOTHING —
+        the struck clause ("the unrestricted set is used for that bar") no
+        longer exists in the engine. Starvation is still recorded, never
+        swallowed; it is simply never a widen.
 
 Plus a straight-fence sanity fixture (LM-3 groundwork, Train B's concern —
 proven here only as "the mechanism is live and correct", not as the mode).
@@ -15,10 +22,12 @@ proven here only as "the mechanism is live and correct", not as the mode).
 Out-of-process for anything that imports ``architecture-v6/ets`` (the arch-v6
 engine is kept out of the cloud interpreter, exactly like
 test_fast_realize.py / test_channel_bias.py — a synthetic hand-built world,
-never a corpus render). The single-construction-point AST scan and the LM-11
-no-timetable-constant scan (renumbered by Amendment 2 — see that test's
-docstring) run IN-PROCESS (pure source-text parsing, no import), mirroring
-test_h6_panel_exhaustive.py's C-3 idiom.
+never a corpus render). The single-construction-point AST scan and the LM-12
+no-timetable-constant scan (Amendment 4 §A4.3 renumbers this AGAIN, from
+Amendment 2's LM-11 — the operator's LM-11 now names the hard-fence check
+above, so mine moves a second time, content unchanged) run IN-PROCESS (pure
+source-text parsing, no import), mirroring test_h6_panel_exhaustive.py's C-3
+idiom.
 """
 from __future__ import annotations
 
@@ -87,7 +96,7 @@ def test_lm2_single_construction_point_static_check():
         "not even catch a planted second call site")
 
 
-_LM11_FORBIDDEN_EXACT = {"N_BRIDGE_BARS", "BRIDGE_BARS", "RAMP_SHAPE",
+_LM12_FORBIDDEN_EXACT = {"N_BRIDGE_BARS", "BRIDGE_BARS", "RAMP_SHAPE",
                          "RAMP_TABLE", "SCHEDULE_TABLE", "TIMEOUT",
                          "TIMEOUT_S", "TIMEOUT_BARS"}
 
@@ -106,29 +115,31 @@ def _assigned_or_defined_names(src: str) -> set:
     return names
 
 
-def test_lm11_no_timetable_constants_defined_in_train_a_modules():
-    """Amendment 1's no-timetable check, renumbered LM-11 by Amendment 2
-    (§A2.2 — LM-9/LM-10 are now the operator's idle-silence / first-click-
+def test_lm12_no_timetable_constants_defined_in_train_a_modules():
+    """Amendment 1's no-timetable check: renumbered LM-11 by Amendment 2
+    (§A2.2 — LM-9/LM-10 are the operator's idle-silence / first-click-
     immediacy checks, both Train B/transport concerns outside this file's
-    scope). Content unchanged: no bridge-length constant, ramp table,
-    schedule array, or timeout may be DEFINED (an assignment or a def/class
-    name) in clamp.py or realize.py. Prose that documents the retirement
-    (this test's own docstrings, clamp.py's module docstring) is not a
-    definition and is not scanned — only actual identifiers bound in the
-    module."""
+    scope), then renumbered AGAIN to LM-12 by Amendment 4 (§A4.3 — the
+    operator reassigned LM-11 to the hard-fence check below). Content
+    unchanged across both renumberings: no bridge-length constant, ramp
+    table, schedule array, or timeout may be DEFINED (an assignment or a
+    def/class name) in clamp.py or realize.py. Prose that documents the
+    retirement (this test's own docstrings, clamp.py's module docstring) is
+    not a definition and is not scanned — only actual identifiers bound in
+    the module."""
     for path in (_CLAMP_PY, _REALIZE_PY):
         names = _assigned_or_defined_names(path.read_text())
         hit = {n for n in names
-              if n.upper() in _LM11_FORBIDDEN_EXACT
+              if n.upper() in _LM12_FORBIDDEN_EXACT
               or "RAMP" in n.upper() or "TIMEOUT" in n.upper()
               or "BRIDGE_BARS" in n.upper()}
         assert not hit, (
             f"{path.relative_to(_ROOT)} defines a retired/forbidden "
-            f"timetable identifier (Amendment 1 / LM-11): {hit}")
+            f"timetable identifier (Amendment 1 / LM-12): {hit}")
     # BITE: a planted ramp-length constant must be caught.
     planted = _assigned_or_defined_names("N_BRIDGE_BARS = 8\n")
     assert any("BRIDGE_BARS" in n.upper() for n in planted), (
-        "the LM-11 no-timetable scan is vacuous")
+        "the LM-12 no-timetable scan is vacuous")
 
 
 # =============================================================================
@@ -238,21 +249,24 @@ lm1_stream = {
 # mathematically indistinguishable to `_admits`'s literal dict.get lookup; only
 # `clamp0` treats a truly-empty mask as "no data, don't restrict", and only at
 # construction time). Both bypasses below MUST record STARVED on every choice
-# -- and, because starvation always falls back to the unrestricted set, the
-# resulting OUTPUT still coincides with the unclamped baseline (a worked
-# example of "never a silent no-op", not a second neutral-law path).
+# -- and, under the HARD FENCE (prereg Amendment 4, A4.2/LM-11), starvation no
+# longer falls back to the unrestricted set: this synthetic world has exactly
+# ONE (role, band) pool, so a fence that starves it starves EVERY choice, and
+# the run casts NOTHING at all (zero rows). The struck clause ("the
+# unrestricted set is used for that bar") is gone -- this is the proof it is
+# gone, not a worked example of it.
 rows_f, cont_f, state_f, starv_f = _run_stream(
     ClampTerms(track_mask={}, openness=0.7))                     # empty-mask bypass
 rows_g, cont_g, state_g, starv_g = _run_stream(
     ClampTerms(track_mask={0: 0.0, 1: 0.0}, openness=0.7))       # explicit all-zero
 
-starvation_fallback_coincidence = {
+starvation_hard_fence = {
     "empty_mask_bypass_starves_every_choice": len(starv_f) > 0,
     "explicit_zero_bypass_starves_every_choice": len(starv_g) > 0,
     "starved_sets_identical_fg": starv_f == starv_g,
     "rows_identical_fg": rows_f == rows_g,
-    "rows_coincide_with_unclamped_baseline_f": rows_a == rows_f,
-    "rows_coincide_with_unclamped_baseline_g": rows_a == rows_g,
+    "no_rows_cast_f": rows_f == [],
+    "no_rows_cast_g": rows_g == [],
 }
 
 # ---- LM-2: the LIVE tilt gate vs ClampTerms (typing split, A-4) -----------
@@ -347,11 +361,16 @@ lm_moves = {
     "starved_false_positive_control": meta_t1["starved"] == [],
 }
 
-# ---- STARVATION: an unsatisfiable fence never silently no-ops -------------
+# ---- STARVATION: an unsatisfiable fence never silently no-ops, and (HARD
+# FENCE, Amendment 4 A4.2/LM-11) never widens to the unrestricted set either
+# -- the slot casts nothing for a starved (bar, k, b). This synthetic world
+# has exactly one (role, band) pool, so a totally unsatisfiable fence (a mask
+# naming a track that doesn't exist) starves EVERY call and the whole render
+# casts zero rows; the STARVED receipt is the only trace it leaves.
 p_sv, sha_sv, meta_sv, tr_sv = _render_with(clamp0({99: 1.0}, 1.0))
 starvation = {
     "starved_nonempty": len(meta_sv["starved"]) > 0,
-    "rows_still_emitted": len(p_sv) > 0,
+    "rows_are_empty": len(p_sv) == 0,
     "starved_events_are_bar_k_b_triples":
         all(len(e) == 3 for e in meta_sv["starved"]),
 }
@@ -412,13 +431,123 @@ batch_fast_orig_under_clamp = {
     "starved_identical": batch_starv_fast == batch_starv_orig,
 }
 
+# =============================================================================
+# LM-11 (Amendment 4, A4.2) -- HARD FENCE must-bite fixture
+# =============================================================================
+# The shared single-pool world above (M=1, n_bands=1) cannot show "starves
+# for ONE demanded (role, band) while casting normally for another" -- it has
+# only one (role, band) pool, so any starving fence on it starves every call
+# (see starvation/starvation_hard_fence above). A second, two-role/two-band
+# synthetic world gives each role its OWN disjoint track+band, so a fence can
+# admit one (role, band) and starve the other IN THE SAME RUN -- exactly the
+# operator's fixture spec: "a pin that admits nothing for at least one
+# demanded (role, band)".
+#   track 0 ("kept"):    units 0..7,     role 0, band 0 -- admitted, pinned to {2,3,4}
+#   track 1 ("starved"): units 100..102, role 1, band 1 -- excluded entirely
+#                         (named nowhere in the mask)
+TRACK0_11 = list(range(8))
+TRACK1_11 = [100, 101, 102]
+
+successor_11 = {}
+for a, b in zip(TRACK0_11[:-1], TRACK0_11[1:]):
+    successor_11[(0, a)] = (0, b)
+for a, b in zip(TRACK1_11[:-1], TRACK1_11[1:]):
+    successor_11[(1, a)] = (1, b)
+
+unit_phase_11 = {}
+for i, u in enumerate(TRACK0_11):
+    unit_phase_11[(0, u)] = i / 8.0
+for i, u in enumerate(TRACK1_11):
+    unit_phase_11[(1, u)] = i / 3.0
+
+candidates_11 = {
+    (0, 0): sorted([(0, u, unit_phase_11[(0, u)]) for u in TRACK0_11],
+                   key=lambda z: (z[2], z[0], z[1])),
+    (1, 1): sorted([(1, u, unit_phase_11[(1, u)]) for u in TRACK1_11],
+                   key=lambda z: (z[2], z[0], z[1])),
+}
+unit_of_11 = {(0, 0): (0, TRACK0_11[0]), (1, 1): (1, TRACK1_11[0])}
+
+index_11 = RealizationIndex(unit_of=unit_of_11, role_track={0: 0, 1: 1}, M=2,
+                            n_bands=2, successor=successor_11, unit_role={},
+                            candidates=candidates_11, unit_phase=unit_phase_11)
+# role k routes to band k (diagonal): both roles/bands are DEMANDED every slot.
+fstate_11 = SimpleNamespace(B=np.array([[1.0, 0.0], [0.0, 1.0]]))
+
+# The fence: track 0 admitted (pinned to units {2,3,4}); track 1 is named
+# NOWHERE in the mask, so `_admits`'s `track_mask.get(1, 0.0) >= openness`
+# (0.0 >= 1.0) is false for every track-1 candidate -- role 1/band 1's only
+# source is starved on every single call, while role 0/band 0 casts normally
+# throughout the same run.
+clamp_lm11 = clamp0({0: 1.0}, 1.0, unit_pin=(0, (2, 3, 4)))
+
+
+def _drive_11(threader, n_slots):
+    rows, cont = [], []
+    bar_prev = 0
+    for s in range(n_slots):
+        bar = s // S_PHASE
+        if bar != bar_prev:
+            threader.commit_bar(bar_prev)
+            bar_prev = bar
+        r, c = threader.place_slot(s, np.array([1.0, 1.0]))   # both roles demanded
+        rows.extend(r); cont.extend(c)
+    threader.commit_bar(bar_prev)
+    return rows, cont
+
+
+def _run_lm11(fast, seed=7, n_slots=64):
+    os.environ["ETS_FAST_REALIZE"] = "1" if fast else "0"
+    th = FiberThreader(index_11, fstate_11, S_PHASE, tilt=untilted(1),
+                       rng=np.random.default_rng(seed), clamp=clamp_lm11)
+    rows, cont = _drive_11(th, n_slots)
+    return rows, cont, list(th.starved)
+
+
+rows_lm11_fast, cont_lm11_fast, starv_lm11_fast = _run_lm11(True)
+rows_lm11_orig, cont_lm11_orig, starv_lm11_orig = _run_lm11(False)
+os.environ.pop("ETS_FAST_REALIZE", None)
+
+
+def _casts_outside_fence_11(rows):
+    # Any placement whose (track, unit) is not admitted by clamp_lm11:
+    # track 1 (excluded entirely) or a track-0 unit outside the pin {2,3,4}.
+    bad = []
+    for (s, tid, uid, sec, mass) in rows:
+        if not (tid == 0 and uid in (2, 3, 4)):
+            bad.append((s, tid, uid))
+    return bad
+
+
+lm11 = {
+    "nonvacuous": len(rows_lm11_fast) > 5,
+    "fast_orig_rows_identical": rows_lm11_fast == rows_lm11_orig,
+    "fast_orig_cont_identical": cont_lm11_fast == cont_lm11_orig,
+    "fast_orig_starved_identical": starv_lm11_fast == starv_lm11_orig,
+    "no_cast_outside_fence_fast": _casts_outside_fence_11(rows_lm11_fast) == [],
+    "no_cast_outside_fence_orig": _casts_outside_fence_11(rows_lm11_orig) == [],
+    "no_track1_row_ever_fast":
+        all(tid != 1 for (_s, tid, _u, _sec, _m) in rows_lm11_fast),
+    "no_track1_row_ever_orig":
+        all(tid != 1 for (_s, tid, _u, _sec, _m) in rows_lm11_orig),
+    "starvation_recorded_fast": len(starv_lm11_fast) > 0,
+    "starvation_recorded_orig": len(starv_lm11_orig) > 0,
+    "starved_kb_set_fast": sorted({(k, b) for (_bar, k, b) in starv_lm11_fast}),
+    "starved_kb_set_orig": sorted({(k, b) for (_bar, k, b) in starv_lm11_orig}),
+    "admitted_role_band_casts_normally_fast":
+        any(tid == 0 for (_s, tid, _u, _sec, _m) in rows_lm11_fast),
+    "admitted_role_band_casts_normally_orig":
+        any(tid == 0 for (_s, tid, _u, _sec, _m) in rows_lm11_orig),
+}
+
 print(json.dumps({
     "lm1_stream": lm1_stream, "lm2": lm2, "neutral_law": neutral_law,
     "lm1_render": lm1_render, "lm_moves": lm_moves, "starvation": starvation,
     "straight_fence": straight_fence,
     "fast_orig_under_clamp": fast_orig_under_clamp,
     "batch_fast_orig_under_clamp": batch_fast_orig_under_clamp,
-    "starvation_fallback_coincidence": starvation_fallback_coincidence,
+    "starvation_hard_fence": starvation_hard_fence,
+    "lm11": lm11,
 }))
 """ % (str(_ROOT), str(_ROOT))
 
@@ -461,17 +590,18 @@ def test_lm1_neutral_or_absent_clamp_is_byte_identical_streaming():
             f"perturbed the consumed random stream")
 
 
-def test_starvation_fallback_coincides_with_baseline_but_is_not_the_neutral_law():
-    """NOT part of the LM-1 kill condition: an all-EXPLICIT-zero mask, and a
-    raw ClampTerms(track_mask={}, openness>0) bypass of clamp0, both
-    legitimately STARVE on every single choice (they are real, if degenerate,
-    restrictions — clamp.py's docstring says so explicitly; `_admits`
-    implements prereg §2.1 literally, with no empty-mask special case).
-    Because starvation always falls back to the unrestricted set, the
-    resulting rows happen to coincide with the unclamped baseline here — an
-    honest side-effect of "never a silent no-op", not a second, competing
-    neutral-law implementation living in the engine."""
-    d = _d()["starvation_fallback_coincidence"]
+def test_starvation_hard_fence_starves_but_casts_nothing_no_fallback_to_baseline():
+    """HARD FENCE (prereg Amendment 4, A4.2/LM-11): an all-EXPLICIT-zero mask,
+    and a raw ClampTerms(track_mask={}, openness>0) bypass of clamp0, both
+    legitimately STARVE on every single choice in this single-(role,band)-
+    pool world (they are real, if degenerate, restrictions — clamp.py's
+    docstring says so explicitly; `_admits` implements prereg §2.1 literally,
+    with no empty-mask special case). The STRUCK clause — "the unrestricted
+    set is used for that bar" — no longer exists: starvation now means the
+    run casts NOTHING at all (zero rows), never a reproduction of the
+    unclamped baseline. This test is the negative of what the pre-Amendment-4
+    behavior asserted."""
+    d = _d()["starvation_hard_fence"]
     assert d["empty_mask_bypass_starves_every_choice"], (
         "a raw empty-mask ClampTerms bypass (openness>0) must starve — it "
         "is not neutral by the engine's literal fence formula")
@@ -481,10 +611,12 @@ def test_starvation_fallback_coincides_with_baseline_but_is_not_the_neutral_law(
         "an empty mask and an explicit all-zero mask must starve identically "
         "-- they are indistinguishable to _admits's dict.get lookup")
     assert d["rows_identical_fg"], "the two starving bypasses must agree with each other"
-    assert d["rows_coincide_with_unclamped_baseline_f"], (
-        "starvation fallback must reproduce the unrestricted baseline exactly")
-    assert d["rows_coincide_with_unclamped_baseline_g"], (
-        "starvation fallback must reproduce the unrestricted baseline exactly")
+    assert d["no_rows_cast_f"], (
+        "HARD FENCE: a fully starving fence must cast ZERO rows, never fall "
+        "back to the unrestricted baseline")
+    assert d["no_rows_cast_g"], (
+        "HARD FENCE: a fully starving fence must cast ZERO rows, never fall "
+        "back to the unrestricted baseline")
 
 
 def test_lm1_neutral_clamp_construction_canonicalizes_to_none():
@@ -560,13 +692,19 @@ def test_lm2_the_same_unit_target_is_legal_on_clamp_terms():
 # Starvation — disclosed, never a silent no-op
 # =============================================================================
 
-def test_starvation_is_recorded_and_never_a_silent_no_op():
+def test_starvation_is_recorded_and_casts_nothing_never_a_fabricated_unit():
+    """HARD FENCE (Amendment 4, A4.2/LM-11): starvation is still recorded
+    (disclosed, never swallowed), but the struck consequence — widening to
+    the unrestricted set — is gone. An unsatisfiable fence (naming a track
+    that doesn't exist) starves this world's only (role, band) pool on every
+    call, so the whole render casts ZERO rows; the STARVED receipt is the
+    only trace it leaves."""
     d = _d()["starvation"]
     assert d["starved_nonempty"], (
         "an unsatisfiable fence must record STARVED (bar, k, b) events")
-    assert d["rows_still_emitted"], (
-        "a starved bar must still use the unrestricted set — never a silent "
-        "no-op and never empty output")
+    assert d["rows_are_empty"], (
+        "HARD FENCE: a starved bar must cast NOTHING — no widening to the "
+        "unrestricted set, no fabricated unit, ever")
     assert d["starved_events_are_bar_k_b_triples"], (
         "starvation events must be observable (bar, k, b) triples, not opaque")
 
@@ -616,3 +754,69 @@ def test_batch_realize_fast_and_original_are_bit_identical_under_clamp():
     assert d["starved_identical"], (
         "the batch reduction's starvation events diverge fast-vs-original "
         "under a partial clamp")
+
+
+# =============================================================================
+# LM-11 (Amendment 4, A4.2) — HARD FENCE (operator's must-bite fixture)
+# =============================================================================
+
+def test_lm11_no_cast_ever_leaves_the_fence():
+    """The operator's must-bite fixture: a fence that admits nothing for one
+    demanded (role, band) — role 1/band 1, via a track named nowhere in the
+    mask — while admitting another (role 0/band 0, pinned to {2,3,4}) in the
+    SAME run. Every single placement produced, under both `_choose_fast` and
+    `_choose_original`, must be inside the fence: track 0 restricted to the
+    pinned units, and track 1 (or any other track) never appears at all."""
+    d = _d()["lm11"]
+    assert d["nonvacuous"], "the LM-11 fixture produced too few rows to test"
+    assert d["no_cast_outside_fence_fast"], (
+        "a unit outside ClampTerms was cast under _choose_fast — the HARD "
+        "FENCE was violated")
+    assert d["no_cast_outside_fence_orig"], (
+        "a unit outside ClampTerms was cast under _choose_original — the "
+        "HARD FENCE was violated")
+    assert d["no_track1_row_ever_fast"], (
+        "track 1 (excluded from the mask entirely) must never appear in a "
+        "placement (_choose_fast)")
+    assert d["no_track1_row_ever_orig"], (
+        "track 1 (excluded from the mask entirely) must never appear in a "
+        "placement (_choose_original)")
+
+
+def test_lm11_starvation_is_surfaced_not_swallowed():
+    """The starved (role, band) is disclosed via `starved` — never silently
+    dropped — and it is EXACTLY (k=1, b=1), the excluded track's own
+    (role, band), never the admitted (k=0, b=0)."""
+    d = _d()["lm11"]
+    assert d["starvation_recorded_fast"], "starvation must be recorded (fast)"
+    assert d["starvation_recorded_orig"], "starvation must be recorded (original)"
+    assert d["starved_kb_set_fast"] == [[1, 1]], (
+        f"expected only (role=1, band=1) to starve, got {d['starved_kb_set_fast']}")
+    assert d["starved_kb_set_orig"] == [[1, 1]], (
+        f"expected only (role=1, band=1) to starve, got {d['starved_kb_set_orig']}")
+
+
+def test_lm11_the_admitted_role_band_still_casts_normally():
+    """The hard fence silences ONLY the starved (role, band) — the admitted
+    (role 0, band 0) keeps casting real placements throughout the run (this
+    is scoped silence, not a global mute)."""
+    d = _d()["lm11"]
+    assert d["admitted_role_band_casts_normally_fast"]
+    assert d["admitted_role_band_casts_normally_orig"]
+
+
+def test_lm11_fast_and_original_remain_bit_identical_under_a_starving_fence():
+    """`_choose_fast` and `_choose_original` must stay bit-identical to each
+    other under an active clamp — including, now, the starving branch that
+    returns None (Amendment 4). Both must skip identically: same rows, same
+    continuation flags, same starved (bar, k, b) events."""
+    d = _d()["lm11"]
+    assert d["fast_orig_rows_identical"], (
+        "_choose_fast and _choose_original diverge under the LM-11 starving "
+        "fence")
+    assert d["fast_orig_cont_identical"], (
+        "_choose_fast and _choose_original produce different continuation "
+        "flags under the LM-11 starving fence")
+    assert d["fast_orig_starved_identical"], (
+        "_choose_fast and _choose_original disagree on which (bar, k, b) "
+        "starved under the LM-11 starving fence")

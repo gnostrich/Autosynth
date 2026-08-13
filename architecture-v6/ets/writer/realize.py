@@ -353,11 +353,14 @@ class FiberThreader:
         # below, so a None clamp costs nothing and touches nothing (A-2/LM-1).
         self.clamp = clamp
         # STARVED (k, b) events: (bar, k, b) where the fence would have
-        # emptied an otherwise-nonempty choice set. Disclosed, never a silent
-        # no-op — the unrestricted set is used for that (bar, k, b) instead
-        # (prereg §2.1 STARVATION). Bounded by material x grid, same as the
-        # other memos below (I-8): at most one entry per (bar, k, b) actually
-        # visited, never a function of elapsed time beyond that.
+        # emptied an otherwise-nonempty choice set. Disclosed, never swallowed
+        # — but, per the HARD FENCE (prereg Amendment 4, A4.2/LM-11), never a
+        # widen either: the slot casts NOTHING for that (k, b) this bar
+        # (`_choose` returns None; `place_slot` skips the band). Silence is
+        # inside every fence; reaching to another track is not. Bounded by
+        # material x grid, same as the other memos below (I-8): at most one
+        # entry per (bar, k, b) actually visited, never a function of elapsed
+        # time beyond that.
         self.starved: List[Tuple[int, int, int]] = []
         self.run_head: Dict[int, Tuple[int, int]] = {}    # band -> unit in flight
         self.last_used: Dict[Tuple[int, int], int] = {}   # unit -> last COMMITTED bar
@@ -407,7 +410,12 @@ class FiberThreader:
 
     def _choose(self, k: int, b: int, psi: float, bar: int):
         """One (slot, band) fiber choice. Returns ((tid, uid), is_continuation)
-        or None if no material exists for (k, b).
+        or None if either no material exists for (k, b) at all, or (HARD
+        FENCE, prereg Amendment 4 A4.2/LM-11) a ClampTerms fence is active
+        and admits nothing for (k, b) this bar — in the latter case the
+        starvation is also recorded in ``self.starved``, but no candidate
+        outside the fence is ever substituted. Either way, ``place_slot``
+        treats None as "cast nothing for this band".
 
         THE single fiber-choice entry point: both implementations live behind
         it, so every observer of the choice (and every caller) still sees
@@ -448,8 +456,15 @@ class FiberThreader:
                 is_cont = [is_cont[i] for i in kept]
             else:
                 self.starved.append((bar, k, b))
-                # the unrestricted `choices`/`is_cont` stand for this (k, b) —
-                # never a silent no-op, never a fabricated unit (prereg §2.1).
+                # HARD FENCE (prereg Amendment 4, A4.2/LM-11): no cast outside
+                # ClampTerms, ever. Starvation is disclosed above, never
+                # swallowed — but the consequence is no longer a widen to the
+                # unrestricted set (that clause is STRUCK). The slot casts
+                # NOTHING for this (k, b): silence is inside every fence;
+                # reaching to another track is not. `place_slot` already
+                # treats a None choice as "skip this band" (the same branch
+                # the "no material at all" case above uses).
+                return None
 
         # F's own fiber energies (LAMBDA live; term math from f.py).
         phases = np.array([idx.unit_phase.get(c, psi) for c in choices])
@@ -718,8 +733,13 @@ class FiberThreader:
                         cbias = cbias[admit]
             else:
                 self.starved.append((bar, k, b))
-                # the unrestricted arrays stand for this (k, b) — never a
-                # silent no-op, never a fabricated unit (prereg §2.1).
+                # HARD FENCE (prereg Amendment 4, A4.2/LM-11): no cast outside
+                # ClampTerms, ever — the same struck-fallback / no-widen law
+                # as `_choose_original`'s matching branch (see its comment).
+                # Returning here before any energy/logit/rng computation is
+                # what keeps this bit-identical to `_choose_original`'s own
+                # early return under the same starving fence.
+                return None
 
         if self.tilt is None:
             logits = -energies                     # T→0 deterministic reduction
@@ -850,10 +870,12 @@ def realize(O: np.ndarray, tape, fstate, index: RealizationIndex,
         "n_slots": n_slots,
         "n_tracks_used": int(len({r[1] for r in rows})),
         "clamped_unit_slots": sorted(clamps.unit_demands),
-        # ClampTerms starvation receipt (prereg §2.1): every (bar, k, b) where
-        # the fence would have emptied an otherwise-nonempty choice set, and
-        # the unrestricted set was used instead. Empty whenever `clamp` is
-        # None (the fence branch never runs) or never starves.
+        # ClampTerms starvation receipt (prereg Amendment 4, A4.2/LM-11):
+        # every (bar, k, b) where the fence would have emptied an otherwise-
+        # nonempty choice set. HARD FENCE: no unrestricted fallback is used —
+        # the slot casts nothing for that (bar, k, b) instead (no row in
+        # `rows` for it). Empty whenever `clamp` is None (the fence branch
+        # never runs) or the fence never starves.
         "starved": list(threader.starved),
     }
     return sched, meta
