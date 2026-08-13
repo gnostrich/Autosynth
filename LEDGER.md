@@ -1810,23 +1810,26 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `06b9e0a`
 - `Write` papers/PREREG-live-mode.md (2026-08-13T16:28:38+00:00)
 
-## 2026-08-13 — LIVE MODE prereg (operator directive, step 1 of 4)
-- `Write` papers/PREREG-live-mode.md — operator directive verbatim + engineering
-  register: restriction lands ONLY in `Realizer._choose` (not the I-7
-  `place_slot(clamp_unit=…)` bypass, which would delete casting); fence rule
-  `track_mask[track] >= openness` + slice-range pin; starvation disclosed;
-  N_BRIDGE_BARS=8 and the fidelity thresholds pre-registered once; A-4 typing
-  split read as scoped to LIVE (flagged to the operator, §4).
-- `Append` REGISTRY.jsonl — `live-mode-2026-08-13` (kill conditions: LM-1/LM-2
-  red ⇒ carrier redesign, no mode work).
+### at `91f202d`
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/LEDGER.md (2026-08-13T16:42:10+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/LEDGER.md (2026-08-13T16:42:14+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/VERSION_LEDGER.jsonl (2026-08-13T16:42:16+00:00)
+- `Write` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/clamp.py (2026-08-13T16:44:19+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:37+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:40+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:49+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:58+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:04+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:46+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:59+00:00)
 
-## 2026-08-13 — LIVE MODE Amendment 1: NATIVE PACE (operator, verbatim)
-- `Append` papers/PREREG-live-mode.md — Amendment 1 recorded verbatim; retires
-  N_BRIDGE_BARS/ramp/dual-bar; LM-4 re-scoped, LM-5 replaced, LM-9 added.
-- **Wall surfaced:** "the existing global slew" is not running in the web path
-  (`RegionSlew` lives in the panel package; `cloud/` never imports it). The
-  build ADOPTS the registered law + constant at the LIVE per-bar cadence; the
-  wall-clock consequence is measured and reported, never tuned.
-- **Flagged:** which pre-registered floor the convergence criterion uses
-  (measured-fluctuation, since the gap is scalar) — operator can override.
-- `Append` REGISTRY.jsonl — `live-mode-amendment-1-native-pace-2026-08-13`.
+## 2026-08-13 — Operator rulings on Amendment 1's two flags: both CONFIRMED
+- Slew adoption **approved as built** (measure the feel, don't tune it; item-5
+  knob only later, based on the number).
+- Fluctuation floor **confirmed, no switch** (participation-ratio would be a
+  category error on a scalar). "Arrived = the remaining distance is smaller
+  than the breathing."
+- **Standing requirement for Train B:** the plateau is now the only failure mode
+  a user sees — stall rendering gets the same care as the happy path.
+- **Banked, out of scope:** web sliders may not be slew-limited at all (panel
+  slew never imported in `cloud/`) → next deadweight/faithfulness sweep.

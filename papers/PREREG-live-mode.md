@@ -341,3 +341,43 @@ say so — it is a one-line change to the criterion, and it is not assumed here.
 | **LM-5** | **replaced**: single bar from profile telemetry only; frozen telemetry ⇒ frozen bar; stall renders as stall (deliberate-violation fixture must bite) |
 | LM-6, LM-7, LM-8 | unchanged |
 | **new LM-9** | **no-timetable check**: no `N_BRIDGE_BARS`, no ramp table, no timeout anywhere in the LIVE path; a planted timeout-to-arrival must FAIL the check |
+
+## A1.6 Operator rulings on the two flags (2026-08-13) — both CONFIRMED
+
+**Ruling 1 — slew adoption: approved as built.** Adopting the registered law and
+its registered constant at LIVE's cadence, then *measuring* the resulting feel,
+is the correct procedure; inventing a new rate because the panel's is not wired
+into the web path would have been the hand-set-constant class. The feel
+divergence is **a measurement to report, not a defect to fix**. If the measured
+feel is too slow for the deck, the item-5 fixed-length knob arrives through the
+front door as its own registered amendment — *later, based on the number*.
+
+**Ruling 2 — floor: fluctuation reading confirmed, no switch.** The type-check
+settles it: the participation-ratio floor answers a *rank* question ("how many
+directions are real in a vector's spread" — it sizes M and k). Arrival is a
+*scalar convergence* question. The fluctuation floor is definitionally the one
+that types; participation-ratio would have been a category error on a scalar.
+
+> **"Arrived" = "the remaining distance is smaller than the breathing."** You are
+> there when the difference between here and the destination is no more than the
+> music's own natural wander.
+
+Consistency argument recorded with it: at arrival the fence closes and straight
+play resumes, and that transition is seamless **precisely because** the residual
+gap is sub-wobble.
+
+### A1.6.1 STANDING REQUIREMENT FOR TRAIN B (operator)
+
+With the timetable retired, **the plateau is now the only failure mode the user
+ever sees.** Native pace means *the corpus is allowed to say no*. Therefore the
+stall rendering — and the "corpus has no road" note — is built with **the same
+care as the happy path**: it is a first-class state, not an error branch. It
+gets its own must-bite fixture (LM-5), its own copy, and its own visual
+treatment. A stall that renders as vague progress, or as a bug, fails the train.
+
+### A1.6.2 INCIDENTAL FINDING BANKED (separate from LIVE)
+
+The panel-package slew never having been imported in `cloud/` implies **the web
+sliders may not be slew-limited at all** — a spec-vs-web divergence. Banked here
+for the next deadweight/faithfulness sweep; **explicitly out of scope for LIVE**
+and not to be fixed opportunistically inside this build.
