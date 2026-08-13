@@ -1163,6 +1163,11 @@
                           aria-pressed="true" title="The track x role matrix (default)">Grid</button>
                   <button type="button" class="field-view-tab" id="fieldViewTracks"
                           aria-pressed="false" title="Waveform lanes — point at a part you love">Tracks</button>
+                  <!-- LIVE (PREREG-live-mode, Train B1): deck playback — click a lane to
+                       start playing from there. Ships default OFF (not pre-selected);
+                       V-1 reset (below) extends to this tab unchanged. -->
+                  <button type="button" class="field-view-tab" id="fieldViewLive"
+                          aria-pressed="false" title="A player with a landscape bridge — click anywhere to travel">Live</button>
                 </span>
                 <!-- Expand the field to fullscreen (Fullscreen API where available; CSS
                      viewport-fill fallback otherwise). Display-only: no steer path. -->
@@ -2464,12 +2469,22 @@
   var FIELD_VIEW_KEY = "ets.fieldView";   // last selected view (V-4; default GRID)
 
   // The effective view. Pure in its input so the rollback branch is testable.
+  // FLAG-gated exactly as before: FIELD_TRACKS_VIEW off pins the EXACT pre-directive
+  // surface (grid only), for TRACKS and for the newer LIVE token alike (PREREG-live-mode
+  // Train B1: "extend it with a third mode... WITHOUT changing GRID/TRACKS behaviour").
   function fieldViewMode(view){
-    return (FIELD_TRACKS_VIEW && view === "tracks") ? "tracks" : "grid";
+    if(!FIELD_TRACKS_VIEW) return "grid";
+    if(view === "tracks") return "tracks";
+    if(view === "live") return "live";
+    return "grid";
   }
-  // V-4: persisted view choice. Anything but the exact "tracks" token (absent, junk,
-  // a storage failure) reads as the paper-faithful DEFAULT.
-  function fieldViewPick(stored){ return (stored === "tracks") ? "tracks" : "grid"; }
+  // V-4: persisted view choice. Anything but the exact "tracks"/"live" token (absent,
+  // junk, a storage failure) reads as the paper-faithful DEFAULT.
+  function fieldViewPick(stored){
+    if(stored === "tracks") return "tracks";
+    if(stored === "live") return "live";
+    return "grid";
+  }
 
   // V-1 SWITCH-RESET: the material surface's ENTIRE lean state, neutral. Zeroes the
   // row/column/cell ledger, the scrub gesture, and the sub-step wheel remainder (so no
@@ -2714,6 +2729,11 @@
     // (wheel / drag / tap) drives them with NO change. The wave area holds no square:
     // a wheel over it is inert, and the scrub owns it through its own pointer path.
     if(fieldViewMode(fieldView) === "tracks") return fieldLanesSquareAt(x, y);
+    // LIVE view: NO square anywhere (PREREG-live-mode B-0/LM-9/LM-10) — this view emits
+    // no lean, ever. Returning null here is what keeps the wheel/drag/touch gesture
+    // paths (which all read fieldSquareAt) from writing fieldBias while LIVE is shown;
+    // the click itself is handled by its own fieldLiveOnClick, on its own carrier.
+    if(fieldViewMode(fieldView) === "live") return null;
     if(FIELD_GRID_ENABLED) return fieldGridSquareAt(x, y);
     var sqs = fieldViewSquares();
     var idx = fieldHitIndex(x, y - FIELD_HEADER, fieldCanvas.clientWidth,
@@ -2759,6 +2779,7 @@
     if(!FIELD_GRID_ENABLED) fieldRenderLegend();   // grid mode: rows/cols are labeled — legend removed
     var st = fieldState();
     if(fieldViewMode(fieldView) === "tracks"){ fieldDrawLanes(st, W, H); return; }
+    if(fieldViewMode(fieldView) === "live"){ fieldLiveDraw(st, W, H); return; }
     if(FIELD_GRID_ENABLED){ fieldDrawGrid(st, W, H); return; }
     fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
     fieldCtx.fillText(fieldBreadcrumb(st, fieldStack) +
@@ -3145,12 +3166,13 @@
   }
   // ---- VIEW SWITCH (V-1..V-4) -------------------------------------------------
   var fieldViewsEl = $("fieldViews"), fieldViewGridBtn = $("fieldViewGrid"),
-      fieldViewTracksBtn = $("fieldViewTracks");
+      fieldViewTracksBtn = $("fieldViewTracks"), fieldViewLiveBtn = $("fieldViewLive");
   function fieldSyncViewTabs(){
     var mode = fieldViewMode(fieldView);
     if(fieldViewsEl) fieldViewsEl.hidden = !FIELD_TRACKS_VIEW;   // rollback: pre-directive surface
     if(fieldViewGridBtn) fieldViewGridBtn.setAttribute("aria-pressed", mode === "grid" ? "true" : "false");
     if(fieldViewTracksBtn) fieldViewTracksBtn.setAttribute("aria-pressed", mode === "tracks" ? "true" : "false");
+    if(fieldViewLiveBtn) fieldViewLiveBtn.setAttribute("aria-pressed", mode === "live" ? "true" : "false");
   }
   // ANY switch, either direction: EVERY material-surface lean is zeroed (row, column,
   // cell, scrub, and the sub-step wheel remainder — nothing can resurrect) and the
@@ -3160,16 +3182,20 @@
   // their half of the vector from their OWN unchanged state, as on every publish.
   function fieldSetView(v){
     if(!FIELD_TRACKS_VIEW) v = "grid";
-    if(v !== "grid" && v !== "tracks") return;
+    if(v !== "grid" && v !== "tracks" && v !== "live") return;
     if(v === fieldView) return;                  // not a switch: no reset, no publish
     var n = fieldNeutralLeanState();
     fieldBias = n.bias; fieldScrub = n.scrub; fieldWheelBiasState = n.wheel;
     fieldScrubSent = null; fieldHover = null;
+    // LM-7 (PREREG-live-mode, V-1 extended): leaving LIVE drops its fence — its own
+    // carrier, dropped by its own function, same instant-no-fade law as the lean reset.
+    if(fieldView === "live") fieldLiveStop();
     fieldView = v;
     try{ window.localStorage.setItem(FIELD_VIEW_KEY, v); }catch(e){}
     fieldSyncViewTabs();
     sendSteerNow();                              // the NEUTRAL material-surface carrier
     if(v === "tracks") fieldWaveEnsure();
+    if(v === "live"){ fieldWaveEnsure(); fieldLivePollStart(); }
     fieldSetStatus("", false);
     fieldDraw();
   }
@@ -3396,9 +3422,10 @@
     var availW = (box && box.clientWidth) || 0, availH = (box && box.clientHeight) || 0;
     if(availW <= 0 || availH <= 0) return;
     var T = fieldTrackIds(st).length, M = world.M || 0;
-    // TRACKS view: ONE column (the waveform) per row, with a legible minimum LANE height —
-    // the same min-size/scroll helper, parameterised. No second layout law.
-    var sz = (fieldViewMode(fieldView) === "tracks")
+    // TRACKS/LIVE view: ONE column (the waveform) per row, with a legible minimum LANE
+    // height — the same min-size/scroll helper, parameterised. No second layout law
+    // (LIVE reuses TRACKS' lane geometry verbatim; PREREG-live-mode Train B1).
+    var sz = (fieldViewMode(fieldView) === "tracks" || fieldViewMode(fieldView) === "live")
       ? fieldGridMinSize(T, 1, availW, availH,
           { minCellW: 240, minCellH: FIELD_LANE_MIN_H, rhW: 160, chH: FIELD_STRIP_H,
             headH: FIELD_HEADER })
@@ -3497,6 +3524,10 @@
     fieldCanvas.addEventListener("pointermove", fieldOnMove);
     fieldCanvas.addEventListener("pointerleave", function(){ fieldScrubEnd(); fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw(); });
     fieldCanvas.addEventListener("click", fieldOnClick);
+    // LIVE (PREREG-live-mode, Train B1): its own click listener, inert outside the LIVE
+    // view (fieldLiveOnClick's own first line), so it composes with fieldOnClick above
+    // without either one knowing about the other.
+    fieldCanvas.addEventListener("click", fieldLiveOnClick);
     // SCRUB (TRACKS view): pointer down/hold/release on a waveform lane. Inert in GRID
     // view and whenever the scrub is not armed — one handler, no parallel input path.
     fieldCanvas.addEventListener("pointerdown", fieldScrubStart);
@@ -3515,13 +3546,201 @@
     // Restoring is not a switch — there is no lean to reset and nothing to publish.
     if(fieldViewGridBtn) fieldViewGridBtn.addEventListener("click", function(){ fieldSetView("grid"); });
     if(fieldViewTracksBtn) fieldViewTracksBtn.addEventListener("click", function(){ fieldSetView("tracks"); });
+    if(fieldViewLiveBtn) fieldViewLiveBtn.addEventListener("click", function(){ fieldSetView("live"); });
     try{ fieldView = fieldViewPick(window.localStorage.getItem(FIELD_VIEW_KEY)); }
     catch(e){ fieldView = "grid"; }
     fieldSyncViewTabs();
     if(fieldViewMode(fieldView) === "tracks") fieldWaveEnsure();
+    if(fieldViewMode(fieldView) === "live"){ fieldWaveEnsure(); fieldLivePollStart(); }
     fieldDraw();
   }
   window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
+
+  /* ================= LIVE (deck playback; PREREG-live-mode, Train B1) ========
+     A THIRD front-end onto the material-surface canvas, in its OWN new functions (the
+     `fieldLive` prefix) — added ALONGSIDE grid/tracks, never inside them. Builds exactly
+     B-0 / B-1-amended / LM-9 / LM-10 from the prereg, and NOTHING past that in this train
+     (no bridge, no journey bar, no fidelity label — those are later trains):
+       IDLE  = SILENT. No lean, no request, nothing polled — a fabricated playhead is
+               forbidden. Lanes show (fieldLanesPlace + fieldDrawWave, REUSED verbatim,
+               never forked) with the row glow pinned DARK.
+       CLICK = the ONLY engine input this view ever sends, and it is NOT a lean: POST
+               /api/live/start {track, t} on the carrier's OWN endpoint. No tilt payload,
+               no /api/steer call — fieldSquareAt already refuses every square while this
+               view is showing (see above), so the wheel/drag/touch paths that write
+               fieldBias cannot fire here regardless.
+       PLAYHEAD = read-only: fieldLiveState is written ONLY by fieldLivePoll's GET
+               /api/live/state, never by a local clock. A frozen backend state freezes
+               the mark; there is no interpolation anywhere in this section.
+     NOT built in this train (disclosed, not faked): the bridge (openness release/
+     convergence-close), the journey bar, the fidelity label, and touch-to-start (the
+     existing touch handlers preventDefault their synthetic click, so this train's LIVE
+     start is pointer/mouse "click" only — see the builder report). */
+  var FIELD_LIVE_POLL_MS = 300;      // display-refresh cadence for the state GET — a UI
+                                      // redraw rate, not a schedule/physics constant; no
+                                      // engine/schedule logic lives in this file at all.
+  var fieldLiveAvailable = true;     // false once an endpoint answers non-OK (honest degrade)
+  var fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
+  var fieldLivePollTimer = null;
+
+  // PURE: pointer (x, y) -> { track, t }, through the SAME lane geometry the TRACKS
+  // scrub uses (fieldLanesPlace / fieldLaneAt / fieldLaneTime — reused, not forked).
+  // Outside a stored lane's wave area resolves to null: no track guess, ever.
+  function fieldLivePointAt(x, y){
+    if(!fieldCanvas) return null;
+    var g = fieldLanesPlace(fieldState(), fieldCanvas.clientWidth, fieldCanvas.clientHeight);
+    var lane = fieldLaneAt(g.lanes, x, y);
+    if(!lane) return null;
+    var tr = fieldWaveTrack(lane.track);
+    if(!tr) return null;
+    return { track: lane.track, t: fieldLaneTime(lane.rect, x, tr.duration_s) };
+  }
+  // PURE: the STORED slice the backend's reported unit id names, on this lane's own
+  // wavemap — or null if unknown/absent (never invented, never interpolated toward it).
+  function fieldLiveUnitSlice(tr, uid){
+    if(!tr || uid === null || uid === undefined) return null;
+    var slices = tr.slices || [];
+    for(var i = 0; i < slices.length; i++){
+      if((slices[i][2] | 0) === (uid | 0)) return slices[i];
+    }
+    return null;
+  }
+  // The playhead mark: drawn EXCLUSIVELY from the slice fieldLiveUnitSlice resolved
+  // (backend telemetry) — no other input, no timer, no fabricated motion.
+  function fieldLiveDrawPlayhead(rect, tr, color){
+    var sl = fieldLiveUnitSlice(tr, fieldLiveState.unit);
+    if(!sl) return;                                    // nothing REPORTED yet: draw nothing
+    var dur = +tr.duration_s || 0;
+    var x0 = fieldLaneX(rect, sl[0], dur), x1 = fieldLaneX(rect, sl[1], dur);
+    fieldCtx.globalAlpha = 0.85; fieldCtx.fillStyle = color;
+    fieldCtx.fillRect(x0, rect.y + 2, Math.max(2, x1 - x0), rect.h - 4);
+    fieldCtx.globalAlpha = 1;
+    fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 2;
+    var xm = (x0 + x1) / 2;
+    fieldCtx.beginPath(); fieldCtx.moveTo(xm, rect.y + 1); fieldCtx.lineTo(xm, rect.y + rect.h - 1);
+    fieldCtx.stroke();
+  }
+  function fieldLiveDraw(st, W, H){
+    var g = fieldLanesPlace(st, W, H), lay = g.layout;
+    fieldCtx.fillStyle = cssVar("--muted"); fieldCtx.font = "11px " + cssVar("--font-mono");
+    fieldCtx.fillText("LIVE  (a player with a landscape bridge — click anywhere to travel)", 8, 15);
+    if(!fieldLiveAvailable){
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("LIVE backend not available", 14, lay.top + 20);
+      return;
+    }
+    if(lay.T === 0){
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("no tracks loaded yet", 14, lay.top + 20);
+      return;
+    }
+    var note = fieldLanesNote();
+    var playingTrack = (fieldLiveState.mode === "straight") ? fieldLiveState.track : null;
+    for(var i = 0; i < g.lanes.length; i++){
+      var lane = g.lanes[i], rc = lane.rect, col = fieldTrackColor(lane.track);
+      var tr = fieldWaveTrack(lane.track);
+      fieldCtx.fillStyle = "rgba(255,255,255,.02)";
+      fieldCtx.fillRect(rc.x + 2, rc.y + 2, rc.w - 4, rc.h - 4);
+      if(tr){
+        fieldDrawWave(rc, tr.peaks, col);                 // GIVEN MATERIAL — reused verbatim
+        if(playingTrack !== null && (lane.track | 0) === (playingTrack | 0))
+          fieldLiveDrawPlayhead(rc, tr, col);              // backend telemetry only, never a timer
+      } else if(note){
+        fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "11px " + cssVar("--font-ui");
+        fieldCtx.fillText(note, rc.x + 8, rc.y + Math.round(rc.h / 2) + 4);
+      }
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(rc.x + 2.5, rc.y + 2.5, rc.w - 5, rc.h - 5);
+    }
+    // ROW HEADERS: pinned DARK (B-0) — this view emits no lean, so there is no bias ring
+    // and no settled-telemetry glow to show; the only lit lane is the backend-REPORTED
+    // straight-play track, lit by report, never by a local guess.
+    g.placed.forEach(function(sq){
+      var rc = sq.rect, col = fieldTrackColor(sq.track);
+      var lit = (playingTrack !== null && (sq.track | 0) === (playingTrack | 0));
+      fieldCtx.globalAlpha = lit ? 1 : 0.14;
+      fieldCtx.fillStyle = col; fieldCtx.fillRect(rc.x + 2, rc.y + 2, rc.w - 4, rc.h - 4);
+      fieldCtx.globalAlpha = 1;
+      fieldCtx.strokeStyle = "rgba(0,0,0,.45)"; fieldCtx.lineWidth = 1;
+      fieldCtx.strokeRect(rc.x + 2.5, rc.y + 2.5, rc.w - 5, rc.h - 5);
+      fieldCtx.fillStyle = cssVar("--ink"); fieldCtx.font = "10px " + cssVar("--font-mono");
+      fieldDrawRowLabel(rc.x, rc.y, rc.w, rc.h, sq.label);  // reused verbatim
+    });
+    if(playingTrack === null){
+      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
+      fieldCtx.fillText("click a spot to start playing from there", 14, lay.top - 6);
+    } else if(fieldLiveState.starved){
+      fieldCtx.fillStyle = cssVar("--damp"); fieldCtx.font = "11px " + cssVar("--font-mono");
+      fieldCtx.fillText("fence starved this bar — reported by the engine, not smoothed away",
+                        8, H - 8);
+    }
+  }
+
+  // ---- the engine calls: ONE fetch per verb, the SAME idiom every other endpoint in
+  // this file already uses (no session header — the cookie rides with same-origin
+  // fetch, as everywhere else). No retry/backoff timer, no local playhead clock, ever.
+  function fieldLivePoll(){
+    fetch("/api/live/state").then(function(r){
+      fieldLiveAvailable = r.ok;
+      return r.ok ? r.json() : null;
+    }).then(function(j){
+      fieldLiveState = (j && j.ok) ? {
+        mode: j.mode || "idle",
+        track: (j.track === undefined ? null : j.track),
+        unit: (j.unit === undefined ? null : j.unit),
+        sliceIndex: (j.slice_index === undefined ? null : j.slice_index),
+        starved: !!j.starved
+      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
+      fieldDraw();
+    }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
+  }
+  function fieldLivePollStart(){
+    if(fieldLivePollTimer) return;
+    fieldLivePoll();
+    fieldLivePollTimer = setInterval(fieldLivePoll, FIELD_LIVE_POLL_MS);
+  }
+  function fieldLivePollStop(){
+    if(fieldLivePollTimer){ clearInterval(fieldLivePollTimer); fieldLivePollTimer = null; }
+  }
+  // FIRST CLICK = IMMEDIATE START, NO BRIDGE (B-1 amended / LM-10): straight play begins
+  // at the clicked spot at once, and NOTHING is sent to the tilt carrier — this function
+  // touches sendSteer/sendSteerNow/fieldBias/fieldAddBias nowhere at all.
+  function fieldLiveStart(track, t){
+    fetch("/api/live/start", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ track:track, t:t })
+    }).then(function(r){
+      fieldLiveAvailable = r.ok;
+      return r.ok ? r.json() : null;
+    }).then(function(j){
+      if(j && j.ok){
+        fieldLiveState = { mode: j.mode || "straight",
+                           track: (j.track === undefined ? track : j.track),
+                           unit: (j.unit === undefined ? null : j.unit),
+                           sliceIndex: fieldLiveState.sliceIndex, starved:false };
+        fieldLivePollStart();
+      }
+      fieldDraw();
+    }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
+  }
+  // LM-7 / V-1 extended: leaving LIVE drops its fence. Instant, no fade (the same law as
+  // the lean reset): the local mark goes idle immediately; the server call fires and is
+  // not awaited, the same fire-and-forget idiom the transport's own stop control uses.
+  function fieldLiveStop(){
+    fieldLivePollStop();
+    fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
+    fetch("/api/live/stop", { method:"POST" }).catch(noop);
+  }
+  function fieldLiveOnClick(ev){
+    if(fieldViewMode(fieldView) !== "live") return;
+    if(Date.now() - fieldLastTouchEnd < 700) return;    // suppress touch-synthesized click
+    if(!world.ready) return;
+    var rect = fieldCanvas.getBoundingClientRect();
+    var p = fieldLivePointAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    if(!p) return;                                       // header/strip/outside a lane: no click
+    fieldLiveStart(p.track, p.t);
+  }
 
   /* ================= LANES (READ-ONLY live arrangement statistics) =========
      Each lane is a real, intrinsically-bounded [0,1] reduction of the engine's
