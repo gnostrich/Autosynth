@@ -88,7 +88,8 @@ def _d():
 def test_idle_state_before_any_click_is_honest_idle():
     d = _d()
     assert d["idle_state"] == {"mode": "idle", "track": None, "unit": None,
-                               "slice_index": None, "starved": False}
+                               "slice_index": None, "starved": False,
+                                    "bars_elapsed": 0, "widened": 0}
 
 
 def test_unknown_track_raises_value_error_not_something_else():
@@ -119,7 +120,8 @@ def test_stop_after_a_refused_start_is_still_clean_idle():
     """A refused live_start must not leave a half-set fence behind."""
     d = _d()
     assert d["post_stop_state"] == {"mode": "idle", "track": None, "unit": None,
-                                    "slice_index": None, "starved": False}
+                                    "slice_index": None, "starved": False,
+                                    "bars_elapsed": 0, "widened": 0}
 
 
 def test_unfenced_production_stays_byte_identical_to_an_untouched_player():

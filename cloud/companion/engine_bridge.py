@@ -1778,7 +1778,8 @@ class StreamPlayer:
             win = live_mod.bar_window(live["slices"],
                                       live.get("bars_elapsed", 0),
                                       self.s_phase,
-                                      demanded_roles=range(int(self.world.M)))
+                                      demanded_roles=range(int(self.world.M)),
+                                      start_group=live.get("start_group", 0))
             if win["exhausted"]:
                 self.live_enter()              # ran off the end: idle silence
             else:
@@ -2162,7 +2163,10 @@ class StreamPlayer:
                           "pin_units": tuple(unit_ids), "bars_elapsed": 0,
                           # the track's OWN stored slices (span/uid/role), so
                           # each bar can cut its tatum window and widen per role
-                          "slices": slices, "core_units": frozenset(),
+                          "slices": slices,
+                          # straight play starts where the user CLICKED
+                          "start_group": live_mod.group_of_index(slices, j0),
+                          "core_units": frozenset(),
                           "n_widened": 0, "off_window": 0, "n_cast": 0}
         self.start()               # ensure the shared produce loop is running
         return {"track": track, "unit": start_unit}
@@ -2217,10 +2221,17 @@ class StreamPlayer:
         with self._live_lock:
             live = dict(self._live)
         mode = "straight" if live.get("mode") == "straight" else "idle"
+        # DIAGNOSTIC (R2(b) groundwork): how far the fence cursor has walked and
+        # how much of the last bar it could only fill by widening. Measured
+        # counters, not estimates — they are what a stall/short-play report is
+        # judged on.
+        bars_elapsed = int(live.get("bars_elapsed", 0))
+        n_widened = int(live.get("n_widened", 0))
         return {"mode": mode, "track": live.get("track"),
                "unit": live.get("current_unit"),
                "slice_index": live.get("current_slice_index"),
-               "starved": bool(live.get("starved", False))}
+               "starved": bool(live.get("starved", False)),
+               "bars_elapsed": bars_elapsed, "widened": n_widened}
 
     def wav_header(self, data_len: int = 0xFFFFFFFF - 44) -> bytes:
         """A streaming WAV header (mono int16 @ sr) with an open-ended size."""

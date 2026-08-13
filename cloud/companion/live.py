@@ -135,8 +135,19 @@ def _role_of(row: Sequence) -> Optional[int]:
     return int(best)
 
 
+def group_of_index(slices: Sequence[Sequence], start_index: int) -> int:
+    """Which tatum group the clicked slice row falls in. Straight play starts at
+    the CLICKED spot, so the cursor is measured from this group — not from the
+    top of the track."""
+    for gi, g in enumerate(_tatum_groups(slices)):
+        if start_index in g:
+            return gi
+    return 0
+
+
 def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
-               demanded_roles: Optional[Sequence[int]] = None) -> dict:
+               demanded_roles: Optional[Sequence[int]] = None,
+               start_group: int = 0) -> dict:
     """This bar's fence content, as ``{"core": (...), "widened": (...),
     "exhausted": bool}``.
 
@@ -149,7 +160,7 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     """
     groups = _tatum_groups(slices)
     w = max(1, int(s_phase))
-    start = max(0, int(bars_elapsed)) * w
+    start = max(0, int(start_group)) + max(0, int(bars_elapsed)) * w
     core_groups = groups[start:start + w]
     if not core_groups:
         return {"core": (), "widened": (), "exhausted": True}
