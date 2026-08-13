@@ -718,6 +718,24 @@ class StreamPlayer:
         # it plays the settled role k. Keyed on an EMERGENT structure (roles). Rides
         # the SAME ONE TiltTerms; None ⇒ no addend ⇒ byte-identical.
         self._track_role_bias: Optional[dict] = None
+        # LIVE MODE (papers/PREREG-live-mode.md, Train B2 — playable milestone
+        # only: straight play under a FULL FENCE; no bridge/arrival/fidelity
+        # yet). The ONLY new object this touches is the Part-A ClampTerms
+        # carrier, handed to write_bar ALONGSIDE tilt (see live.py) — never a
+        # second settlement/casting channel (A-5). "mode":
+        #   "off"      — this session has never called a /api/live/* route;
+        #                GRID/TRACKS' existing free-blend behavior is
+        #                untouched, byte-for-byte (LM-0).
+        #   "idle"     — AMENDMENT 2 B-0: entered LIVE, no fence set yet. A
+        #                TRANSPORT-GATED HOLD enforced by _loop (see below) —
+        #                NOT a neutral/empty ClampTerms (that means NO
+        #                restriction = the free blend, exactly what B-0
+        #                forbids sounding in LIVE).
+        #   "straight" — B-1 amended: a full fence is set; straight play runs.
+        self._live: dict = {"mode": "off", "clamp": None, "track": None,
+                            "uid_index": {}, "current_unit": None,
+                            "current_slice_index": None, "starved": False}
+        self._live_lock = threading.Lock()
         self._lock = threading.Lock()
         self._playing = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -1736,7 +1754,18 @@ class StreamPlayer:
         cell_w = track_role_logbias(cell_amp) if cell_amp else None
         clogbias = field_logbias(track=track_w, unit=unit_w, track_role=cell_w)
         tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
-        r = self.engine.writer.write_bar(tilt=tilt)
+        # LIVE MODE (Train B2): the Part-A ClampTerms carrier, delivered to the
+        # writer ALONGSIDE tilt (A-1) — the ONE restriction channel, never a
+        # second settlement/casting path (A-5). None (GRID/TRACKS, or LIVE
+        # never touched) -> clamp_call_kwargs returns {} WITHOUT introspecting
+        # anything, so this call stays the exact write_bar(tilt=tilt) it is
+        # today (byte-identical; LM-0/LM-1).
+        with self._live_lock:
+            clamp_terms = self._live.get("clamp")
+        from . import live as live_mod
+        clamp_kwargs = live_mod.clamp_call_kwargs(self.engine.writer.write_bar,
+                                                   clamp_terms)
+        r = self.engine.writer.write_bar(tilt=tilt, **clamp_kwargs)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
         return r, sched
 
@@ -1816,6 +1845,27 @@ class StreamPlayer:
                           "nowplaying_unit": nowplaying_unit,
                           "nowplaying_track_role": nowplaying_track_role,
                           "lanes": lanes, "loop": loop_val, "slide": slide_val}
+        # LIVE MODE (Train B2): "state is measured, not asserted" — read the
+        # ACTUALLY placed unit for the fenced track straight off this bar's
+        # own rows (the same placement feed nowplaying/nowplaying_unit reduce
+        # above), never a timer or the originally-requested position.
+        with self._live_lock:
+            live_track = self._live.get("track")
+            uid_index = self._live.get("uid_index", {})
+        if live_track is not None:
+            from . import live as live_mod
+            placement = live_mod.current_placement(r.rows, live_track, uid_index)
+            # STARVATION (§2.1): disclosed, never silent, if the carrier
+            # records it. Defensive read (getattr, default False) — BarResult
+            # carries no such field as of this build; see the Train B2
+            # handoff for exactly what to wire once Part A lands.
+            starved_flag = bool(getattr(r, "starved", False))
+            with self._live_lock:
+                if self._live.get("track") == live_track:  # no fence swap mid-flight
+                    if placement is not None:
+                        self._live["current_unit"] = placement[0]
+                        self._live["current_slice_index"] = placement[1]
+                    self._live["starved"] = starved_flag
         pcm = _to_int16(audio)
         return pcm, roles
 
@@ -1944,6 +1994,25 @@ class StreamPlayer:
                             "listeners (warm window closed)", idle_stop_s)
                 self._playing.clear()
                 break
+            # LIVE IDLE HOLD (papers/PREREG-live-mode.md AMENDMENT 2, B-0 /
+            # A2.3 / LM-9): a session that has entered LIVE with no fence set
+            # casts NOTHING here — the SAME idle/park SHAPE as the
+            # unlistened-idle-stop check just above, extended rather than
+            # duplicated (this is a HOLD, not a stop: the loop stays alive so
+            # a fence set a moment later begins within one bar, LM-10). This
+            # is a TRANSPORT-GATED hold, never a neutral/empty ClampTerms —
+            # a neutral carrier means NO restriction (the free blend), which
+            # is exactly what B-0 forbids sounding in LIVE.
+            # getattr-guarded: a bare transport-only test harness (the
+            # test_stream_pacing.py pattern) carries no ``_live`` and is
+            # completely unaffected (mode defaults absent -> never held).
+            live_lock = getattr(self, "_live_lock", None)
+            if live_lock is not None:
+                with live_lock:
+                    live_mode = self._live.get("mode")
+                if live_mode == "idle":
+                    _time.sleep(0.05)
+                    continue
             try:
                 pcm, _ = self.produce_one_bar()
             except Exception as exc:
@@ -2020,6 +2089,69 @@ class StreamPlayer:
                     q.get_nowait()
             except Exception:
                 pass
+
+    # --- LIVE mode (papers/PREREG-live-mode.md, Train B2) -------------------
+    def live_start(self, track: int, t: float) -> dict:
+        """B-1 amended / LM-3 / LM-10: close the FULL FENCE to (``track``, the
+        slice covering second ``t``) and let straight play begin there AT
+        ONCE — no bridge, no lean (AMENDMENT 2 A2.4: idle has no source
+        character to travel from, so the first click emits no tilt payload
+        at all). Reuses the SAME slice source the wavemap already reads
+        (``track_unit_slices``) — never re-derived (§2 of the prereg).
+
+        Raises ``ValueError`` for an unknown track, or
+        ``live.LiveCarrierUnavailable`` if Part A's carrier isn't ready (not
+        importable yet, or importable but not wired into ``write_bar``) — LIVE
+        refuses rather than ever falling back to unfenced play."""
+        from . import live as live_mod
+        track = int(track)
+        by_id = {int(tr.track_id): tr for tr in self.world.tracks}
+        if track not in by_id:
+            raise ValueError(f"unknown track {track}")
+        slices = track_unit_slices(self.world, by_id[track], self.M)
+        if slices is None:
+            raise live_mod.LiveCarrierUnavailable(
+                "track_unit_slices refused this track (a unit lacks a stored "
+                "role) — the same honest refusal the wavemap gives; LIVE "
+                "cannot fence a track it cannot slice")
+        j0 = live_mod.resolve_start_index(slices, t)
+        unit_ids = live_mod.pin_unit_ids(slices, j0)
+        fence = live_mod.build_full_fence(track, unit_ids)     # may raise
+        # PROBE the writer NOW (not on the first produced bar) so a missing
+        # wiring refuses honestly before straight play is ever promised.
+        live_mod.clamp_call_kwargs(self.engine.writer.write_bar, fence)
+        idx_map = live_mod.uid_index_map(slices)
+        start_unit = int(slices[j0][2])
+        with self._live_lock:
+            self._live = {"mode": "straight", "clamp": fence, "track": track,
+                          "uid_index": idx_map, "current_unit": None,
+                          "current_slice_index": None, "starved": False}
+        self.start()               # ensure the shared produce loop is running
+        return {"track": track, "unit": start_unit}
+
+    def live_stop(self) -> None:
+        """V-1 / AMENDMENT 2 B-0: drop the fence and hold LIVE idle-silent.
+        Idle is enforced by ``_loop`` itself (the transport-gated hold — see
+        its docstring), never by an empty/neutral ClampTerms."""
+        with self._live_lock:
+            self._live = {"mode": "idle", "clamp": None, "track": None,
+                          "uid_index": {}, "current_unit": None,
+                          "current_slice_index": None, "starved": False}
+
+    def live_state(self) -> dict:
+        """Measured, not asserted (the route contract): the unit/slice this
+        reports comes from ``_finish_bar``'s own reduction of the produced
+        bar's rows (the same placement feed the heatmap reads), never a timer
+        or the originally-requested position. A session that has never
+        touched LIVE ("off") reports "idle" — honest: no fence, nothing
+        playing under one."""
+        with self._live_lock:
+            live = dict(self._live)
+        mode = "straight" if live.get("mode") == "straight" else "idle"
+        return {"mode": mode, "track": live.get("track"),
+               "unit": live.get("current_unit"),
+               "slice_index": live.get("current_slice_index"),
+               "starved": bool(live.get("starved", False))}
 
     def wav_header(self, data_len: int = 0xFFFFFFFF - 44) -> bytes:
         """A streaming WAV header (mono int16 @ sr) with an open-ended size."""

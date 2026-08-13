@@ -1806,3 +1806,102 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T14:00:44+00:00)
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T14:01:34+00:00)
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T14:01:49+00:00)
+
+### at `06b9e0a`
+- `Write` papers/PREREG-live-mode.md (2026-08-13T16:28:38+00:00)
+
+### at `91f202d`
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/LEDGER.md (2026-08-13T16:42:10+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/LEDGER.md (2026-08-13T16:42:14+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/VERSION_LEDGER.jsonl (2026-08-13T16:42:16+00:00)
+- `Write` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/clamp.py (2026-08-13T16:44:19+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:37+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:40+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:49+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:44:58+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:04+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:46+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:59+00:00)
+
+### at `c580f08`
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:05+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:08+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:14+00:00)
+
+### at `d6ab026`
+- `Write` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:54:35+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:55:06+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:55:15+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:55:22+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:57:06+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/clamp.py (2026-08-13T16:57:22+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:21+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:31+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:58:41+00:00)
+
+### at `72e674c`
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/cloud/tests/test_clamp_carrier.py (2026-08-13T16:59:58+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/REGISTRY.jsonl (2026-08-13T17:08:50+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/LEDGER.md (2026-08-13T17:09:23+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:04+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:10+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:19+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:23+00:00)
+
+### at `25513f6`
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:28+00:00)
+
+### at `a762e44`
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:11:49+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:12:03+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:12:10+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:12:25+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:12:32+00:00)
+- `Write` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/live.py (2026-08-13T17:12:52+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:13:04+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:13:13+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:13:14+00:00)
+
+### at `1514819`
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:13:25+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:13:40+00:00)
+
+### at `5ee8025`
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:13:52+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:14:01+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:14:21+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/app.py (2026-08-13T17:14:34+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/app.py (2026-08-13T17:14:45+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:15:11+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:15:21+00:00)
+
+### at `912a3da`
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:15:27+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/companion/engine_bridge.py (2026-08-13T17:15:32+00:00)
+
+### at `49beae5`
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:18:44+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:18:52+00:00)
+- `Write` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_carrier.py (2026-08-13T17:19:02+00:00)
+- `Edit` .claude/worktrees/agent-a358f4df36b0a15c8/cloud/companion/static/index.html (2026-08-13T17:19:10+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_carrier.py (2026-08-13T17:19:27+00:00)
+- `Write` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_idle_hold.py (2026-08-13T17:20:07+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_idle_hold.py (2026-08-13T17:20:16+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_idle_hold.py (2026-08-13T17:20:21+00:00)
+- `Write` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_routes.py (2026-08-13T17:20:52+00:00)
+
+### at `2029792`
+- `Write` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_engine_integration.py (2026-08-13T17:21:37+00:00)
+
+### at `06648a2`
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_engine_integration.py (2026-08-13T17:23:51+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_engine_integration.py (2026-08-13T17:23:57+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_carrier.py (2026-08-13T17:26:32+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_carrier.py (2026-08-13T17:26:46+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_engine_integration.py (2026-08-13T17:26:58+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_engine_integration.py (2026-08-13T17:27:02+00:00)
+- `Edit` .claude/worktrees/agent-ad17bfd33355f9afa/cloud/tests/test_live_engine_integration.py (2026-08-13T17:27:15+00:00)
+
+### at `89aaddb`
+- `Edit` architecture-v6/ets/writer/stream.py (2026-08-13T17:32:06+00:00)
+- `Edit` architecture-v6/ets/writer/stream.py (2026-08-13T17:32:11+00:00)

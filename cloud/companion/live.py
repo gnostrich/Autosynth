@@ -1,0 +1,164 @@
+"""LIVE mode — the deck-playback tab's carrier math (Train B2, playable
+milestone ONLY: straight play under a FULL FENCE; no bridge, no fence
+release, no convergence arrival, no journey bar, no fidelity metric — those
+are later trains per papers/PREREG-live-mode.md AMENDMENT 1 / AMENDMENT 2).
+
+This module owns the PURE, engine-adjacent pieces that ``engine_bridge.
+StreamPlayer`` wires into the produce loop:
+
+  1. Resolve a (track, click-second) into the B-1 FULL FENCE: that track's
+     own CONSECUTIVE slices from the clicked spot onward, using the SAME
+     slice source the wavemap already reads (``engine_bridge.
+     track_unit_slices``) — never re-derived (§2 of the prereg).
+
+  2. Construct the carrier via the ONE locked construction point,
+     ``ets.writer.clamp.clamp0`` — imported LAZILY here (Part A is a
+     separate, parallel build; this module must not fail to import just
+     because Part A hasn't landed yet in this process).
+
+  3. Locate, by INTROSPECTION rather than a hardcoded guess, which keyword
+     argument of ``StreamWriter.write_bar`` accepts the ClampTerms carrier.
+     The locked interface fixes the carrier's CONSTRUCTOR and its TYPE NAME
+     (``ClampTerms``) but not the parameter name Train A chooses on
+     ``write_bar`` (a file this build does not own) — so the signature's
+     annotations are searched for the string "ClampTerms" instead of
+     guessing a literal kwarg.
+
+Every entry point here fails LOUD (``LiveCarrierUnavailable``) rather than
+ever falling back to unfenced (free-blend) play — AMENDMENT 2's B-0 forbids
+the free blend from ever sounding in LIVE, so an unavailable/unwired carrier
+must REFUSE the request, not degrade it silently.
+"""
+from __future__ import annotations
+
+import inspect
+from typing import Optional, Sequence, Tuple
+
+
+class LiveCarrierUnavailable(RuntimeError):
+    """The Part-A clamp carrier (``ets.writer.clamp.clamp0`` / ``ClampTerms``)
+    is not importable yet, or is importable but not yet wired into
+    ``StreamWriter.write_bar`` — OR the track has no honest stored slice
+    source to fence at all. Raised instead of ever silently proceeding
+    without a real fence."""
+
+
+# --- slice resolution (reuses engine_bridge.track_unit_slices verbatim) -----
+
+def resolve_start_index(slices: Sequence[Sequence], t: float) -> int:
+    """The ordinal index into ``slices`` (the track's OWN time-ordered
+    ``track_unit_slices`` rows: ``[t0_s, t1_s, unit_id, mass, q]``) that
+    click-second ``t`` lands in: the first slice whose span contains ``t``
+    (``t0 <= t < t1``), the first slice starting at/after ``t`` if it falls
+    in a gap, or the LAST slice if ``t`` is beyond the track's end. Never
+    fabricates a slice — an empty ``slices`` is the caller's error to catch."""
+    if not slices:
+        raise LiveCarrierUnavailable(
+            "track has no stored slices — cannot resolve a click into a fence")
+    t = float(t)
+    for idx, row in enumerate(slices):
+        t0, t1 = float(row[0]), float(row[1])
+        if t0 <= t < t1 or t < t0:
+            return idx
+    return len(slices) - 1
+
+
+def pin_unit_ids(slices: Sequence[Sequence], start_index: int) -> Tuple[int, ...]:
+    """That track's own CONSECUTIVE unit ids from ``start_index`` onward, in
+    the SAME time order ``slices`` already carries (B-1: 'consecutive slices
+    from position p'; B-1-amended: 'straight play begins there at once')."""
+    return tuple(int(row[2]) for row in slices[start_index:])
+
+
+def uid_index_map(slices: Sequence[Sequence]) -> dict:
+    """unit_id -> its ordinal position in ``slices`` (time order). Lets
+    ``StreamPlayer.live_state`` report ``slice_index`` for whichever unit is
+    ACTUALLY placed (measured from produced-bar telemetry), never a timer or
+    the originally-requested position."""
+    return {int(row[2]): idx for idx, row in enumerate(slices)}
+
+
+# --- the carrier itself -------------------------------------------------
+
+def build_full_fence(track: int, unit_ids: Sequence[int]):
+    """Construct the B-1 FULL FENCE for straight play: fully fenced to
+    ``track`` (``track_mask={track: 1.0}, openness=1.0``), pinned to
+    ``unit_ids`` (that track's own consecutive units from the clicked spot
+    onward). Lazy import — Part A may land seconds after this module does;
+    raises ``LiveCarrierUnavailable`` rather than ever proceeding without a
+    real fence."""
+    try:
+        from ets.writer.clamp import clamp0
+    except ImportError as exc:
+        raise LiveCarrierUnavailable(
+            "ets.writer.clamp.clamp0 is not importable yet (Part A / Train A "
+            f"of PREREG-live-mode.md has not landed in this process): "
+            f"{type(exc).__name__}: {exc}") from exc
+    try:
+        return clamp0(track_mask={int(track): 1.0}, openness=1.0,
+                      unit_pin=(int(track), tuple(int(u) for u in unit_ids)))
+    except Exception as exc:
+        raise LiveCarrierUnavailable(
+            f"clamp0(...) failed to construct the full fence: "
+            f"{type(exc).__name__}: {exc}") from exc
+
+
+def clamp_kwarg_name(write_bar_fn) -> Optional[str]:
+    """Which keyword of ``write_bar`` accepts the ClampTerms carrier, found
+    by reading the signature's annotations for the carrier's TYPE NAME
+    (``ClampTerms`` — the one thing §2 of the prereg locks) rather than
+    guessing a parameter name (this build does not own ``realize.py`` /
+    ``stream.py`` and cannot know what Train A calls it). ``None`` if no such
+    parameter exists yet (the carrier isn't wired into the writer)."""
+    try:
+        sig = inspect.signature(write_bar_fn)
+    except (TypeError, ValueError):
+        return None
+    for name, param in sig.parameters.items():
+        if name in ("self", "tilt", "clamps"):     # "clamps" = the pre-existing
+            continue                               # I-7 ClampSet — a different carrier
+        if "ClampTerms" in str(param.annotation):
+            return name
+    return None
+
+
+def clamp_call_kwargs(write_bar_fn, clamp_terms) -> dict:
+    """The ``{kwarg_name: clamp_terms}`` to splat into ``write_bar(tilt=...,
+    **kwargs)``. ``clamp_terms is None`` (GRID/TRACKS — LIVE never touched,
+    or LIVE idle) returns ``{}`` WITHOUT introspecting anything, so an
+    un-fenced call stays the exact ``write_bar(tilt=tilt)`` call it is today
+    (byte-identical; LM-0/LM-1). A non-None ``clamp_terms`` with no matching
+    writer parameter raises ``LiveCarrierUnavailable`` — never a silent skip,
+    which would emit the free blend under a fence request (exactly what B-0
+    forbids)."""
+    if clamp_terms is None:
+        return {}
+    name = clamp_kwarg_name(write_bar_fn)
+    if name is None:
+        raise LiveCarrierUnavailable(
+            "StreamWriter.write_bar has no ClampTerms-typed parameter yet — "
+            "the carrier module imports, but is not wired into the writer. "
+            "LIVE refuses rather than emit unfenced audio under a fence.")
+    return {name: clamp_terms}
+
+
+# --- measured placement (the live-state feed) --------------------------
+
+def current_placement(rows, track: int, uid_index: dict):
+    """The unit ACTUALLY placed for ``track`` in one produced bar's rows
+    (tuples ``(slot, tid, uid, sec, mass)``), by highest mass (ties: the
+    later slot) — 'measured, not asserted': reads produced rows only, the
+    same reduction family as ``engine_bridge.nowplaying_unit_activity``.
+    Returns ``(unit_id, slice_index_or_None)``, or ``None`` if the fenced
+    track placed nothing this bar."""
+    best_key = None
+    best_uid = None
+    for (slot, tid, uid, _sec, mass) in rows:
+        if int(tid) != int(track):
+            continue
+        key = (float(mass), int(slot))
+        if best_key is None or key >= best_key:
+            best_key, best_uid = key, int(uid)
+    if best_uid is None:
+        return None
+    return best_uid, uid_index.get(best_uid)
