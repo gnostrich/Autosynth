@@ -1806,3 +1806,16 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T14:00:44+00:00)
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T14:01:34+00:00)
 - `Edit` .claude/worktrees/agent-a6098a0e9a5b02f14/cloud/tests/test_waveform_scrub_fe.py (2026-07-30T14:01:49+00:00)
+
+### at `06b9e0a`
+- `Write` papers/PREREG-live-mode.md (2026-08-13T16:28:38+00:00)
+
+## 2026-08-13 — LIVE MODE prereg (operator directive, step 1 of 4)
+- `Write` papers/PREREG-live-mode.md — operator directive verbatim + engineering
+  register: restriction lands ONLY in `Realizer._choose` (not the I-7
+  `place_slot(clamp_unit=…)` bypass, which would delete casting); fence rule
+  `track_mask[track] >= openness` + slice-range pin; starvation disclosed;
+  N_BRIDGE_BARS=8 and the fidelity thresholds pre-registered once; A-4 typing
+  split read as scoped to LIVE (flagged to the operator, §4).
+- `Append` REGISTRY.jsonl — `live-mode-2026-08-13` (kill conditions: LM-1/LM-2
+  red ⇒ carrier redesign, no mode work).
