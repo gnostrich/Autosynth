@@ -2,7 +2,8 @@
 
   POST /api/live/start  {"track": <int>, "t": <seconds>}
        -> {"ok":true,"mode":"straight","track":<int>,"unit":<int>}
-  POST /api/live/stop    -> {"ok":true,"mode":"idle"}
+  POST /api/live/enter   -> {"ok":true,"mode":"idle"}   (hold, scoped to LIVE)
+  POST /api/live/stop    -> {"ok":true,"mode":"off"}    (release to GRID/TRACKS)
   GET  /api/live/state   -> {"ok":true,"mode":"idle"|"straight",
                               "track":<int|null>,"unit":<int|null>,
                               "slice_index":<int|null>,"starved":<bool>}
@@ -154,7 +155,7 @@ def test_live_stop_calls_live_stop_and_reports_idle(tmp_path, monkeypatch):
         httpd.hub.playable_for = lambda session: fake
         status, body = _post(url, "/api/live/stop", None)
         assert status == 200
-        assert body == {"ok": True, "mode": "idle"}
+        assert body == {"ok": True, "mode": "off"}
         assert fake.calls == [("live_stop",)]
     finally:
         httpd.shutdown(); httpd.server_close()
@@ -168,7 +169,7 @@ def test_live_stop_with_no_playable_world_still_reports_idle(tmp_path, monkeypat
         httpd.hub.playable_for = lambda session: None
         status, body = _post(url, "/api/live/stop", None)
         assert status == 200
-        assert body == {"ok": True, "mode": "idle"}
+        assert body == {"ok": True, "mode": "off"}
     finally:
         httpd.shutdown(); httpd.server_close()
 

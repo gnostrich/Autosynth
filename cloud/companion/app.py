@@ -1890,13 +1890,25 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._json(200, {"ok": True, "mode": "straight", **out})
             return
+        if path == "/api/live/enter":
+            # ENTERING LIVE (AMENDMENT 2 B-0): hold the transport idle-silent
+            # until the first click. Distinct from /stop, which RELEASES the
+            # transport — one StreamPlayer serves all three views, so a hold
+            # that outlives the LIVE view silences GRID/TRACKS too.
+            p = self.hub.playable_for(session)
+            if p is not None:
+                p.live_enter()
+            self._json(200, {"ok": True, "mode": "idle"})
+            return
+
         if path == "/api/live/stop":
             # V-1: leaving LIVE (or re-entering it) must not leave a fence
-            # behind. Idempotent whether the fence was set or already idle.
+            # behind, AND must hand the transport back to GRID/TRACKS.
+            # Idempotent whether the fence was set or already released.
             p = self.hub.playable_for(session)
             if p is not None:
                 p.live_stop()
-            self._json(200, {"ok": True, "mode": "idle"})
+            self._json(200, {"ok": True, "mode": "off"})
             return
 
         # --- shared-set catalog (opt-in, per set; region-tilt only for visitors) ---
