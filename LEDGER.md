@@ -1823,7 +1823,14 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:46+00:00)
 - `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:45:59+00:00)
 
+### at `c580f08`
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:05+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:08+00:00)
+- `Edit` .claude/worktrees/agent-aa690dfa6cf652da9/architecture-v6/ets/writer/realize.py (2026-08-13T16:46:14+00:00)
+
 ## 2026-08-13 — Operator rulings on Amendment 1's two flags: both CONFIRMED
+(restored: the provenance auto-appender overwrote this block; original text is
+in commit c580f08)
 - Slew adoption **approved as built** (measure the feel, don't tune it; item-5
   knob only later, based on the number).
 - Fluctuation floor **confirmed, no switch** (participation-ratio would be a
