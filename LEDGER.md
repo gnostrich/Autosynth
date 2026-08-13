@@ -1852,3 +1852,73 @@ in commit c580f08)
   blend), which is precisely what B-0 forbids. Keeps LM-1's neutral law
   un-overloaded and adds no new muting path.
 - `Append` REGISTRY.jsonl — `live-mode-amendment-2-idles-silent-2026-08-13`.
+
+## 2026-08-13 — LIVE MODE Train A: the ClampTerms carrier — LM-1/LM-2 GREEN
+- `Write` `architecture-v6/ets/writer/clamp.py` (new) — `ClampTerms` frozen
+  dataclass (`track_mask`, `openness`, `unit_pin`) + `clamp0()`/`no_clamp()`
+  as the ONE construction point (A-1, mirrors `tilt.layer0`/I-1) +
+  `live_tilt_target()`, the LIVE path's own gate onto the tilt carrier (A-4
+  typing split — "col" legal, "unit"/"time" raise `TypeError`; `tilt.py`
+  itself is untouched, so the ratified GRID unit grain is unaffected, LM-0).
+  NEUTRAL LAW (A-2): `openness==0`, an empty mask, or an absent carrier all
+  canonicalize to `None` at `clamp0` — the single construction boundary —
+  never as a second decision channel inside the fence rule itself.
+- `Edit` `architecture-v6/ets/writer/realize.py` — `FiberThreader` gained an
+  optional `clamp` alongside `tilt`; `_choose_original`/`_choose_fast` both
+  filter their (continuation-included) candidate list through one shared
+  `_admits(clamp, c)` — `track_mask.get(track,0.0) >= openness` plus the
+  pinned range — before the UNCHANGED F-measure/gumbel draw runs over
+  survivors (A-5: no new energies, no settlement edit, no `place_slot`
+  bypass). Starvation is recorded (`FiberThreader.starved`, surfaced via
+  `realize()`'s `meta["starved"]`) and falls back to the unrestricted set —
+  never a silent no-op.
+- **Interface committed early, as its own commit (sha `256e376`), ahead of
+  the full test pass** — the operator flagged two other builders coding
+  against this signature THIS MINUTE. Frozen surface:
+  `clamp0(track_mask={<tid>: <m in [0,1]>}, openness=<in [0,1]>, unit_pin=
+  (<tid>, (<uid>,...))=None) -> Optional[ClampTerms]`; confirmed to match the
+  requested contract exactly (names, order, pin shape, constructor name).
+- `Write` `cloud/tests/test_clamp_carrier.py` — 13 tests, out-of-process
+  against a hand-built synthetic two-track world (never a corpus render, per
+  brief): LM-1 (rows/continuation/final-rng-state bit-identity across
+  `None`/`clamp0(...)->None`/a raw neutral bypass/`no_clamp()`, PLUS a real
+  batch render's sha256 audio bytes); LM-2 (the typing-gate `TypeError` +
+  ClampTerms pass + the AST single-construction-point scan, proven
+  non-vacuous against a planted second call site); a positive control
+  (fencing to the naturally-disfavored track measurably moves the sha256 —
+  the mechanism is not vacuously inert); starvation disclosure; the
+  straight-fence + pin sanity fixture (LM-3 groundwork only, not LM-3
+  itself); fast/original bit-identity extended to an ACTIVE clamp (mask +
+  pin + field-bias combined), streaming and batch; the LM-11 no-timetable
+  static scan (renumbered by Amendment 2; content unchanged).
+- **A real design fork surfaced and resolved, not hidden:** the prereg's
+  "empty mask ⇒ neutral" clause is a `clamp0` CONSTRUCTION-TIME promise, not
+  a property of the fence formula itself — `_admits` implements
+  `track_mask.get(track,0.0) >= openness` literally, with no empty-mask
+  special case, so an empty mask and an explicit all-zero mask are
+  indistinguishable to it (both starve when `openness>0`). A raw
+  `ClampTerms(track_mask={}, openness>0)` bypass of `clamp0` therefore
+  legitimately starves — it does not silently behave as neutral. Documented
+  explicitly in both `clamp.py` and `_admits`'s docstrings so no one adds a
+  second, competing "empty mask is always neutral" implementation later.
+- **MUTATION-PROVEN, 7/7 bit** (scratchpad harness against the real worktree
+  code, never committed): neutering `_admits`, neutering `is_neutral`,
+  exempting the continuation entry from the fence, silent-no-op-on-starve,
+  `_choose_fast` ignoring `self.clamp`, a "neutral" clamp burning an extra
+  rng draw, and widening the LIVE tilt gate to accept "unit" — each broke
+  exactly the test it should have. One mutation (the extra-rng-draw case)
+  did NOT bite on the first attempt because it was compared against the
+  wrong baseline case (`clamp0(...)` which canonicalizes to `None` before
+  reaching the mutated code at all); caught, understood, and corrected to
+  compare against the raw-bypass case that actually exercises the branch.
+- **Regression:** `architecture-v6/tests/writer/test_writer.py` (11/11),
+  `cloud/tests/test_fast_realize.py` + `test_channel_bias.py` (12/12,
+  ratified gates byte-unchanged), full `cloud/tests/` (373/373). The broader
+  `architecture-v6/tests` run has 8 pre-existing failures (missing
+  `training_results.json`/`tools/audio_check.py` artifacts in this worktree,
+  one unrelated Qt hover test) confirmed via `git stash` to predate this
+  diff entirely — none touch writer/realize/clamp.
+- `Append` REGISTRY.jsonl — `live-mode-train-a-result-2026-08-13`.
+- **Status: LM-1 GREEN, LM-2 GREEN. Carrier not redesigned. Part B (mode/UI,
+  schedule) NOT started — out of scope for this train by the operator's own
+  sequencing.** Pending: ets-auditor PASS before any merge.
