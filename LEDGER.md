@@ -1925,3 +1925,15 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-a1ecd517dfc08755a/cloud/tests/test_clamp_carrier.py (2026-08-13T18:22:39+00:00)
 - `Edit` .claude/worktrees/agent-a1ecd517dfc08755a/cloud/tests/test_clamp_carrier.py (2026-08-13T18:23:01+00:00)
 - `Edit` .claude/worktrees/agent-a1ecd517dfc08755a/cloud/tests/test_clamp_carrier.py (2026-08-13T18:23:19+00:00)
+
+### at `20fbd95`
+- `Write` papers/PREREG-tracks-moving-anchor.md (2026-08-13T19:36:33+00:00)
+
+## 2026-08-13 — TRACKS moving anchor: capture file (formal text pending)
+- `Write` papers/PREREG-tracks-moving-anchor.md — captures the operator's spoken
+  rulings (tap plants a travelling anchor; tap elsewhere replants; **tap the
+  anchor again clears it**; no hold-scrub, superseding Amendment 2's hold
+  gesture for TRACKS) so they survive until the formal amendment text lands.
+- **Not buildable yet:** the amendment the operator's M-1/M-2/M-3/MA-1 edit
+  refers to has not been supplied. Clause numbers and checks will not be
+  invented. Three open questions listed for their text to settle.
