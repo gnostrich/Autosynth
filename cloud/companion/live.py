@@ -31,6 +31,7 @@ must REFUSE the request, not degrade it silently.
 """
 from __future__ import annotations
 
+import bisect
 import inspect
 from typing import Optional, Sequence, Tuple
 
@@ -145,9 +146,21 @@ def group_of_index(slices: Sequence[Sequence], start_index: int) -> int:
     return 0
 
 
+def build_plan(slices: Sequence[Sequence]) -> dict:
+    """Everything the per-bar fence needs, computed ONCE per click: the tatum
+    grouping and, per role, that role's (group index, row index) pairs in time
+    order so the nearest carrier is a bisect rather than a full rescan."""
+    groups = _tatum_groups(slices)
+    role_groups: dict = {}
+    for gi, g in enumerate(groups):
+        for i in g:
+            role_groups.setdefault(_role_of(slices[i]), []).append((gi, i))
+    return {"groups": groups, "role_groups": role_groups}
+
+
 def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
                demanded_roles: Optional[Sequence[int]] = None,
-               start_group: int = 0) -> dict:
+               start_group: int = 0, plan: Optional[dict] = None) -> dict:
     """This bar's fence content, as ``{"core": (...), "widened": (...),
     "exhausted": bool}``.
 
@@ -158,7 +171,15 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     ``exhausted`` — the cursor has walked past the end of the track; the caller
                   returns to idle silence rather than wrapping or repeating.
     """
-    groups = _tatum_groups(slices)
+    # PRECOMPUTED (measured fix): grouping 17k rows and scanning every group per
+    # missing role ONCE PER BAR is O(track) per bar — on an 8-minute track that
+    # is slow enough that the produce loop composed ZERO bars in 45s (measured
+    # live: bars_elapsed stuck at 0, no audio). `plan` carries the grouping and
+    # the per-role nearest-tatum index, built ONCE at click time, so the per-bar
+    # cost is a list slice and a dict lookup.
+    if plan is None:
+        plan = build_plan(slices)
+    groups = plan["groups"]
     w = max(1, int(s_phase))
     start = max(0, int(start_group)) + max(0, int(bars_elapsed)) * w
     core_groups = groups[start:start + w]
@@ -176,15 +197,17 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
             k = int(k)
             if k in have:
                 continue
-            # nearest tatum carrying role k, searching outward from the core
+            # nearest tatum carrying role k — a bisect over that role's own
+            # precomputed, time-ordered group list (was a full rescan per bar)
+            by_role = plan["role_groups"].get(k)
+            if not by_role:
+                continue                      # the track has no role-k material
+            pos = bisect.bisect_left(by_role, (centre,))
             best_i, best_d = None, None
-            for gi, g in enumerate(groups):
-                for i in g:
-                    if _role_of(slices[i]) != k:
-                        continue
-                    d = abs(gi - centre)
-                    if best_d is None or d < best_d:
-                        best_i, best_d = i, d
+            for cand in by_role[max(0, pos - 1):pos + 2]:
+                d = abs(cand[0] - centre)
+                if best_d is None or d < best_d:
+                    best_i, best_d = cand[1], d
             if best_i is not None:
                 widened.append(int(slices[best_i][2]))
     return {"core": core, "widened": tuple(widened), "exhausted": False}
