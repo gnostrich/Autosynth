@@ -1836,43 +1836,53 @@ class StreamPlayer:
             # threshold instead of a fixed 1.0. Once fully released
             # (openness_cur <= 0) release_clamp returns None: no restriction
             # left at all (B-3 — no corridor, no second mask, ever).
-            win = None
-            if br["openness_cur"] > 0.0 and live.get("slices"):
-                win = live_mod.bar_window(live["slices"],
-                                          live.get("bars_elapsed", 0),
-                                          self.s_phase,
-                                          demanded_roles=range(int(self.world.M)),
-                                          start_group=live.get("start_group", 0),
-                                          plan=live.get("plan"))
-            pin_units, slot_pin = None, None
-            if win is not None and not win["exhausted"]:
-                pin_units = tuple(win["core"]) + tuple(win["widened"])
-                slot_pin = win.get("slot_pin")
-            # THE PIN NAMES THE WINDOW'S OWN TRACK, NOT THE MEASURED `from`
-            # (2026-08-14 adversarial-audit finding). `pin_units` above is cut
-            # from `live["slices"]` — always that same track's own consecutive
-            # slices, since `live["track"]`/`live["slices"]` are set together
-            # at `live_start` and never reassigned by a bridge click or reroute
-            # (see the class docstring's LIVE MODE note: "self._live['track']
-            # stays the SOURCE track ... until arrival flips it"). So
-            # `live.get("track")` is "whichever track the fence is actually
-            # continuing from" — the one thing a unit_pin is allowed to claim
-            # (clamp.py's own rule: a pin's ids must be real units OF the
-            # track it names).
+            # B-1 REVISED (operator, 2026-08-14): A BRIDGE IS TWO
+            # FORWARD-WALKING WINDOWS, NOT TWO WHOLE TRACKS.
             #
-            # `br["source_track"]` answers a DIFFERENT question — THE PAIR
-            # RULE's MEASURED dominant-mass track, i.e. which track(s) this
-            # bar ADMITS (the track_mask). That is already wired correctly via
-            # `carry_tracks` below, independent of this argument. On a plain
-            # first click the two happen to be the same track (nothing else
-            # has sounded yet), which is why the conflation hid until a
-            # mid-bridge REROUTE re-measures `from` onto a different track
-            # while the window keeps walking the ORIGINAL session track: the
-            # old code pinned unit ids that belong to `live["track"]` under
-            # `br["source_track"]`'s name — on a corpus with disjoint
-            # per-track unit ids that starves the named track outright (its
-            # real units never match the borrowed id list) while the track
-            # that actually owns those ids stays unmasked and silent.
+            # What this replaces: the window was cut for the SESSION track only,
+            # and only while `openness_cur > 0`; once openness reached 0 the pin
+            # vanished and BOTH admitted tracks could draw from their entire
+            # corpus every bar. Measured on the 3-redirect fixture: straight-play
+            # unit spread inside one bar is 55-63 (one window), but every bridge
+            # bar showed `pin_track=None` and spreads of 112-190 out of a
+            # 192-unit track -- each track playing many moments of itself at
+            # once. That is the self-mixing the per-slot pin already fixed for
+            # straight play, never fixed for the bridge.
+            #
+            # Now: each pair member carries its own cursor and its own window,
+            # advancing one bar at a time -- `from` continues from where the
+            # music already was, `to` walks forward from the clicked spot. The
+            # pin is NEVER released to the whole track; openness governs the
+            # LEAN, not the existence of the pin.
+            pin_units, slot_pin = None, None
+            with self._live_lock:
+                wins = (self._bridge or {}).get("windows") or {}
+                pin_track = int(live.get("track") or 0)
+                slot_union: dict = {}
+                for tid, w in list(wins.items()):
+                    if not w.get("slices"):
+                        continue
+                    bw = live_mod.bar_window(w["slices"], int(w.get("bars", 0)),
+                                             self.s_phase,
+                                             demanded_roles=range(int(self.world.M)),
+                                             start_group=int(w.get("start_group", 0)),
+                                             plan=w.get("plan"))
+                    if bw["exhausted"]:
+                        # that member ran off its own end: it contributes no
+                        # material this bar rather than wrapping or roaming.
+                        continue
+                    w["bars"] = int(w.get("bars", 0)) + 1
+                    for sl, uids in (bw.get("slot_pin") or {}).items():
+                        slot_union[int(sl)] = tuple(sorted(
+                            set(slot_union.get(int(sl), ())) | set(int(u) for u in uids)))
+                    if int(tid) == pin_track:
+                        # the one per-track pin the carrier carries (clamp0's
+                        # `unit_pin` names exactly one track) goes to the track
+                        # whose slices `live[...]` owns, per the pin-naming rule.
+                        pin_units = tuple(bw["core"]) + tuple(bw["widened"])
+                if self._bridge is not None:
+                    self._bridge["windows"] = wins
+                slot_pin = slot_union or None
             clamp_terms = live_mod.release_clamp(
                 br["openness_cur"], live.get("track"),
                 pin_units=pin_units, slot_pin=slot_pin,
@@ -1886,9 +1896,13 @@ class StreamPlayer:
                     self._bridge["openness_cur"] = nxt_openness
                     self._bridge["bars_elapsed"] = \
                         int(self._bridge.get("bars_elapsed", 0)) + 1
-                if win is not None and not win["exhausted"]:
-                    self._live["bars_elapsed"] = \
-                        int(self._live.get("bars_elapsed", 0)) + 1
+                # The session track's own cursor now lives in that member's
+                # window entry (B-1 REVISED advances each per bar), so mirror it
+                # back rather than keeping a second, divergent count.
+                _w = (self._bridge or {}).get("windows", {}).get(
+                    int(self._live.get("track") or -1))
+                if _w is not None:
+                    self._live["bars_elapsed"] = int(_w.get("bars", 0))
         # IN LIVE, NEVER CAST UNFENCED. Every branch above that fails to build a
         # fence (no slices, a bridge dict that vanished under a concurrent stop)
         # would otherwise fall through with clamp_terms None — which is not
@@ -2486,6 +2500,27 @@ class StreamPlayer:
         from_track = (max(shares.items(), key=lambda kv: kv[1])[0]
                       if shares else int(source_track))
         carry = (int(from_track),)
+        # B-1 REVISED: the new leg's TWO WINDOWS. `to` starts at the clicked
+        # spot; `from` CONTINUES from wherever that track's cursor already was
+        # -- the previous leg's window if it had one, otherwise the straight
+        # passage's own cursor. Nothing restarts, so the music the listener is
+        # already inside keeps walking forward across a reroute.
+        dest_j0 = live_mod.resolve_start_index(dest_slices, float(t))
+        with self._live_lock:
+            prior_windows = dict((self._bridge or {}).get("windows") or {})
+            live_now = dict(self._live)
+        windows = {}
+        if int(from_track) in prior_windows:
+            windows[int(from_track)] = prior_windows[int(from_track)]
+        elif int(from_track) == int(live_now.get("track") or -1) and live_now.get("slices"):
+            windows[int(from_track)] = {
+                "slices": live_now["slices"], "plan": live_now.get("plan"),
+                "start_group": int(live_now.get("start_group", 0)),
+                "bars": int(live_now.get("bars_elapsed", 0))}
+        windows[int(dest_track)] = {
+            "slices": dest_slices, "plan": live_mod.build_plan(dest_slices),
+            "start_group": live_mod.group_of_index(dest_slices, dest_j0),
+            "bars": 0}
         with self._live_lock:
             self._bridge = {
                 # `from` is the MEASURED dominant track (P-2), and it is what is
@@ -2493,6 +2528,8 @@ class StreamPlayer:
                 # correct but `source_track` stale, which is the same mislabel
                 # class as a mark that shows one thing and names another.
                 "source_track": int(from_track), "dest_track": int(dest_track),
+                # one forward-walking window per pair member (B-1 REVISED)
+                "windows": windows,
                 # S-3: scope is fence DATA, chosen at journey start, constant
                 # for this journey, logged. DIRECT (default) admits only the
                 # carried set plus the destination; OPEN releases to the corpus.
