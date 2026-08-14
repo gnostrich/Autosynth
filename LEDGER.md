@@ -2077,3 +2077,19 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
   `papers/PREREG-tracks-moving-anchor.md` still exists, so the record was
   recoverable. A provenance record that can drop rows is not a provenance
   record; if this recurs the generator needs an append-only guard.
+
+### CHECK-WRITING CONVENTION — zero by construction vs zero by measurement (2026-08-14)
+
+Adopted after the per-role widening finding. `widened` / `n_widened` and
+Amendment 4 R2(b)'s off-window cast fraction read as a healthy zero for as long
+as they were watched. They were zero BY CONSTRUCTION: `slot_pin` is built from
+core groups, so a widened unit is in no slot entry and can never be cast on a
+full bar. Nothing distinguished that from "measured, and it never happened".
+
+STANDING RULE: a metric that is zero BY CONSTRUCTION reads identical to a metric
+that is zero BY MEASUREMENT. Any check or telemetry reporting a zero must be able
+to show the value CAN be non-zero — the non-vacuity arm — or it is not evidence.
+Same class as the vacuous BS-1 pass (off-pair mass measured over a bridge that
+never existed) and the prose-scanning PR-4 (a check satisfied by its own
+comments). Three instances in one day; treat a bare zero as unproven until its
+non-vacuity is shown.
