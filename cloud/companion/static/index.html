@@ -3677,7 +3677,13 @@
     catch(e){ fieldView = "grid"; }
     fieldSyncViewTabs();
     if(fieldViewMode(fieldView) === "tracks") fieldWaveEnsure();
-    if(fieldViewMode(fieldView) === "live"){ fieldWaveEnsure(); fieldLivePollStart(); }
+    // LANDING IN LIVE (reload with LIVE remembered) IS AN ENTRY, NOT A RESUME.
+    // Amendment 2 (LIVE IDLES SILENT): entering LIVE is a transport-gated hold —
+    // no sound, no playhead, until the first click. Restoring the view skipped
+    // fieldSetView's switch path, so a session left mid-passage came back with the
+    // server still on that track and the page drew its playhead on a lane the user
+    // had not clicked this load. Enter properly instead.
+    if(fieldViewMode(fieldView) === "live"){ fieldWaveEnsure(); fieldLiveEnter(); fieldLivePollStart(); }
     fieldDraw();
   }
   window.addEventListener("resize", function(){ if(world.ready) fieldDraw(); });
