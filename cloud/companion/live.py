@@ -596,6 +596,12 @@ def release_clamp(openness_cur: float, source_track: int, pin_units=None,
     play's own mechanism) — the material stops being tied to the passage the
     click landed in and the pair's whole corpus becomes available.
 
+    ``source_track`` names the ``unit_pin`` below — it must be the SAME track
+    ``pin_units`` was actually cut from (2026-08-14 fix), never THE PAIR
+    RULE's measured `from`: those two answer different questions and only
+    happen to agree absent a mid-bridge reroute. Track-mask ADMISSION is a
+    separate concern, carried by ``carry_tracks``/``dest_track`` below.
+
     WHAT THE TRACK FENCE DOES DEPENDS ON SCOPE (S-1/S-2), and this is the
     difference the operator heard on 2026-08-14 ("the transitions are routing
     through other tracks"):
