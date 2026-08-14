@@ -1119,3 +1119,163 @@ none, `leg_drawn=[0,2] -> carry=[0,2]`.
 
 **Ruling 5 is outstanding**: the admission measurement is to be re-run on a real
 corpus, reported not tuned.
+
+---
+
+## AMENDMENT 7 — B-1 RELEASE: WHAT ACTUALLY MOVES (measured, 2026-08-14)
+
+An adversarial audit, instrumenting `release_clamp` across a 3-click run on
+`demo.etsworld`, found: `pin_units`/`slot_pin` empty on every bridge bar, and
+the admitted set identical — `(0,2)` — at openness 1.0 down through 0.0,
+"because both mask values EQUAL openness, so the comparison
+`track_mask.get(t,0.0) >= openness` is true at every step." Conclusion
+offered: "B-1 RELEASE appears to be INERT as shipped… the bridge is
+measurably an instantaneous two-track fence plus a slewed lean."
+
+This amendment reports an independent re-measurement (both the audit's own
+claim and the STEP-1 question it was given: does openness change admission
+at all, and is that separable from "there was nothing left to release on
+this world") and states, precisely, what the shipped mechanism does and does
+not do. **No engine/theory code changed.** `cloud/tools/
+b1_release_admission_measure.py` (raw measurement) and `cloud/tools/
+b1_release_scope_verify.py` (the standing CHECK, BR-D1..BR-D5) are the
+tools; both are checked in.
+
+### A7.1 MEASURED — track-level admission (DIRECT scope, the shipped default)
+
+Pure-function check, `_bridge_track_mask`/`release_clamp`, `source=0,
+dest=2`, `scope=DIRECT`:
+
+    openness=1.0    mask={0:1.0, 2:1.0}      admitted={0,2}
+    openness=0.6    mask={0:0.6, 2:0.6}      admitted={0,2}
+    openness=0.2    mask={0:0.2, 2:0.2}      admitted={0,2}
+    openness=1e-6   mask={0:1e-6, 2:1e-6}    admitted={0,2}   (DIRECT_FLOOR)
+
+Real engine run, `demo.etsworld`, `StreamPlayer`, journey track0(5%) ->
+bridge -> track2(35%), 8-10 bridge bars: **admitted set identical every
+single bar — `(0,2)` — `admission_ever_changed=False`.** Re-run on a
+SYNTHETIC world built with 200 tatums/track (so the straight window cannot
+exhaust inside the bridge's lifetime — see A7.2): **same result,
+`admission_ever_changed=False`.**
+
+**The audit's finding on this axis is confirmed and is not a bug.** It is
+the direct, intended consequence of two things both already registered: (a)
+`_bridge_track_mask` assigns the SAME value to every carried/dest track that
+`openness` itself carries into `clamp0`, so the admission comparison is
+true for them at every step by construction; (b) the Bridge Scope amendment
+(S-1, above) requires DIRECT to admit "only the {source, destination}
+tracks" for the journey — i.e. the pair is supposed to stay fixed. A track
+fence that changed the admitted set mid-DIRECT-journey would be a
+regression of S-1, not a fix of B-1.
+
+### A7.2 MEASURED — unit-level admission (the source's forward-walking pin)
+
+This is the axis B-1's own text names ("what RELEASES over the journey is
+the source's forward-walking UNIT PIN"), and it is NOT inert — it is
+gated on `openness_cur > 0` in `engine_bridge.py`'s bridge branch, using
+only the already-registered `RegionSlew`/`SLEW_MAX_STEP` law (`release_step`,
+unchanged). Separating "release does nothing" from "there was nothing left
+to release" required a world where the source track is not already
+exhausted when the bridge begins (`demo.etsworld`'s tracks are ~1s; the
+straight phase can consume that inside 2-3 bars before a second click even
+lands). A synthetic world was built with the SAME real-engine construction
+`cloud/tests/test_wavemap_fixture.py` uses (`roles.extract_prototypes` ->
+`anchors.build_world` -> the real `StreamWriter`), just with 200 tatums per
+track instead of 24 (`cloud/tools/b1_release_admission_measure.
+py::_build_synthetic_world`).
+
+    synthetic world (unexhausted), openness trajectory:
+      1.0, 0.8, 0.6, 0.4, 0.2, ~0.0, 0.0, 0.0
+    pin_units count, same bars:
+      64,  64,  64,  64,  64,  64,   0,   0
+
+`pin_units` stays pinned to exactly one bar's forward window (64 units) for
+every bar `openness_cur > 0`, and releases (0 = the whole source track's
+material becomes eligible within the {source,dest} pair) on the SAME bar
+`openness_cur` reaches 0 — a real, reproducible, openness-caused admission
+change, using no new constant, schedule, corridor or easing. **The release
+mechanism is not inert; it is wired and functions as documented, when there
+is material for it to act on.**
+
+### A7.3 MEASURED — on `demo.etsworld`, exhaustion wins the race
+
+Same instrumentation, `demo.etsworld`, the `bar_window` calls inside the
+bridge branch:
+
+    bars_elapsed:   1     2     3     4     5     6
+    openness:      1.0   0.8   0.6   0.4   0.2   ~0
+    exhausted:    false false  true  true  true  true
+    pin_units_n:    64    56     0     0     0     0
+
+`exhausted` (the track running out of forward material — nothing to do with
+`openness`) fires at `bars_elapsed=3`, with `openness` still at **0.6** — two
+to three bars before the ~5-bar slew would have released the pin on its own.
+**On the shipped demo world, the pin's release is caused by the track
+running out, not by `openness`'s decay reaching anywhere near its own
+floor.** `openness`'s mechanism is real (A7.2) but never gets to be the
+active cause on this corpus — a corpus-length property, disclosed here, not
+patched. Re-running with a longer straight-phase hold before the click
+narrows this window further (exhaustion can fire in as few as 2 bars); it
+never widens it, because `demo.etsworld`'s tracks do not grow.
+
+### A7.4 THE OPEN FLAG (not default, not exposed in UI v0) — for completeness
+
+`scope=OPEN` DOES show a real, admitted-track-level change: `{source}` only
+while `openness_cur > 0`, then `clamp_terms=None` (the whole corpus) the
+instant `openness_cur` reaches exactly 0.0 — a step, not a widening ring, but
+a genuine dependency on `openness`. Irrelevant to what ships (S-2: "kept…
+for A/B listening… never the default without the measurement"), reported
+here only so this amendment does not overstate the inertness beyond the
+scope it was actually measured on.
+
+### A7.5 THE CHOICE — amend the text, do not wire new admission behaviour
+
+Given A7.1-A7.4: the one thing that is provably, permanently inert (track-
+level admission under DIRECT) is inert **by an earlier ratified requirement**
+(S-1) — wiring `openness` to move it would reverse that ruling, which is out
+of scope without a fresh sign-off and is not achievable with "no new
+constants… using only the mechanisms already registered," because the
+registered mechanism (S-1's own DIRECT_FLOOR guard) is *what enforces* the
+invariance being asked to undo. The other thing (unit-level pin release) is
+NOT broken — A7.2 proves it already works, with zero invention, whenever a
+world has material. There is nothing eligible to *wire*; the gap was in the
+TEXT, which described "the fence opens" three sections above the paragraph
+that actually scoped it, and never disclosed the demo-world exhaustion race
+at all. This amendment is that disclosure. The BRIDGE v0 section's B-1
+bullet and `live.py::release_clamp`'s docstring are both updated in place
+(same commit) to state A7.1-A7.3 where a reader first meets "the fence
+opens," rather than leaving the scoping to be inferred three sections later.
+
+**No claim in the BRIDGE v0 section or `live.py` may describe a mechanism
+that is not running.** After this amendment: "the fence opens" is stated as
+scoped to DIRECT's unit-level pin only, with the demo-world race disclosed
+as a measured consequence, not a hedge.
+
+### A7.6 THE CHECK (`cloud/tools/b1_release_scope_verify.py`) — proven to bite
+
+    BR-D1  static: DIRECT_FLOOR guard present; mask==openness by construction
+    BR-D2  played, demo.etsworld: admitted set identical every bar, = {0,2}
+    BR-D3  played, synthetic (unexhausted): pin releases, openness is the cause
+    BR-D3b played, synthetic: track admission STILL invariant even with material
+    BR-D4  played, demo.etsworld: exhaustion fires while openness still > floor
+    BR-D5  bites-by-revert (internal): pre-DIRECT_FLOOR release_clamp -> BR-D2
+           would have failed (admitted set (0,1,2,3) appears)
+
+Restored code, `--bars 8`, `demo.etsworld`:
+
+    ALL PASS  (7 checks, 0 failed)
+
+`DIRECT_FLOOR`'s guard clause in `live.py::release_clamp` was then LITERALLY
+reverted in place (the exact pre-BS-fix shape: `openness<=0` always returns
+`None`, dropping the fence for every scope) and the SAME check re-run,
+unmodified, against the live file:
+
+    FAILED: BR-D1 DIRECT_FLOOR guard present in release_clamp,
+            BR-D2 admitted set identical every bar (DIRECT, demo world),
+            BR-D3b track admission STILL invariant even with material available
+            (7 checks, 3 failed)
+    BR-D2 detail: distinct admitted sets = [(0, 1, 2, 3), (0, 2)]
+
+The file was restored (`git diff` clean afterward) and the check re-run a
+third time: **ALL PASS (7 checks, 0 failed)**, confirming the restore is
+byte-identical to what shipped. The check bites.
