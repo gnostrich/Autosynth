@@ -244,6 +244,32 @@ def bar_window_unit_ids(unit_ids: Sequence[int], bars_elapsed: int,
     return tuple(int(u) for u in unit_ids[start:start + w])
 
 
+def window_span(slices: Sequence[Sequence], unit_ids: Sequence[int]):
+    """The time span a bar's fence admits: ``{"t0", "t1", "n"}`` over the stored
+    spans of ``unit_ids`` (Amendment 6, ruling 3).
+
+    This is what the lane mark shows — THE ADMITTED WINDOW, not a playhead. The
+    old mark drew the single highest-mass placement of the bar, but the fence
+    admits a whole bar's worth of units and any of them can win, so the mark
+    wandered back and forth instead of advancing. The window advances by
+    construction because the pin walks forward. A mark implying sample position
+    while showing a window would be the mislabel class; the copy says window."""
+    lo = hi = None
+    n = 0
+    want = set(int(u) for u in (unit_ids or ()))
+    if not want:
+        return None
+    for row in slices:
+        if int(row[2]) in want:
+            t0, t1 = float(row[0]), float(row[1])
+            lo = t0 if lo is None else min(lo, t0)
+            hi = t1 if hi is None else max(hi, t1)
+            n += 1
+    if lo is None:
+        return None
+    return {"t0": lo, "t1": hi, "n": n}
+
+
 def build_full_fence(track: int, unit_ids: Sequence[int], slot_pin=None):
     """Construct the B-1 FULL FENCE for straight play: fully fenced to
     ``track`` (``track_mask={track: 1.0}, openness=1.0``), pinned to
@@ -366,7 +392,8 @@ def clamp_call_kwargs(write_bar_fn, clamp_terms) -> dict:
 #       the casting is ALREADY drawing predominantly from the destination
 #       track: placement share >= ARRIVAL_SHARE sustained over ARRIVAL_BARS
 #       consecutive bars, both REGISTERED verbatim, never per-corpus tuned.
-#       ``dest_share`` / ``arrival_reached``.
+#       ``dest_share`` (REPORTED only — Amendment 6 deleted every consumer
+#       that compared it to anything).
 #   B-5 STALL — share never rises: rendered honestly by the view (its own
 #       copy/treatment), never a forced/faked arrival and never a timeout.
 #   B-6 TEMPERATURE is the character knob already in the object (documented,
@@ -470,7 +497,8 @@ def measure_floor(history: Sequence[Sequence[float]]) -> Optional[dict]:
 
     B-7 (2026-08-14 reframe): this is now a DIAGNOSTIC readout ONLY — reported
     per journey (pinned at the journey's start, §A5.3 R-A), never consulted by
-    the arrival decision (``arrival_reached`` below is the only gate).
+    any completion decision — Amendment 6 leaves no gate at all; the human
+    commits by clicking the destination a second time.
 
     Returns ``None`` if fewer than 2 samples exist (a bar-to-bar wobble needs
     at least one consecutive pair) — an honest absence, never a fabricated
@@ -521,7 +549,7 @@ def release_step(openness_cur: float) -> float:
 #
 # Scope is chosen at journey start and constant for that journey (S-3). Every
 # other bridge mechanic is untouched: release on the adopted slew, the latched
-# lean, tether-driven traversal, settling-based arrival. Same code path, different
+# lean, tether-driven traversal, human commit-to-land. Same code path, different
 # fence DATA (BS-2).
 BRIDGE_SCOPE_DIRECT = "direct"
 BRIDGE_SCOPE_OPEN = "open"
@@ -543,8 +571,8 @@ def _bridge_track_mask(source_track, dest_track, openness_cur, scope):
 
     ``source_track`` may be a single track or an iterable of tracks: on a
     MID-BRIDGE RE-CLICK the carried side is every track still SOUNDING over W
-    (BS-4), measured by ``sounding_tracks`` — not a remembered or hardcoded
-    set — so an unfinished A->B leg redirected to C admits {A,B,C} and prunes
+    (Amendment 6 ruling 1), namely the tracks the CURRENT LEG actually drew
+    from — not a remembered, windowed or hardcoded set — so an unfinished A->B leg redirected to C admits {A,B,C} and prunes
     back to two on the following leg once A's material stops sounding.
 
     Nothing here ranks, scores or schedules: it is fence content, chosen once at
@@ -644,20 +672,21 @@ def pull_step(cur_vec: Sequence[float], target_vec: Sequence[float]) -> Tuple[fl
     return tuple(float(x) for x in rs.step(list(target_vec)))
 
 
-# B-4's two REGISTERED constants (operator, 2026-08-14 reframe) — verbatim,
-# never per-corpus tuned, never exposed as a UI knob.
-# ARRIVAL IS SETTLING, NOT A TARGET (correction, 2026-08-14). The previous gate
-# compared the destination share to 0.75 — a level nobody had measured or shown
-# to be reachable, and the first real journey peaked at 0.63 against it. That was
-# the same error as the retired profile-distance floor, in a different quantity.
-# There is now NO TARGET ANYWHERE on the arrival path: the share is watched only
-# through its HIGH-WATER DYNAMICS. When the pull stops producing new highs for a
-# settling window, the system has settled into whatever basin it reached, and the
-# fence closes THERE, at the share it actually attained.
+# COMPLETION IS A HUMAN ACT (Amendment 6, 2026-08-14). Everything that used to
+# live here — an arrival threshold, then a settling window with high-water
+# tracking — is DELETED, not disabled. Both were attempts to detect a state that
+# the registered proven-negative shows does not occur: during a bridge both
+# tracks are admitted and the only pull is a CHARACTER lean, which is
+# track-agnostic, so both keep winning casts and the destination-track-alone
+# state is not an equilibrium of the configuration. Measured over 5 journeys:
+# separation between "left behind" and "still carrying" AUC 0.486 / 0.552
+# against 0.5, and zero zero-share bars for either track.
 #
-# W IS DERIVED, NOT PICKED: it is the SAME bar count over which the world's
-# wobble floor is measured (`StreamPlayer._METER_WINDOW`, the registered
-# I-8 meter window). No other constant enters the bridge.
+# So the fence closing CREATES the destination state rather than recognising
+# one, and the human decides when: a second click on the destination already
+# being traveled to. There is NO constant on that path — no window, no level,
+# no bar count, no timeout (CL-1). Share survives only as a REPORTED quantity
+# for descriptive copy.
 
 def track_shares(rows) -> dict:
     """THIS bar's placement-mass share PER TRACK, read straight off the
@@ -665,8 +694,10 @@ def track_shares(rows) -> dict:
     unsmoothed reduction ``dest_share`` does, just not collapsed to one track.
     A bar that cast nothing is honestly ``{}`` (no invented denominator).
 
-    This is the ONLY source for "which tracks are currently sounding" (BS-4):
-    measured placement, never a remembered or declared set."""
+    Feeds the current leg's drawn-from set (Amendment 6 ruling 1) and the
+    view's descriptive blend copy — measured placement, never a remembered or
+    declared set, and never a history: the player clears its per-leg record at
+    every click."""
     tot = 0.0
     per = {}
     for (_slot, tid, _uid, _sec, mass) in rows:
@@ -685,69 +716,6 @@ def dest_share(rows, dest_track: int) -> float:
     EMA-smoothed display telemetry (B-4 wants what THIS bar actually did, not
     a decayed blend). A bar that cast nothing at all is honestly 0.0."""
     return float(track_shares(rows).get(int(dest_track), 0.0))
-
-
-def sounding_tracks(share_history, window: int) -> Tuple[int, ...]:
-    """BS-4's admitted-set input: the tracks whose material ACTUALLY SOUNDED
-    over the last ``window`` bars — ``share_history`` is the per-bar sequence
-    of ``track_shares`` dicts kept by the player. A track that has dropped out
-    (no placement anywhere in the window) is NOT admitted to the next leg, so
-    the set prunes itself as material stops sounding; a track still sounding
-    is carried, so an unfinished A->B leg redirected to C spans three.
-
-    Measured over the SAME registered window W the settling test uses — no
-    second constant, no ranking, no threshold beyond "did it place at all".
-    Returns tracks in ascending id order (deterministic fence data)."""
-    w = max(1, int(window))
-    hist = list(share_history or ())[-w:]
-    out = set()
-    for per in hist:
-        for t, s in (per or {}).items():
-            if float(s) > 0.0:
-                out.add(int(t))
-    return tuple(sorted(out))
-
-
-def settling(shares, window: int):
-    """The ONE observation that ends every journey (A-2): has the destination
-    share stopped setting new highs for `window` bars?
-
-    Returns ``{"settled", "high", "bars_since_high", "attained"}``.
-
-    * `settled` — no new high-water mark within the last `window` bars.
-    * `high` — the high-water mark reached, reported never judged.
-    * `attained` — the share at the moment of the observation: WHERE it landed,
-      which is the whole result. A high attained share is the destination basin;
-      a low one is the corpus's honest limit toward that destination. Both are
-      the same event and neither is a success or a failure.
-
-    Reversibility (A-3) is inherent: a new high resets `bars_since_high` to 0, so
-    a journey that looks finished can find more road and continue.
-
-    No level is compared against anything (A-5): the only comparison here is a
-    share against the highest share THIS journey has itself produced."""
-    h = [float(x) for x in (shares or ())]
-    if not h:
-        return {"settled": False, "high": 0.0, "bars_since_high": 0, "attained": 0.0}
-    high = h[0]
-    since = 0
-    for x in h[1:]:
-        if x > high:
-            high = x
-            since = 0
-        else:
-            since += 1
-    w = max(1, int(window))
-    return {"settled": since >= w, "high": high,
-            "bars_since_high": since, "attained": h[-1]}
-
-
-def settled_render(track_name, attained: float) -> str:
-    """End-of-journey copy (A-5): descriptive, never success/failure, never the
-    word stalled. It reports WHERE the journey settled, because where it settled
-    is the result."""
-    return "settled — drawing %d%% from %s" % (round(100.0 * float(attained)),
-                                               track_name)
 
 
 # =============================================================================

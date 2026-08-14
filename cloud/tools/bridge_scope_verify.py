@@ -156,8 +156,9 @@ def run(world_path: str, bars_before: int, bars_after: int, out_wav: str,
     hold(bars_after, "A->B")
 
     # --- BS-4: mid-bridge re-click ----------------------------------------
-    sounding_before = live_mod.sounding_tracks(list(p._live_share_hist),
-                                               p._METER_WINDOW)
+    # Amendment 6 ruling 1: admission is the CURRENT LEG's drawn-from set, not a
+    # window over history — sounding_tracks/_live_share_hist are deleted.
+    sounding_before = tuple(sorted(int(x) for x in p._leg_drawn))
     print("CLICK C: live_click(track=%d)  <- mid-bridge re-click" % C, flush=True)
     click_c_at = len(pcm) / 2.0 / 44100.0
     p.live_click(C, t_c)
@@ -202,8 +203,8 @@ def run(world_path: str, bars_before: int, bars_after: int, out_wav: str,
           "start=%s end=%s" % (scope_at_start, scope_at_end))
 
     want = tuple(sorted((set(sounding_before) | {int(B)}) - {int(C)})) or (int(B),)
-    check("BS-4 admitted = sounding+dest", carry_at_C == want,
-          "sounding_over_W=%s -> carry=%s (want %s)"
+    check("BS-4 admitted = leg-drawn+dest", carry_at_C == want,
+          "leg_drawn=%s -> carry=%s (want %s)"
           % (list(sounding_before), list(carry_at_C), list(want)))
     check("BS-4 not stale/hardcoded", carry_at_C != carry_at_B,
           "carry at B=%s, at C=%s" % (list(carry_at_B), list(carry_at_C)))

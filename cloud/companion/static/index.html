@@ -3778,20 +3778,37 @@
     }
     return null;
   }
-  // The playhead mark: drawn EXCLUSIVELY from the slice fieldLiveUnitSlice resolved
-  // (backend telemetry) — no other input, no timer, no fabricated motion.
-  function fieldLiveDrawPlayhead(rect, tr, color){
-    var sl = fieldLiveUnitSlice(tr, fieldLiveState.unit);
-    if(!sl) return;                                    // nothing REPORTED yet: draw nothing
+  // THE ADMITTED WINDOW (Amendment 6, ruling 3) — NOT a playhead. What is drawn
+  // is the time span this bar's fence admits, reported by the backend from the
+  // fence's own core units. It advances by construction because the pin walks
+  // forward.
+  //
+  // The old mark drew the single highest-mass placement of the bar. But the
+  // fence admits a whole bar's worth of units and any of them can win the cast,
+  // so that mark wandered back and forth on the lane instead of advancing —
+  // and, worse, it read as a sample position while showing something else. A
+  // mark implying sample position while showing a window is the mislabel class;
+  // this one shows the window and the copy says window. During a bridge the pin
+  // is released, so the backend reports no window and nothing is drawn.
+  function fieldLiveDrawWindow(rect, tr, color){
+    var w = fieldLiveState.window;
+    if(!w) return;                                     // nothing REPORTED: draw nothing
     var dur = +tr.duration_s || 0;
-    var x0 = fieldLaneX(rect, sl[0], dur), x1 = fieldLaneX(rect, sl[1], dur);
-    fieldCtx.globalAlpha = 0.85; fieldCtx.fillStyle = color;
+    var x0 = fieldLaneX(rect, w.t0, dur), x1 = fieldLaneX(rect, w.t1, dur);
+    fieldCtx.globalAlpha = 0.28; fieldCtx.fillStyle = color;
     fieldCtx.fillRect(x0, rect.y + 2, Math.max(2, x1 - x0), rect.h - 4);
     fieldCtx.globalAlpha = 1;
-    fieldCtx.strokeStyle = cssVar("--ink"); fieldCtx.lineWidth = 2;
-    var xm = (x0 + x1) / 2;
-    fieldCtx.beginPath(); fieldCtx.moveTo(xm, rect.y + 1); fieldCtx.lineTo(xm, rect.y + rect.h - 1);
+    // Edges, not a centre line: a centre line is what read as a play position.
+    fieldCtx.strokeStyle = color; fieldCtx.lineWidth = 2;
+    fieldCtx.beginPath();
+    fieldCtx.moveTo(x0, rect.y + 1); fieldCtx.lineTo(x0, rect.y + rect.h - 1);
+    fieldCtx.moveTo(x1, rect.y + 1); fieldCtx.lineTo(x1, rect.y + rect.h - 1);
     fieldCtx.stroke();
+    if((x1 - x0) > 54){
+      fieldCtx.fillStyle = cssVar("--muted");
+      fieldCtx.font = "9px " + cssVar("--font-mono");
+      fieldCtx.fillText("admitted window", x0 + 4, rect.y + 11);
+    }
   }
   function fieldLiveDraw(st, W, H){
     var g = fieldLanesPlace(st, W, H), lay = g.layout;
@@ -3817,7 +3834,7 @@
       if(tr){
         fieldDrawWave(rc, tr.peaks, col);                 // GIVEN MATERIAL — reused verbatim
         if(playingTrack !== null && (lane.track | 0) === (playingTrack | 0))
-          fieldLiveDrawPlayhead(rc, tr, col);              // backend telemetry only, never a timer
+          fieldLiveDrawWindow(rc, tr, col);              // backend telemetry only, never a timer
       } else if(note){
         fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "11px " + cssVar("--font-ui");
         fieldCtx.fillText(note, rc.x + 8, rc.y + Math.round(rc.h / 2) + 4);
@@ -3933,19 +3950,29 @@
     var share = +jr.share;
     if(!isFinite(share)) return null;
     share = Math.max(0, Math.min(1, share));
-    var rawHist = jr.history;
-    var hist = [];
-    if(Array.isArray(rawHist)){
-      for(var i = 0; i < rawHist.length; i++){
-        var v = +rawHist[i];
-        if(isFinite(v)) hist.push(Math.max(0, Math.min(1, v)));   // clamp only; no reordering/binning
+    // THE BLEND, AS MEASURED THIS BAR (Amendment 6). No history, no high-water
+    // mark, no settle window, no threshold: those were all deleted from the
+    // backend because arrival does not occur, and nothing here reconstructs
+    // them locally. What is shown is this bar's per-track share and the one
+    // thing that ends a blend — the human clicking the destination again.
+    var blend = [];
+    if(jr.blend && typeof jr.blend === "object"){
+      for(var k in jr.blend){
+        if(!Object.prototype.hasOwnProperty.call(jr.blend, k)) continue;
+        var v = +jr.blend[k];
+        if(isFinite(v) && v > 0) blend.push({ track:(k | 0), share:Math.max(0, Math.min(1, v)) });
       }
+      blend.sort(function(a, b){ return b.share - a.share; });
+    }
+    var adm = [];
+    if(Array.isArray(jr.admitted)){
+      for(var i = 0; i < jr.admitted.length; i++) adm.push(jr.admitted[i] | 0);
     }
     return {
       target: (jr.target === undefined || jr.target === null) ? null : (jr.target | 0),
       share: share,
-      history: hist,
-      stalled: !!jr.stalled
+      blend: blend,
+      admitted: adm
     };
   }
   // FIELD_JOURNEY_MAX_BARS: a DISPLAY cap only (the trace does not fit unbounded
@@ -3963,25 +3990,34 @@
     if(!fjEl) return;
     if(!journey){ fieldLiveJourneyHide(); return; }
     fjEl.hidden = false;
-    fjEl.classList.toggle("stalled", !!journey.stalled);
+    fjEl.classList.remove("stalled");           // no failure state exists any more
     var nm = destName || (journey.target !== null ? ("track " + journey.target) : "the destination");
+    // DESCRIPTIVE ONLY (Amendment 6): what is sounding, in what proportion, and
+    // how to land it. No success/failure vocabulary, no "stalled", no target.
     if(fjLabelEl){
-      fjLabelEl.textContent = journey.stalled
-        ? "the corpus has no road there"
-        : "bridging → " + nm;
+      var parts = [];
+      for(var i = 0; i < journey.blend.length && i < 3; i++){
+        var tr = fieldWaveTrack(journey.blend[i].track) || {};
+        parts.push(Math.round(journey.blend[i].share * 100) + "% "
+                   + (tr.name || ("track " + journey.blend[i].track)));
+      }
+      fjLabelEl.textContent = parts.length
+        ? ("blending — " + parts.join(" / ") + " · click " + nm + " again to land")
+        : ("blending → " + nm + " · click it again to land");
     }
     if(fjPctEl) fjPctEl.textContent = Math.round(journey.share * 100) + "%";
     if(fjTraceEl){
-      // Rebuild the tick row from the reported history verbatim (plus the current
-      // share as the newest tick, since B-4's own convention reads THIS bar's share
-      // too) — trimmed to the display cap from the OLD end only.
-      var bars = journey.history.concat([journey.share]).slice(-FIELD_JOURNEY_MAX_BARS);
+      // The blend as proportional segments — this bar's measurement, drawn
+      // verbatim. The old trace showed a share history against a 0.75 mark;
+      // both the history and the mark are gone.
       while(fjTraceEl.children.length > 1) fjTraceEl.removeChild(fjTraceEl.lastChild);  // keep .fj-thresh
-      for(var i = 0; i < bars.length; i++){
-        var b = document.createElement("div");
-        b.className = "fj-bar" + (bars[i] >= 0.75 ? " met" : "");   // BR-1: display-only threshold read
-        b.style.height = Math.max(2, Math.round(bars[i] * 34)) + "px";
-        fjTraceEl.appendChild(b);
+      for(var b = 0; b < journey.blend.length; b++){
+        var seg = document.createElement("div");
+        seg.className = "fj-bar";
+        seg.style.height = "34px";
+        seg.style.flex = String(Math.max(0.02, journey.blend[b].share));
+        seg.style.background = fieldTrackColor(journey.blend[b].track);
+        fjTraceEl.appendChild(seg);
       }
     }
   }
@@ -3997,8 +4033,11 @@
         sliceIndex: (j.slice_index === undefined ? null : j.slice_index),
         starved: !!j.starved,
         bars: (j.bars_elapsed | 0),
+        window: (j.window && isFinite(+j.window.t0) && isFinite(+j.window.t1))
+                ? { t0:+j.window.t0, t1:+j.window.t1 } : null,
         journey: fieldLiveJourneyParse(j)
-      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0, journey:null };
+      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0,
+            window:null, journey:null };
       var jt = fieldLiveState.journey;
       var jnm = jt ? (fieldWaveTrack(jt.target) || {}).name : null;
       fieldLiveJourneyRender(jt, jnm);
@@ -4098,7 +4137,7 @@
   function fieldLiveStop(){
     fieldLivePollStop();
     fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0,
-                        journey:null };
+                        window:null, journey:null };
     fieldLiveJourneyHide();                     // BR-6: leaving mid-bridge drops the journey too
     fetch("/api/live/stop", { method:"POST" }).catch(noop);
     stopPlayback();

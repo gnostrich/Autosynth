@@ -1023,3 +1023,99 @@ demo.etsworld, 4 tracks, W=16:
 Audio + per-bar transition table delivered to the operator. The demo world's
 material is synthetic (~1s per track): the artefact proves the ROUTING, and
 says so rather than implying musicality it cannot demonstrate.
+
+## BS.3 PROVEN NEGATIVE — arrival does not occur
+
+Registered in `REGISTRY.jsonl` as
+`live-mode-bridge-arrival-not-detectable-2026-08-14`.
+
+> **bridge arrival is not detectable because it does not occur — the fence
+> closing CREATES the destination state rather than recognizing it.**
+
+Operator, 2026-08-14, verbatim: "§3 shows the 2-track case never hands over
+either. Mechanically: both tracks are admitted and the only pull is a CHARACTER
+lean, which is track-agnostic — so both keep winning casts. The
+destination-track-alone state is NOT an equilibrium of the bridge
+configuration. There is no convergence to detect; the blend is where the physics
+goes."
+
+The measurement behind it (§BS.2 tooling, `cloud/tools/bridge_admission_measure.py`,
+5 journeys): separation between a track being left behind and one still carrying
+the crossing, AUC 0.486 and 0.552 against 0.5, means differing by 0.001 and
+0.014 inside a ±0.3 bar-to-bar swing, and ZERO zero-share bars for either track.
+The 2-track case does not separate either — source means 0.554 / 0.478 / 0.462
+against destination 0.446 / 0.522 / 0.538, with the direction flipping between
+journeys.
+
+Retired by this: the settling window W on the completion path, high-water
+tracking, share thresholds, stall as a state, the Amendment 3 ratchet corridor
+(already dormant), and B-7's profile-distance floor as an arrival signal.
+
+## AMENDMENT 6 — COMMIT-TO-LAND (operator, 2026-08-14), verbatim
+
+> 1. ADMISSION — adopt the history-free rule as you named it: admitted set =
+> tracks the current leg has actually drawn from, recomputed per leg. No trend,
+> no history, no smoothing constant.
+>
+> 2. COMPLETION — COMMIT-TO-LAND (replaces all arrival/settling machinery):
+> click a new spot => travel toward it (blend, as now); click the destination
+> you are ALREADY traveling to => the fence closes there; straight play resumes.
+> Landing is a human act, because a wall is human content and the machine cannot
+> decide it. DELETE from the bridge path: settling window W, high-water
+> tracking, share thresholds, stall detection as a state. Share remains a
+> REPORTED quantity only. Render descriptively while blending ("blending — 41%
+> <track A> / 59% <track B>"); no success/failure vocabulary, no "stalled".
+> Checks: CL-1 no constant on the completion path (a literal FAILS); CL-2 second
+> click on the active destination closes the fence within one bar; CL-3 clicking
+> elsewhere mid-blend redirects without closing; CL-4 accumulation impossible
+> (fixture: three redirections then a commit returns the admitted set to 1).
+>
+> 3. PLAYHEAD — approve the window-span fix (draw the bar's admitted span,
+> advances by construction). The meaning changed, so the label changes with it:
+> it is the ADMITTED WINDOW, not a playhead; copy must say so. A mark that
+> implies sample position while showing a window would be the mislabel class.
+>
+> 4. DEPLOY the LIVE-reload fix now, on its own — it is a pure honesty fix
+> (silent hold on load per Amendment 2). Do not batch it behind design work.
+>
+> 5. Re-run the admission measurement on a real corpus once one is loaded (your
+> own caveat): the §4 mechanism finding is structural, the swing magnitudes are
+> not. Report, don't tune.
+
+## BS.4 As built
+
+**Ruling 1.** `StreamPlayer._leg_drawn` accumulates the tracks the CURRENT leg
+actually cast from (fenced bars only) and is cleared at every click.
+`_live_bridge_click` carries exactly that set. `live.sounding_tracks` and the
+per-track share window are deleted.
+
+**Ruling 2.** `live_click` gained the third case: mid-bridge, a click on the
+destination already being traveled to routes to `_live_commit`, which calls
+`_bridge_close(track, t)` — the former `_bridge_arrive`, now reachable only by a
+human. The produce loop's bridge branch no longer decides anything: it records
+this bar's destination share and this bar's blend for copy, and that is all.
+`live.settling` / `settled_render` are deleted. `live_state` reports
+`phase: "blending"` with `blend`, `admitted`, `n_admitted` and a `commit_hint`;
+there is no `stalled`, no `high_water`, no `settle_window`, no target.
+
+**Ruling 3.** `live.window_span(slices, unit_ids)` returns the time span the
+bar's fence admits; `live_state.window` carries it while a straight-play pin
+exists and is null during a bridge (the pin is released; there is no window).
+The canvas draws that span with edge marks and the words "admitted window" —
+no centre line, because a centre line is what read as a play position.
+
+**Checks** (`cloud/tools/commit_to_land_verify.py`, demo.etsworld, ALL PASS):
+
+    CL-1 no constant on commit path        literals=none names=none
+    CL-1 machinery deleted from live.py    remaining: none
+    CL-1 produce loop decides nothing      remaining: none
+    CL-3 elsewhere redirects, no close     phase=blending dest=2 admitted=(0,2)
+    CL-3 mid-blend redirect stays open     phase=blending dest=3 admitted=(0,2,3)
+    CL-2 commit closes within one bar      first bar after commit admitted=(3,)
+    CL-4 accumulation impossible           sizes [2,3,4] -> after commit [(3,),(3,)]
+
+BS-1/BS-3/BS-4 re-run under the new admission rule: still PASS, off-pair mass
+none, `leg_drawn=[0,2] -> carry=[0,2]`.
+
+**Ruling 5 is outstanding**: the admission measurement is to be re-run on a real
+corpus, reported not tuned.

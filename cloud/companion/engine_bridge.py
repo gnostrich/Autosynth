@@ -798,7 +798,9 @@ class StreamPlayer:
         self._live_wobble_hist: "deque" = deque(maxlen=self._METER_WINDOW)
         # BS-4: per-bar PER-TRACK placement shares over the registered window W.
         # The only input to "which tracks are currently sounding" at a re-click.
-        self._live_share_hist: "deque" = deque(maxlen=self._METER_WINDOW)
+        # THE CURRENT LEG's drawn-from set (Amendment 6 ruling 1) — cleared at
+        # every click, so it can never accumulate across legs.
+        self._leg_drawn: set = set()
         # bar index -> was that bar composed under a LIVE fence (see _compose_bar)
         self._fenced_bar: dict = {}
         # S-3 default scope for a journey (env-flagged; DIRECT unless asked).
@@ -1808,6 +1810,13 @@ class StreamPlayer:
                         # inside the fenced track, outside the forward core.
                         self._live["core_units"] = frozenset(win["core"])
                         self._live["n_widened"] = len(win["widened"])
+                        # THE ADMITTED WINDOW (Amendment 6, ruling 3): the time
+                        # span this bar's fence actually admits, from the fence's
+                        # own core units. It advances by construction because the
+                        # window walks forward. This is NOT a sample position and
+                        # the view must not label it as one.
+                        self._live["window"] = live_mod.window_span(
+                            live["slices"], win["core"])
         elif live.get("mode") == "bridge" and self._bridge is not None:
             with self._live_lock:
                 br = dict(self._bridge)
@@ -2005,36 +2014,36 @@ class StreamPlayer:
         with self._live_lock:
             raw_mode = self._live.get("mode")
         if raw_mode in ("straight", "bridge") and self._fenced_bar.get(int(r.bar)):
-            self._live_share_hist.append(live_mod.track_shares(r.rows))
+            # THE CURRENT LEG'S DRAWN-FROM SET (Amendment 6, ruling 1). Not a
+            # window, not a trend, not a decay: the set of tracks THIS LEG has
+            # actually cast from, cleared at every click. Nothing accumulates
+            # across legs, so there is no history for a smoothing constant to
+            # be needed on.
+            with self._live_lock:
+                for _t, _v in live_mod.track_shares(r.rows).items():
+                    if float(_v) > 0.0:
+                        self._leg_drawn.add(int(_t))
         if raw_mode == "straight":
             self._live_wobble_hist.append(
                 live_mod.column_shares(nowplaying_track_role, self.M))
         elif raw_mode == "bridge" and self._bridge is not None:
+            # SHARE IS REPORTED, NEVER CONSULTED (Amendment 6, ruling 2). This
+            # block used to decide something: it accumulated a window of shares,
+            # tracked a high-water mark and closed the journey when the mark
+            # stopped moving. All of that is deleted — arrival does not occur
+            # (registered proven-negative), so there was nothing for it to
+            # detect. What remains is display state, read off this bar only.
             dest_track = self._bridge.get("dest_track")
             share = live_mod.dest_share(r.rows, dest_track)
-            gap_diag = live_mod.char_gap(
-                live_mod.column_shares(nowplaying_track_role, self.M),
-                self._bridge.get("pull_target") or ())
             dest_uid_index = self._bridge.get("dest_uid_index") or {}
             dest_placement = live_mod.current_placement(r.rows, dest_track, dest_uid_index)
-            arrived = False
             with self._live_lock:
                 if self._bridge is not None:
-                    self._bridge["share_hist"].append(share)
-                    self._bridge["gap_hist"].append(gap_diag)
+                    self._bridge["share"] = share
+                    self._bridge["blend"] = live_mod.track_shares(r.rows)
                     if dest_placement is not None:
                         self._bridge["dest_current_unit"] = dest_placement[0]
                         self._bridge["dest_current_slice_index"] = dest_placement[1]
-                    # SETTLING, NOT A TARGET: the journey ends when the pull
-                    # stops producing new highs for the derived window W — the
-                    # same bar count the wobble floor is measured over. Where it
-                    # settles is the result; nothing is compared to a level.
-                    _set = live_mod.settling(list(self._bridge["share_hist"]),
-                                             self._METER_WINDOW)
-                    self._bridge["settling"] = _set
-                    arrived = bool(_set["settled"])
-            if arrived:
-                self._bridge_arrive()
         pcm = _to_int16(audio)
         return pcm, roles
 
@@ -2374,17 +2383,42 @@ class StreamPlayer:
 
     # --- THE BRIDGE (v0 — release + pull, no intervention; see live.py) ----
     def live_click(self, track: int, t: float) -> dict:
-        """THE click dispatcher (B-1 amended / the 2026-08-14 bridge reframe):
-        from idle/off, the FIRST click is Amendment 2's immediate start —
-        unchanged, no bridge, no lean (LM-10). From an ALREADY-PLAYING state
-        (straight OR mid-bridge), a click is THE BRIDGE: the source fence
-        RELEASES, the destination's stored character PULLS, arrival is
-        OBSERVED — never a second decision channel; both paths land here."""
+        """THE click dispatcher. Three cases, decided by what is already
+        playing — no state machine beyond this, and no machine judgement about
+        whether a journey is "done" (Amendment 6 / the proven negative:
+        arrival does not occur, so there is nothing to detect).
+
+          idle/off              -> Amendment 2's immediate straight start
+          playing, NEW spot     -> travel toward it (the blend)
+          mid-bridge, the SAME
+          destination you are
+          already traveling to  -> COMMIT: the fence closes there and
+                                   straight play resumes at the clicked spot.
+
+        LANDING IS A HUMAN ACT — a wall is human content; the machine cannot
+        decide it. The second click IS the landing, not a report that one
+        happened."""
         with self._live_lock:
             mode = self._live.get("mode")
+            dest = None if not self._bridge else self._bridge.get("dest_track")
         if mode not in ("straight", "bridge"):
             return self.live_start(track, t)
+        if mode == "bridge" and dest is not None and int(dest) == int(track):
+            return self._live_commit(int(track), float(t))
         return self._live_bridge_click(int(track), float(t))
+
+    def _live_commit(self, track: int, t: float) -> dict:
+        """COMMIT-TO-LAND (Amendment 6, ruling 2). Close the fence on the
+        track the blend is already traveling to, at the spot just clicked, and
+        resume straight play. Nothing is measured, compared or waited for: the
+        close CREATES the destination state rather than recognising one, which
+        is exactly what the registered proven-negative says is the only way it
+        can come about."""
+        self._bridge_close(int(track), float(t))
+        with self._live_lock:
+            n_admitted = 1 if self._live.get("mode") == "straight" else 0
+        return {"ok": True, "mode": "straight", "track": int(track),
+                "committed": True, "n_admitted": n_admitted}
 
     def _live_bridge_click(self, track: int, t: float) -> dict:
         """B-1/B-2: (re-)latch a journey toward (``track``, ``t``). A click
@@ -2410,17 +2444,17 @@ class StreamPlayer:
             # rather than guess one.
             raise live_mod.LiveCarrierUnavailable(
                 "no source track on record for this session's playing state")
-        # BS-4 (mid-bridge re-click): the new leg's carried side is every track
-        # whose material ACTUALLY SOUNDED over the registered window W —
-        # measured off produced bars (`_live_share_hist`), never a remembered or
-        # declared set. Before any bar has been produced the only thing sounding
-        # is the source itself. Two tracks minimum; three while an unfinished
-        # A->B leg is redirected to C; pruned automatically on the next leg once
-        # a track's share has gone to zero across W.
+        # ADMISSION IS HISTORY-FREE (Amendment 6, ruling 1): the new leg carries
+        # exactly the tracks THE CURRENT LEG ACTUALLY DREW FROM, then that record
+        # is cleared. No window, no trend, no decay — measurement showed there is
+        # nothing to trend on (AUC 0.486 / 0.552 against 0.5, zero zero-share
+        # bars), and that admission is self-fulfilling, so a sounding-over-W test
+        # could only ever ratify what the fence already allowed. Clearing per leg
+        # is what makes accumulation impossible (CL-4).
         with self._live_lock:
-            sounded = live_mod.sounding_tracks(list(self._live_share_hist),
-                                               self._METER_WINDOW)
-        carried = (set(int(x) for x in sounded) | {int(source_track)})
+            drawn = set(int(x) for x in self._leg_drawn)
+            self._leg_drawn = set()
+        carried = drawn | {int(source_track)}
         carried.discard(int(dest_track))          # the destination is admitted by scope
         carry = tuple(sorted(carried)) or (int(source_track),)
         from collections import deque
@@ -2437,11 +2471,12 @@ class StreamPlayer:
                 "lean_cur": (tuple(cur_lean) if cur_lean is not None
                             else tuple(0.0 for _ in range(self.M))),
                 "openness_cur": cur_openness,
-                # bounded window (I-8 convention): recent RAW per-bar dest
-                # shares. arrival_reached reads the last ARRIVAL_BARS of it;
-                # live_state's stall readout reads the whole window.
-                "share_hist": deque(maxlen=self._METER_WINDOW),
-                "gap_hist": deque(maxlen=self._METER_WINDOW),   # diagnostic only (B-7)
+                # REPORTED ONLY (Amendment 6): this bar's destination share and
+                # this bar's full per-track blend, for the view's descriptive
+                # copy. No history is kept because nothing reads history any
+                # more — the completion path holds no window at all.
+                "share": 0.0,
+                "blend": {},
                 "T_s_pinned": float(self._T_s), "bars_elapsed": 0,
                 "dest_current_unit": None, "dest_current_slice_index": None,
             }
@@ -2453,26 +2488,30 @@ class StreamPlayer:
         self.start()
         return {"track": int(dest_track), "bridge": True}
 
-    def _bridge_arrive(self) -> None:
-        """B-4: destination fence closes — straight play resumes there.
-        Reuses the SAME full-fence construction ``live_start`` uses
-        (``_straight_track_slices`` / ``_straight_live_dict``), pinned at the
-        journey's registered destination rather than a fresh click. The lean
-        drops to neutral — its job is done; a closed fence alone determines
-        content from here, exactly as straight play always has."""
+    def _bridge_close(self, dest_track=None, dest_t=None) -> None:
+        """Close the fence on ``dest_track`` at ``dest_t`` and resume straight
+        play (Amendment 6). Called ONLY by a human commit — the second click on
+        the destination already being traveled to. There is no observed-arrival
+        caller any more: the completion path holds no window, no high-water
+        mark, no share level and no timeout, because none of those can decide
+        this (see the registered proven-negative). The lean drops to neutral —
+        its job is done; a closed fence alone determines content from here,
+        exactly as straight play always has."""
         with self._live_lock:
             br = dict(self._bridge) if self._bridge else None
         if br is None:
             return
         try:
-            track, slices = self._straight_track_slices(br["dest_track"])
-            live_dict = self._straight_live_dict(track, slices, br["dest_t"])
+            track, slices = self._straight_track_slices(
+                br["dest_track"] if dest_track is None else dest_track)
+            live_dict = self._straight_live_dict(
+                track, slices, br["dest_t"] if dest_t is None else float(dest_t))
         except Exception:
             # The destination became unfenceable mid-journey (should not
             # happen — it was already probed at click time). Never fabricate
             # arrival: fall back to idle-silent rather than claim a fence
             # that does not exist.
-            logger.exception("bridge arrival could not close the destination fence")
+            logger.exception("the destination fence could not be closed on commit")
             self.live_enter()
             return
         live_dict.pop("start_unit", None)
@@ -2497,7 +2536,7 @@ class StreamPlayer:
         "straight" | "bridging" | "stalled" | "arrived". "stalled" is a
         DISPLAY-ONLY read of "share never rose in the recent window" — it
         never feeds back into the fence/lean (BR-1); only
-        ``live.arrival_reached`` (B-4's own share/bars rule) can ever close
+        a HUMAN COMMIT (a second click on the destination) can ever close
         the destination fence. The retired profile-distance floor (B-7)
         rides along as diagnostics only, never gating anything."""
         from . import live as live_mod
@@ -2512,51 +2551,46 @@ class StreamPlayer:
               "unit": live.get("current_unit"),
               "slice_index": live.get("current_slice_index"),
               "starved": bool(live.get("starved", False)),
-              "bars_elapsed": bars_elapsed, "widened": n_widened}
+              "bars_elapsed": bars_elapsed, "widened": n_widened,
+              # ruling 3: reported ONLY while a straight-play pin exists. During a
+              # bridge the pin is released and there is no window to show, so this
+              # is null rather than a stale or invented span.
+              "window": (live.get("window") if raw_mode == "straight" else None)}
         if raw_mode == "bridge" and br is not None:
-            share_hist = list(br.get("share_hist") or ())
-            gap_hist = list(br.get("gap_hist") or ())
-            # ONE OBSERVATION (A-2): a journey is either still setting new
-            # highs or it has settled. There is no separate stall state and no
-            # level to fall short of, so nothing is rendered as a failure while
-            # the pull is still finding road.
-            _set = live_mod.settling(list(share_hist), self._METER_WINDOW)
-            stalled = False
+            # BLENDING, DESCRIPTIVELY (Amendment 6, ruling 2). No phase called
+            # "stalled", no high-water mark, no settle window, no target: the
+            # blend is where the physics goes, and it ends when the human clicks
+            # the destination again. Everything here is this bar's measurement,
+            # reported for copy — nothing is compared to anything.
+            blend = {int(k): float(v) for k, v in (br.get("blend") or {}).items()}
+            carry = list(br.get("carry_tracks") or ())
+            admitted = sorted(set(carry) | ({int(br["dest_track"])}
+                                            if br.get("dest_track") is not None else set()))
             floor_diag = live_mod.measure_floor(list(self._live_wobble_hist))
             out.update({
-                "phase": "stalled" if stalled else "bridging",
+                "phase": "blending",
                 "source_track": br.get("source_track"),
                 "dest_track": br.get("dest_track"),
                 "dest_unit": br.get("dest_current_unit"),
                 "dest_slice_index": br.get("dest_current_slice_index"),
-                "share_hist": share_hist,
-                "share": share_hist[-1] if share_hist else 0.0,
-                "high_water": _set["high"],
-                "bars_since_high": _set["bars_since_high"],
-                "settle_window": self._METER_WINDOW,
+                "share": float(br.get("share") or 0.0),
+                "blend": blend,
+                "admitted": admitted,
+                "n_admitted": len(admitted),
                 "openness": br.get("openness_cur"),
-                "gap_diag": gap_hist[-1] if gap_hist else None,
                 "floor_diag": (floor_diag or {}).get("floor"),
                 "T_s_pinned": br.get("T_s_pinned"),
-                # THE SHAPE THE VIEW READS. The front end was built in parallel
-                # against this contract; the flat fields above stay for tooling
-                # and the report. `history` is the RAW per-bar share list — never
-                # smoothed, because the winding is the thing being shown.
+                # THE SHAPE THE VIEW READS.
                 "journey": {
                     "active": True,
                     "target": br.get("dest_track"),
-                    "share": share_hist[-1] if share_hist else 0.0,
-                    "history": list(share_hist),
-                    # kept for the view's existing contract, but a journey that
-                    # is still setting new highs is NEVER flagged: settling is
-                    # reported descriptively, not as a failure to reach a level.
-                    "stalled": False,
-                    "high_water": _set["high"],
-                    "bars_since_high": _set["bars_since_high"],
-                    "settle_window": self._METER_WINDOW,
-                    # S-3/BS-4: the fence's admitted set for THIS leg, logged.
+                    "share": float(br.get("share") or 0.0),
+                    "blend": blend,
+                    "admitted": admitted,
                     "scope": br.get("scope"),
-                    "carry_tracks": list(br.get("carry_tracks") or ()),
+                    "carry_tracks": carry,
+                    # the ONE thing the human can do to end it (ruling 2)
+                    "commit_hint": "click the destination again to land",
                 },
             })
         elif raw_mode == "straight":
