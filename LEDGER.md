@@ -2004,41 +2004,5 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `fe5eac0`
 - `Write` cloud/tools/pair_rule_verify.py (2026-08-14T17:25:48+00:00)
 
-### THE PAIR RULE (2026-08-14)
-- A bridge is always exactly two tracks {from, to}; a mid-bridge reroute REPLACES
-  the pair rather than extending it. Supersedes the history-free per-leg carry
-  set, whose admitted side grew 2 -> 3 -> 4 across a run of redirections.
-- `from` is measured at the click bar (dominant placement mass), not remembered:
-  `StreamPlayer._last_shares` holds ONE bar's shares, overwritten each bar, and
-  the accumulating `_leg_drawn` set is deleted.
-- Reported `source_track` is now that measured `from` (it was the session's own
-  track, which left the fence correct but the readout stale).
-- Checks PR-1..PR-6 ALL PASS incl. PR-6 byte-identity of a fixed-pair tape
-  against the pre-change build (sha256 05657f72...), proving the physics -
-  release slew, latched lean, tether traversal - is untouched.
-
-### STANDING RULES adopted 2026-08-14 (operator)
-
-**MISLABEL — a recurring pattern, second instance in two days.**
-1. the LIVE lane mark drew the bar's highest-mass placement while reading as a
-   sample position (fixed: it now draws, and names, the ADMITTED WINDOW);
-2. the bridge reported the SESSION's track as `source_track` while the fence
-   had been built from the measured dominant track (fixed: the readout is the
-   measured `from`).
-
-STANDING RULE: any readout naming a track, a position, or a state must derive
-from the SAME telemetry the mechanism consumed that bar — never from session
-state, never from config, never from what was requested. A readout built from a
-different source than the mechanism is a mislabel even when both are individually
-correct. If this recurs a third time it becomes a lint check.
-
-**CHECK-WRITING CONVENTION — a static check must read structure, not prose.**
-PR-4 (pair rule, no-history on the admission path) first scanned the function's
-raw source text and failed on the words "history" and "window" appearing in the
-comments that EXPLAIN their absence. A text scan can also pass for the same
-reason — certifying its own comments.
-
-STANDING RULE: any static check asserting the ABSENCE of a concept must walk the
-AST and read identifiers, attributes and call targets. Never substring-match
-source text. A check that can be satisfied or defeated by a comment is not a
-check.
+### at `80ca577`
+- `Write` architecture-v6/tests/writer/test_fence_provenance.py (2026-08-14T17:52:46+00:00)
