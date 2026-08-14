@@ -668,3 +668,69 @@ not this train.
 
 Measured, never sold as the original. The off-window fraction from R2(b) feeds
 the same verdict, so the label reflects what the reconstruction actually did.
+
+---
+
+# AMENDMENT 5 — THE BRIDGE IS THE POINT (operator, 2026-08-14, verbatim)
+
+> To be unambiguous: the bridge is not an enhancement, it is the point of
+> LIVE. Straight play with hard cuts is a music player; the landscape
+> traversal is the instrument. LIVE is not shippable or demoable without it.
+>
+> Next train = the bridge, top priority, nothing else in it:
+> - fence release on the adopted slew (no timetable, Amendment 1),
+> - ratchet corridor (Amendment 3: best_gap + registered floor slack,
+>   telemetry-only tightening),
+> - arrival = in-metric gap under the fluctuation floor -> fence closes at
+>   the destination; stall renders honestly when the corpus has no road.
+>
+> Two blockers to clear first, both cheap:
+> 1. Hard fence green (LM-11): no cast outside ClampTerms under starvation.
+>    Release/close mechanics sit on the wall holding.
+> 2. Settle the in-metric floor (jump-immediate D2): the arrival gap and the
+>    floor must be measured in the SAME metric — idle bar-to-bar wobble of
+>    the journey's own distance. Otherwise the bridge will "arrive"
+>    instantly and look abrupt for a second, unrelated reason.
+>
+> Current hard-cut behaviour stays as the honest jump end of the dial;
+> label it in-view so nothing implies a transition is occurring yet.
+
+## A5.1 Standing correction this amendment makes to my framing
+
+I had been reporting the missing bridge as a later train alongside polish items.
+It is not: without it LIVE is a player with cuts, and the traversal — the thing
+the whole carrier was built to carry — does not exist. Recorded so the priority
+is not re-litigated.
+
+## A5.2 BLOCKER RESULTS (both cleared, measured)
+
+**1. Hard fence (LM-11): GREEN.** Six checks pass — no cast ever leaves the
+fence; starvation is surfaced not swallowed; the admitted (role, band) still
+casts normally; fast and original stay bit-identical under a starving fence.
+The wall holds, so release/close mechanics have something to sit on.
+
+**2. In-metric floor (D2): MEASURED, and the operator's concern is confirmed.**
+The journey's own distance is the L2 distance between achieved column-share
+vectors. Measured bar-to-bar on an idle engine (23 bars):
+
+| statistic | value |
+|---|---|
+| mean | 0.1591 |
+| median | 0.1191 |
+| sd | 0.0933 |
+| p90 | 0.2860 |
+| **floor = mean + sd** | **0.2524** |
+
+The metric's diameter is √2 ≈ 1.41, so the idle wobble alone spans ~18% of the
+whole space. **Any destination within 0.25 of the current character would read as
+"arrived" on the very first bar** — an instant completion that looks like a cut
+for a reason unrelated to the fence. Exactly the jump-immediate failure D2
+predicted.
+
+**Consequences fixed by this measurement, binding on the bridge train:**
+- the floor is **measured per world at runtime**, in this metric, never a constant;
+- the arrival test is `‖achieved − target‖ < floor` with **both sides in that one
+  metric** — no mixing a gap in one space with a floor from another;
+- a journey whose start gap is already below the floor is **not a journey**: it
+  must render as an immediate jump and say so, rather than animating a bridge
+  that was over before it began.
