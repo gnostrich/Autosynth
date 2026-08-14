@@ -124,6 +124,13 @@ def run(world_path: str, bars_before: int, bars_after: int, out_wav: str,
             time.sleep(0.2)
             if bar_i[0] != last:
                 last, stalled_since = bar_i[0], time.time()
+            elif p.live_state().get("mode") == "idle":
+                # The passage ran off the end of the track and LIVE idled by
+                # design (LM-9). On a world whose tracks are ~1s long that is
+                # normal, not a stall: move to the next click.
+                print("   %-10s idled after %d bars (window exhausted)"
+                      % (label, bar_i[0] - (target - bars)), flush=True)
+                return
             elif time.time() - stalled_since > 90:
                 import faulthandler
                 print("\nSTALLED %.0fs at bar %d during %s — thread dump:"

@@ -799,6 +799,8 @@ class StreamPlayer:
         # BS-4: per-bar PER-TRACK placement shares over the registered window W.
         # The only input to "which tracks are currently sounding" at a re-click.
         self._live_share_hist: "deque" = deque(maxlen=self._METER_WINDOW)
+        # bar index -> was that bar composed under a LIVE fence (see _compose_bar)
+        self._fenced_bar: dict = {}
         # S-3 default scope for a journey (env-flagged; DIRECT unless asked).
         self._bridge_scope = (os.environ.get("ETS_BRIDGE_SCOPE", "").strip().lower()
                               or "direct")
@@ -1882,6 +1884,17 @@ class StreamPlayer:
         clamp_kwargs = live_mod.clamp_call_kwargs(self.engine.writer.write_bar,
                                                    clamp_terms)
         r = self.engine.writer.write_bar(tilt=tilt, **clamp_kwargs)
+        # WAS THIS BAR CAST UNDER A LIVE FENCE? `_finish_bar` runs one or more
+        # bars behind `_compose_bar` under the pipeline, so it cannot read the
+        # CURRENT mode to answer this: a GRID bar composed unfenced but finished
+        # after the first LIVE click was being recorded as LIVE material, which
+        # put every track into "currently sounding" and so into the next leg's
+        # admitted set (measured: a DIRECT mask of {0,1,2,3} on a 4-track world).
+        # The bar itself carries the answer; keep it with the bar.
+        self._fenced_bar[int(r.bar)] = clamp_terms is not None
+        if len(self._fenced_bar) > 256:
+            for k in sorted(self._fenced_bar)[:128]:
+                self._fenced_bar.pop(k, None)
         sched = bar_schedule(self.world, r.rows, self.s_phase)
         return r, sched
 
@@ -1991,7 +2004,7 @@ class StreamPlayer:
         from . import live as live_mod
         with self._live_lock:
             raw_mode = self._live.get("mode")
-        if raw_mode in ("straight", "bridge"):
+        if raw_mode in ("straight", "bridge") and self._fenced_bar.get(int(r.bar)):
             self._live_share_hist.append(live_mod.track_shares(r.rows))
         if raw_mode == "straight":
             self._live_wobble_hist.append(
