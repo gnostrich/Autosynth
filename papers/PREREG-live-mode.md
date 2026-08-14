@@ -734,3 +734,33 @@ predicted.
 - a journey whose start gap is already below the floor is **not a journey**: it
   must render as an immediate jump and say so, rather than animating a bridge
   that was over before it began.
+
+## A5.3 RIDERS ON THE BRIDGE TRAIN (operator, 2026-08-14, verbatim)
+
+> R-A Floor currency: measure the floor per world AND at the journey's start
+>     T_s; pin it for that journey (mid-bridge TEMP rides must not swap the
+>     floor under a running arrival test). Log floor + T_s per journey.
+>
+> R-B Report with the train (one page): distribution of pairwise character
+>     distances vs the measured floor for the demo world, plus the fraction
+>     of random click-pairs that would arrive within one bar. If that
+>     fraction is high, LIVE renders "destination within breathing —
+>     arrived" honestly and we note it as a corpus/temperature property,
+>     not a bridge bug. Also note the observed relation: colder T_s =>
+>     smaller floor => longer journeys (TEMP is LIVE's distance knob).
+
+**Why R-A is load-bearing:** the floor is a fluctuation, and fluctuation scales
+with temperature. A TEMP ride mid-journey would otherwise move the finish line
+while the runner is still running — the arrival test would compare today's gap
+against a floor measured under different conditions. Pinning the floor at the
+journey's start makes the test self-consistent for that journey's whole life.
+
+**What R-B turns into:** if a large fraction of click-pairs sit inside the
+breathing, that is not a bridge defect — it is a statement about the corpus and
+the temperature, and LIVE says so in view ("destination within breathing —
+arrived") rather than animating a traversal that has nothing to traverse.
+
+**TEMP is LIVE's distance knob.** Colder T_s ⇒ smaller fluctuation ⇒ smaller
+floor ⇒ fewer destinations inside the breathing ⇒ longer journeys. Warmer T_s
+does the opposite. This is a consequence of the physics already registered, not
+a new control: nothing is added to make it true.
