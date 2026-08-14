@@ -3913,6 +3913,13 @@
   // lifecycle, rather than in fieldSetView: switching views is not itself a
   // request-making act (pinned by the views-only-request fixture).
   function fieldLiveEnter(){
+    // STOP FIRST, THEN HOLD. Entering LIVE parks the engine (B-0's idle silence),
+    // and a stream left open across that hold starves until the server closes it —
+    // after which the click sets a fence that no live connection is left to carry,
+    // so the deck plays the last scrap of buffer and then nothing, forever. Measured:
+    // stream opened before the click delivered 0 bytes across 40s. Closing the
+    // transport as we enter means the click always opens a fresh, single stream.
+    if(typeof state !== "undefined" && state !== "idle") stopPlayback();
     fetch("/api/live/enter", { method:"POST" }).catch(noop);
   }
   function fieldLiveStop(){
