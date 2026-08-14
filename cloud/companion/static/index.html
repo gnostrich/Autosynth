@@ -3727,10 +3727,11 @@
       fieldCtx.fillStyle = cssVar("--ink"); fieldCtx.font = "10px " + cssVar("--font-mono");
       fieldDrawRowLabel(rc.x, rc.y, rc.w, rc.h, sq.label);  // reused verbatim
     });
-    if(playingTrack === null){
-      fieldCtx.fillStyle = cssVar("--faint"); fieldCtx.font = "13px " + cssVar("--font-ui");
-      fieldCtx.fillText("click a spot to start playing from there", 14, lay.top - 6);
-    } else if(fieldLiveState.starved){
+    var lm = fieldLiveMessage();
+    fieldCtx.fillStyle = cssVar(lm.warn ? "--damp" : "--faint");
+    fieldCtx.font = "13px " + cssVar("--font-ui");
+    fieldCtx.fillText(lm.text, 14, lay.top - 6);
+    if(playingTrack !== null && fieldLiveState.starved){
       fieldCtx.fillStyle = cssVar("--damp"); fieldCtx.font = "11px " + cssVar("--font-mono");
       fieldCtx.fillText("fence starved this bar — reported by the engine, not smoothed away",
                         8, H - 8);
@@ -3740,6 +3741,35 @@
   // ---- the engine calls: ONE fetch per verb, the SAME idiom every other endpoint in
   // this file already uses (no session header — the cookie rides with same-origin
   // fetch, as everywhere else). No retry/backoff timer, no local playhead clock, ever.
+  // WHAT THE DECK IS DOING, in words. Every branch below is driven by something the
+  // page actually knows: the world's own ready flag, the transport's own state, and
+  // the engine's REPORTED bar counter. There is no timer, no fake progress and no
+  // optimistic "ready" — if bars are not advancing, it says so instead of implying
+  // sound is on its way. This exists because the operator could not tell a slow
+  // start from a dead one, which made every wait read as a failure.
+  var fieldLiveBars = { n: -1, since: 0 };
+  function fieldLiveMessage(){
+    if(!fieldLiveAvailable) return { text:"LIVE backend not available", warn:true };
+    if(!world.ready)        return { text:"loading your set…", warn:false };
+    if(fieldLiveState.mode !== "straight")
+      return { text:"ready — click a spot to start playing from there", warn:false };
+
+    // straight play: is the engine actually producing? bars_elapsed is the engine's
+    // own count, so a frozen count means frozen production, and we say that.
+    var n = fieldLiveState.bars | 0, now = Date.now();
+    if(n !== fieldLiveBars.n){ fieldLiveBars = { n: n, since: now }; }
+    var stuckMs = now - fieldLiveBars.since;
+    if(n <= 0)
+      return { text: stuckMs > 8000
+                 ? "engine has not produced a bar yet — still waiting on it"
+                 : "starting…", warn: stuckMs > 8000 };
+    if(stuckMs > 6000)
+      return { text:"production stalled at bar " + n + " — the engine is not advancing",
+               warn:true };
+    var nm = fieldWaveTrack(fieldLiveState.track);
+    return { text:"playing — " + ((nm && nm.name) || ("track " + fieldLiveState.track))
+                  + " · bar " + n, warn:false };
+  }
   function fieldLivePoll(){
     fetch("/api/live/state").then(function(r){
       fieldLiveAvailable = r.ok;
@@ -3750,8 +3780,9 @@
         track: (j.track === undefined ? null : j.track),
         unit: (j.unit === undefined ? null : j.unit),
         sliceIndex: (j.slice_index === undefined ? null : j.slice_index),
-        starved: !!j.starved
-      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
+        starved: !!j.starved,
+        bars: (j.bars_elapsed | 0)
+      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0 };
       fieldDraw();
     }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
   }
@@ -3820,7 +3851,7 @@
   }
   function fieldLiveStop(){
     fieldLivePollStop();
-    fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
+    fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0 };
     fetch("/api/live/stop", { method:"POST" }).catch(noop);
     stopPlayback();
   }
