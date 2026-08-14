@@ -194,9 +194,12 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     # roles while staying inside the fence: same track, still walking forward, no
     # cast outside ClampTerms. The forward-walking CORE still starts every bar
     # (LM-3(a)); this only widens what is admissible around it.
-    lo = max(0, start - w)
-    hi = min(len(groups), start + 2 * w)
-    core_groups = groups[lo:hi]
+    # STRICT FORWARD WINDOW. Widening to the surrounding tatums filled the silence
+    # holes but stopped it being linear playback - the operator hears it smear
+    # rather than play the passage ("not playing the track faithfully", "sort of
+    # sidechained"). Faithfulness wins: this bar draws from THIS bar's tatums, and
+    # the per-role widening below is the only relief, used solely where the core
+    # carries nothing for a demanded role.
 
     core_idx = [i for g in core_groups for i in g]
     core = tuple(int(slices[i][2]) for i in core_idx)
