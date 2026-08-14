@@ -2204,3 +2204,31 @@ structure-not-prose convention. Its own non-vacuity arm caught the first draft
 missing the historical shape — `-1` parses as UnaryOp(USub, Constant(1)), not
 Constant(-1), so the detector written FOR that defect could not see it. The arm
 paid for itself immediately.
+
+### INSTRUMENT DEFECT — mass read as seconds, in eight tools (2026-08-14)
+
+`track_unit_slices` rows are `[t0_s, t1_s, unit_id, mass, q]`. Every verification
+tool written on 2026-08-14 derived click positions as
+`secs = [float(x[3]) for x in sl]` — column 3 is MASS, not seconds. The error
+began in `bridge_scope_verify.py` and was copied into seven more tools, by me
+and by agents reusing the pattern.
+
+Consequence: every "click N% into the track" indexed the mass range and resolved
+to whatever slice that number happened to hit — usually the very start. Claims
+about WHERE a click landed, and the "demo tracks are only ~1s of material, so
+exhaustion dominates" diagnosis built on it, are void. That diagnosis is what
+made the slot-pin build look unreliable and led to shipping it hedged and then
+rolling it back.
+
+What SURVIVES: fence provenance, off-pair mass, admitted-set size, pair
+replacement, commit-collapse. None of them depends on click position.
+
+Also on the record: `demo.etsworld` (192 slices/track) was used all day as the
+proxy for a real set (13,000-16,000 slices/track). It is not one. On the
+operator's own corpus, with the time column read correctly, every bridge bar
+measures at straight-play spread (61-63) across three reroutes, off-pair mass
+0.000 — the result the demo world could not show.
+
+RULE: a measurement harness is code under the same standard as the thing it
+measures. A column index is an assumption; state it, and check it against the
+producer's own docstring before building a day of conclusions on it.

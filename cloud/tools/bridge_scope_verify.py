@@ -191,7 +191,12 @@ def run(world_path: str, bars_before, bars_after, out_wav: str, scope: str) -> i
     # (the demo world's slices span ~1s, a real set's span minutes).
     def _span(tr):
         _tid, sl = p._straight_track_slices(tr)
-        secs = [float(x[3]) for x in sl]
+        # TIME IS COLUMN 0, NOT 3. track_unit_slices rows are
+    # [t0_s, t1_s, unit_id, mass, q] -- column 3 is MASS. Every tool
+    # written on 2026-08-14 read column 3 as seconds, so every 'click at
+    # 30%% into the track' actually indexed the mass range and resolved to
+    # whatever slice that number happened to hit (usually the very start).
+    secs = [float(x[0]) for x in sl]
         return sl, min(secs), max(secs)
     sl_a, lo_a, hi_a = _span(A)
     sl_b, lo_b, hi_b = _span(B)

@@ -116,7 +116,12 @@ def run_bridge_journey(world_path, src_track, src_frac, dst_track, dst_frac, bar
 
     def t_of(track, frac):
         _tid, sl = p._straight_track_slices(track)
-        secs = [float(x[3]) if len(x) > 3 else float(x[0]) for x in sl]
+        # TIME IS COLUMN 0, NOT 3. track_unit_slices rows are
+    # [t0_s, t1_s, unit_id, mass, q] -- column 3 is MASS. Every tool
+    # written on 2026-08-14 read column 3 as seconds, so every 'click at
+    # 30%% into the track' actually indexed the mass range and resolved to
+    # whatever slice that number happened to hit (usually the very start).
+    secs = [float(x[0]) for x in sl]
         return min(secs) + float(frac) * (max(secs) - min(secs))
 
     q = p.subscribe()
