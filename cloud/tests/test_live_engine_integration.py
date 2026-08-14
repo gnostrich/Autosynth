@@ -89,7 +89,7 @@ def test_idle_state_before_any_click_is_honest_idle():
     d = _d()
     assert d["idle_state"] == {"mode": "idle", "track": None, "unit": None,
                                "slice_index": None, "starved": False,
-                                    "bars_elapsed": 0, "widened": 0,
+                                    "bars_elapsed": 0,
                                     # AMENDMENT 6 ruling 3: live_state reports the
                                     # ADMITTED WINDOW while a straight-play pin
                                     # exists. Idle has no pin, so the honest value
@@ -127,7 +127,7 @@ def test_stop_after_a_refused_start_is_still_clean_idle():
     d = _d()
     assert d["post_stop_state"] == {"mode": "idle", "track": None, "unit": None,
                                     "slice_index": None, "starved": False,
-                                    "bars_elapsed": 0, "widened": 0,
+                                    "bars_elapsed": 0,
                                     # AMENDMENT 6 ruling 3: live_state reports the
                                     # ADMITTED WINDOW while a straight-play pin
                                     # exists. Idle has no pin, so the honest value

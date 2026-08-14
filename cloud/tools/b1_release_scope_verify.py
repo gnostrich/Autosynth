@@ -105,9 +105,8 @@ def run_bridge_journey(world_path, src_track, src_frac, dst_track, dst_frac, bar
                       "admitted": list(_admitted(ct, ntracks))})
         return ct
 
-    def spy_bar_window(slices, bars_elapsed, s_phase, demanded_roles=None,
-                       start_group=0, plan=None):
-        w = orig_bar_window(slices, bars_elapsed, s_phase, demanded_roles=demanded_roles,
+    def spy_bar_window(slices, bars_elapsed, s_phase, start_group=0, plan=None):
+        w = orig_bar_window(slices, bars_elapsed, s_phase,
                             start_group=start_group, plan=plan)
         win_calls.append({"bars_elapsed": int(bars_elapsed), "exhausted": bool(w["exhausted"])})
         return w

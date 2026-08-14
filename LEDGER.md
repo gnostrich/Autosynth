@@ -2140,3 +2140,31 @@ sections.
 Recorded here because the guard is being built in parallel and this is the
 evidence it exists for: a provenance record that silently drops rows is not a
 provenance record, and this one drops them reliably.
+## 2026-08-14 — PER-TRACK SLOT PIN; PER-ROLE WIDENING REMOVED (operator ruling)
+
+- Resolves the slot_pin ratification's open `known_consequence_pending_ruling`
+  (REGISTRY.jsonl `live-mode-slot-pin-ratified-2026-08-14`): `ClampTerms.
+  slot_pin` re-keyed `{slot: unit_ids}` -> `{(track_id, slot): unit_ids}`
+  (`architecture-v6/ets/writer/clamp.py`, `realize.py::_admits`) — fixes a
+  measured cross-track leak in a bridge's two forward-walking windows
+  (straight spread 55-63 vs. bridged 87-185). Per-role widening REMOVED as
+  structurally uncastable (`cloud/companion/live.py::bar_window`,
+  `n_widened`/`off_window`/`n_cast`/`core_units` deleted from
+  `cloud/companion/engine_bridge.py`); Amendment 4 R2(b)'s "measured
+  off-window fraction" claim struck and re-derived.
+- Full record: `papers/PREREG-live-mode.md`'s "AMENDMENT — PER-TRACK SLOT
+  PIN; PER-ROLE WIDENING REMOVED" section (§PTSP.1-10); `REGISTRY.jsonl` id
+  `live-mode-per-track-slot-pin-2026-08-14`; `LEDGER_DATA.json`
+  `engine_edit_disclosures`.
+- **NOTE (repeat of the standing hazard above):** this row was added BY HAND
+  after `scripts/build_ledger.py` was run once during this pass and was
+  found to DROP this file's hand-restored "TRACKS moving anchor" block
+  again (the same class of loss the note above already recorded) —
+  discovered before committing, `LEDGER.md` reverted via `git checkout`
+  and this section re-added by hand instead of by the generator. The
+  generator still needs the append-only guard the prior note asked for;
+  not built in this pass (out of scope; disclosed, not fixed).
+- Per-edit trail below this point resumes at the next tool-hook-driven
+  commit; this section's own edits are NOT auto-appended below (the hook
+  did not fire for them in this session) and are listed here by hand
+  instead so the record is not silently incomplete.

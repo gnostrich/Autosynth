@@ -107,7 +107,7 @@ def _playable_bars(live_mod, slices, s_phase: int, start_group: int, plan: dict)
     never a guessed or hardcoded bar count."""
     n = 0
     while True:
-        win = live_mod.bar_window(slices, n, s_phase, demanded_roles=None,
+        win = live_mod.bar_window(slices, n, s_phase,
                                   start_group=start_group, plan=plan)
         if win["exhausted"]:
             return n

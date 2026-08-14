@@ -206,6 +206,106 @@ def _check_pin_names_owner(world_path, real_ids):
         done()
 
 
+# --- BPT-4: slot_pin is keyed PER TRACK, not by slot alone (2026-08-14) --
+#
+# `unit_pin` (BPT-1/BPT-2 above) is one carrier field naming ONE track. This
+# is the SIBLING defect the operator ruled on the same day: `slot_pin` used
+# to be keyed by slot ALONE (`{slot: (unit_ids,)}`), so a bridge's two
+# forward-walking windows shared one map entry per slot — either member
+# could satisfy the OTHER member's slot from its own material. On worlds
+# that number every track 0..N-1 identically (every stock/demo world here)
+# this let a track roam: measured, straight-play spread inside a bar 55-63,
+# the same bridge bar's spread 87-185 out of a 192-unit track once the two
+# windows diverged. `slot_pin` is now keyed `{(track_id, slot): (unit_ids,)}`.
+#
+# This world's DISJOINT ids cannot reproduce the numeric-collision symptom
+# above (no id ever repeats across tracks here, so a slot-only union could
+# not admit a "foreign" id by coincidence) — that manifestation is proven on
+# the OVERLAPPING-id grid in architecture-v6/tests/writer/test_fence_monotone.
+# py::test_slot_pin_is_track_scoped, matching how demo.etsworld/
+# synthetic_track actually number tracks. What THIS fixture proves, on the
+# REAL engine's own produced fence (not a hand-built ClampTerms), is the
+# STRUCTURAL property the numeric-collision bug depends on: that the emitted
+# slot_pin is genuinely per-track-keyed end to end, through bar_window's
+# per-window output and engine_bridge.py's merge, not just in a unit test of
+# _admits alone. BPT-4d additionally reconstructs what the RETIRED slot-only
+# union would have produced for the same bar, so the track-identity loss it
+# had is visible even though this world's disjoint numbering does not let it
+# misroute an admission.
+
+def _check_slot_pin_track_scoped(world_path, real_ids):
+    from cloud.companion import live as live_mod
+    p, fences, done = _rig(world_path)
+    try:
+        p.live_enter()
+        p.live_start(0, _t_of(p, 0, 0.10))
+        p.live_click(1, _t_of(p, 1, 0.30))        # single click, no reroute: both
+        p._compose_bar()                          # windows are freshly built together
+        fence = fences[-1]
+        sp = None if fence is None else fence.slot_pin
+        check("BPT-4a slot_pin keys are (track, slot) tuples",
+              bool(sp) and all(isinstance(k, tuple) and len(k) == 2 for k in sp),
+              "n_entries=%d sample_keys=%s" % (len(sp or {}), list((sp or {}).keys())[:6]))
+        if not sp:
+            check("BPT-4b every entry's units belong to its own key's track", False,
+                  "no slot_pin on this bar — cannot check")
+            check("BPT-4c fixture is non-vacuous (>=2 tracks share a slot index)",
+                  False, "no slot_pin on this bar — cannot check")
+            return
+        foreign = []
+        for (tid, _sl), uids in sp.items():
+            owns = real_ids.get(int(tid), set())
+            foreign.extend(int(u) for u in uids if int(u) not in owns)
+        check("BPT-4b every entry's units belong to its own key's track",
+              not foreign, "n_entries=%d n_foreign=%d sample=%s"
+              % (len(sp), len(foreign), foreign[:5]))
+
+        slots_by_track: dict = {}
+        for (tid, sl) in sp:
+            slots_by_track.setdefault(int(tid), set()).add(int(sl))
+        tracks_here = sorted(slots_by_track)
+        shared = (set.intersection(*slots_by_track.values())
+                  if len(slots_by_track) >= 2 else set())
+        check("BPT-4c fixture is non-vacuous (>=2 tracks share a slot index)",
+              len(tracks_here) >= 2 and bool(shared),
+              "tracks=%s shared_slot_indices=%s" % (tracks_here, sorted(shared)[:5]))
+
+        # BPT-4d: reconstruct the RETIRED slot-only union for the same bar
+        # (bypassing the fixed merge code, computing it the way the struck
+        # code did) and show it collapses two tracks' windows into one entry
+        # per shared slot — the structural defect, even though this world's
+        # disjoint numbering keeps it from misrouting an admission by id
+        # collision (that symptom needs the OVERLAPPING-id grid instead).
+        with p._live_lock:
+            wins = dict((p._bridge or {}).get("windows") or {})
+        old_union: dict = {}
+        for tid, w in wins.items():
+            if not w.get("slices"):
+                continue
+            bw = live_mod.bar_window(w["slices"], int(w.get("bars", 0)) - 1,
+                                     p.s_phase, start_group=int(w.get("start_group", 0)),
+                                     plan=w.get("plan"))
+            if bw["exhausted"]:
+                continue
+            for sl, uids in (bw.get("slot_pin") or {}).items():
+                old_union[int(sl)] = tuple(sorted(
+                    set(old_union.get(int(sl), ())) | set(int(u) for u in uids)))
+        collapsed = [sl for sl, uids in old_union.items()
+                    if len({t for t in tracks_here
+                            if any(int(u) in real_ids.get(t, set()) for u in uids)}) >= 2]
+        check("BPT-4d retired scheme (context, not a pass/fail on the fix)",
+              True, "slot-only union would have merged %d track(s)' windows into "
+              "%d shared slot entries (e.g. slot %s -> %d units from %d tracks) "
+              "-- the new (track,slot) keying gives each track its OWN entry "
+              "instead" % (len(tracks_here), len(collapsed),
+                           collapsed[0] if collapsed else "-",
+                           len(old_union.get(collapsed[0], ())) if collapsed else 0,
+                           2 if collapsed else 0))
+    finally:
+        p.live_stop()
+        done()
+
+
 # --- BPT-3: common case (no reroute) — byte-identical tape ---------------
 
 def _straight_tape(world_path, seed=0, n_bars=8) -> bytes:
@@ -275,6 +375,7 @@ def run(baseline_pcm=None, check_pcm=None, keep_world=False) -> int:
                   % (h_bridge[:16], want_bridge[:16]))
 
     _check_pin_names_owner(world_path, real_ids)
+    _check_slot_pin_track_scoped(world_path, real_ids)
 
     if not keep_world:
         try:

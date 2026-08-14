@@ -741,8 +741,7 @@ class StreamPlayer:
                             "uid_index": {}, "current_unit": None,
                             "current_slice_index": None, "starved": False,
                             "pin_units": (), "bars_elapsed": 0,
-                          "slices": (), "core_units": frozenset(),
-                          "n_widened": 0, "off_window": 0, "n_cast": 0}
+                          "slices": ()}
         # THE BRIDGE (default v0: release + pull, no intervention). None
         # whenever mode != "bridge". See live.py's "DEFAULT BRIDGE v0" section
         # for every field's meaning; built fresh by ``_live_bridge_click``.
@@ -1790,7 +1789,6 @@ class StreamPlayer:
             win = live_mod.bar_window(live["slices"],
                                       live.get("bars_elapsed", 0),
                                       self.s_phase,
-                                      demanded_roles=range(int(self.world.M)),
                                       start_group=live.get("start_group", 0),
                                       plan=live.get("plan"))
             if win["exhausted"]:
@@ -1801,7 +1799,11 @@ class StreamPlayer:
                 clamp_terms = live_mod.silent_fence(live["track"])
                 self.live_enter()              # ran off the end: idle silence
             else:
-                admitted = tuple(win["core"]) + tuple(win["widened"])
+                # STRICT: `core` is the whole of what this bar admits (PER-ROLE
+                # WIDENING removed, 2026-08-14 — it was already structurally
+                # uncastable once the per-slot pin shipped; see live.py's note
+                # above `_tatum_groups`).
+                admitted = tuple(win["core"])
                 clamp_terms = live_mod.build_full_fence(live["track"], admitted,
                                                        slot_pin=win.get("slot_pin"))
                 with self._live_lock:
@@ -1809,23 +1811,15 @@ class StreamPlayer:
                         self._live["clamp"] = clamp_terms
                         self._live["bars_elapsed"] = \
                             int(self._live.get("bars_elapsed", 0)) + 1
-                        # R2(b): what the bar could only get by widening —
-                        # inside the fenced track, outside the forward core.
-                        self._live["core_units"] = frozenset(win["core"])
-                        self._live["n_widened"] = len(win["widened"])
                         # THE ADMITTED WINDOW (Amendment 6, ruling 3): the time
-                        # span this bar's fence actually admits, from the fence's
-                        # own core units. It advances by construction because the
-                        # window walks forward. This is NOT a sample position and
-                        # the view must not label it as one.
-                        # FROM WHAT THE FENCE ADMITS, not from `core` alone: a
-                        # widened unit is admitted and can lie BEFORE the core
-                        # (the widening bisects pos-1..pos+1), so a core-only
-                        # span under-reports — and mislabels — the admitted
-                        # window. Third instance of the readout-source class
-                        # (lane playhead, bridge source_track, this), so it is
-                        # sourced from `admitted`, the exact set handed to the
-                        # fence one line below.
+                        # span this bar's fence actually admits. It advances by
+                        # construction because the window walks forward. This is
+                        # NOT a sample position and the view must not label it
+                        # as one. `admitted` IS `core` now that widening is
+                        # removed, but the span is still sourced from `admitted`
+                        # (the exact set handed to the fence) rather than
+                        # re-deriving it, matching the readout-source class
+                        # discipline (lane playhead, bridge source_track, this).
                         self._live["window"] = live_mod.window_span(
                             live["slices"], admitted)
         elif live.get("mode") == "bridge" and self._bridge is not None:
@@ -1862,17 +1856,27 @@ class StreamPlayer:
             # music already was, `to` walks forward from the clicked spot. The
             # pin is NEVER released to the whole track; openness governs the
             # LEAN, not the existence of the pin.
+            # PER-TRACK SLOT PIN (prereg §2.1 amendment, 2026-08-14): each
+            # member's own bar-local slot_pin is re-keyed to (its own track_id,
+            # slot) — live_mod.keyed_slot_pin, the SAME re-keying straight
+            # play's build_full_fence applies to its one window — and merged
+            # by plain dict update. No union-by-slot-alone: that was the bug
+            # (two members' windows sharing one slot-only map entry let either
+            # satisfy the OTHER's slot content with its own material; see
+            # ets.writer.clamp.ClampTerms.slot_pin's docstring). Because every
+            # entry's key now carries its own track id, two members can never
+            # collide at the same key even when both admit a slot index j —
+            # member A writes (A, j), member B writes (B, j), distinct keys.
             pin_units, slot_pin = None, None
             with self._live_lock:
                 wins = (self._bridge or {}).get("windows") or {}
                 pin_track = int(live.get("track") or 0)
-                slot_union: dict = {}
+                slot_merged: dict = {}
                 for tid, w in list(wins.items()):
                     if not w.get("slices"):
                         continue
                     bw = live_mod.bar_window(w["slices"], int(w.get("bars", 0)),
                                              self.s_phase,
-                                             demanded_roles=range(int(self.world.M)),
                                              start_group=int(w.get("start_group", 0)),
                                              plan=w.get("plan"))
                     if bw["exhausted"]:
@@ -1880,17 +1884,16 @@ class StreamPlayer:
                         # material this bar rather than wrapping or roaming.
                         continue
                     w["bars"] = int(w.get("bars", 0)) + 1
-                    for sl, uids in (bw.get("slot_pin") or {}).items():
-                        slot_union[int(sl)] = tuple(sorted(
-                            set(slot_union.get(int(sl), ())) | set(int(u) for u in uids)))
+                    slot_merged.update(
+                        live_mod.keyed_slot_pin(tid, bw.get("slot_pin")) or {})
                     if int(tid) == pin_track:
                         # the one per-track pin the carrier carries (clamp0's
                         # `unit_pin` names exactly one track) goes to the track
                         # whose slices `live[...]` owns, per the pin-naming rule.
-                        pin_units = tuple(bw["core"]) + tuple(bw["widened"])
+                        pin_units = tuple(bw["core"])
                 if self._bridge is not None:
                     self._bridge["windows"] = wins
-                slot_pin = slot_union or None
+                slot_pin = slot_merged or None
             clamp_terms = live_mod.release_clamp(
                 br["openness_cur"], live.get("track"),
                 pin_units=pin_units, slot_pin=slot_pin,
@@ -1906,14 +1909,15 @@ class StreamPlayer:
                         int(self._bridge.get("bars_elapsed", 0)) + 1
                 # The session track's own cursor now lives in that member's
                 # window entry (B-1 REVISED advances each per bar), so mirror it
-                # back rather than keeping a second, divergent count.
-                # TRACK 0 IS A REAL TRACK: `or -1` treats it as absent, so the
-                # first track in every world silently lost its window (measured
-                # 2026-08-14 -- a metric zero BY CONSTRUCTION, not by
-                # measurement). Compare against None explicitly.
-                _lt = self._live.get("track")
-                _w = (None if _lt is None
-                      else (self._bridge or {}).get("windows", {}).get(int(_lt)))
+                # back rather than keeping a second, divergent count. SAME
+                # falsy-zero fix as `_live_bridge_click`'s window build above
+                # (`or -1` mistook a real track id of 0 for "absent" and this
+                # mirror silently never fired for a session started on track
+                # 0 -- `self._live["bars_elapsed"]` stayed frozen at its
+                # pre-bridge value for the whole journey).
+                _live_track = self._live.get("track")
+                _w = (None if _live_track is None else
+                     (self._bridge or {}).get("windows", {}).get(int(_live_track)))
                 if _w is not None:
                     self._live["bars_elapsed"] = int(_w.get("bars", 0))
         # IN LIVE, NEVER CAST UNFENCED. Every branch above that fails to build a
@@ -2360,14 +2364,13 @@ class StreamPlayer:
                # play walks the track forward
                "pin_units": tuple(unit_ids), "bars_elapsed": 0,
                # the track's OWN stored slices (span/uid/role), so each bar
-               # can cut its tatum window and widen per role
+               # can cut its forward tatum window (STRICT: this bar's tatums
+               # only — PER-ROLE WIDENING removed, 2026-08-14)
                "slices": slices,
                # straight play starts where the user CLICKED
                "start_group": live_mod.group_of_index(slices, j0),
                # built ONCE here, not per bar (the measured stall)
                "plan": live_mod.build_plan(slices),
-               "core_units": frozenset(),
-               "n_widened": 0, "off_window": 0, "n_cast": 0,
                "start_unit": int(slices[j0][2])}
 
     def live_start(self, track: int, t: float) -> dict:
@@ -2410,9 +2413,7 @@ class StreamPlayer:
                           "uid_index": {}, "current_unit": None,
                           "current_slice_index": None, "starved": False,
                           "pin_units": (), "bars_elapsed": 0,
-                          "slices": (), "core_units": frozenset(),
-                          "n_widened": 0, "off_window": 0, "n_cast": 0,
-                          "via_bridge": False}
+                          "slices": (), "via_bridge": False}
             self._bridge = None
         self.set_region(np.zeros(self.M, dtype=np.float32))
 
@@ -2426,9 +2427,7 @@ class StreamPlayer:
                           "uid_index": {}, "current_unit": None,
                           "current_slice_index": None, "starved": False,
                           "pin_units": (), "bars_elapsed": 0,
-                          "slices": (), "core_units": frozenset(),
-                          "n_widened": 0, "off_window": 0, "n_cast": 0,
-                          "via_bridge": False}
+                          "slices": (), "via_bridge": False}
             self._bridge = None
         self.set_region(np.zeros(self.M, dtype=np.float32))
 
@@ -2523,10 +2522,23 @@ class StreamPlayer:
             prior_windows = dict((self._bridge or {}).get("windows") or {})
             live_now = dict(self._live)
         windows = {}
+        # INCIDENTAL DEFECT, found while measuring the per-track slot_pin fix
+        # and fixed en route (companion plumbing, not an engine edit; disclosed
+        # in the PREREG's per-track-slot-pin amendment): `or -1` as a "track id
+        # is None" fallback is wrong when the real track id IS 0 — `0 or -1`
+        # evaluates to -1 in Python, so a session that started on track 0 (the
+        # common case: track 0 is almost always the first click) NEVER matched
+        # here, `from_track`'s window was never built at all, and the WHOLE
+        # first leg's `unit_pin`/`slot_pin` carried nothing for track 0 --
+        # strictly worse than the slot-only-key bug this amendment fixes (no
+        # restriction at all, not just a shared one). Measured on demo.etsworld
+        # before this fix: bridge bars 3-8 all showed `unit_pin=None,
+        # slot_pin_tracks=[<dest only>]`. An explicit `is None` check does not
+        # confuse a real 0 with "absent".
+        live_track = live_now.get("track")
         if int(from_track) in prior_windows:
             windows[int(from_track)] = prior_windows[int(from_track)]
-        elif (live_now.get("track") is not None
-              and int(from_track) == int(live_now["track"])
+        elif (live_track is not None and int(from_track) == int(live_track)
               and live_now.get("slices")):
             windows[int(from_track)] = {
                 "slices": live_now["slices"], "plan": live_now.get("plan"),
@@ -2628,12 +2640,11 @@ class StreamPlayer:
         raw_mode = live.get("mode")
         mode = "straight" if raw_mode in ("straight", "bridge") else "idle"
         bars_elapsed = int(live.get("bars_elapsed", 0))
-        n_widened = int(live.get("n_widened", 0))
         out = {"mode": mode, "track": live.get("track"),
               "unit": live.get("current_unit"),
               "slice_index": live.get("current_slice_index"),
               "starved": bool(live.get("starved", False)),
-              "bars_elapsed": bars_elapsed, "widened": n_widened,
+              "bars_elapsed": bars_elapsed,
               # ruling 3: reported ONLY while a straight-play pin exists. During a
               # bridge the pin is released and there is no window to show, so this
               # is null rather than a stale or invented span.
