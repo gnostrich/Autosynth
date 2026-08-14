@@ -1024,6 +1024,11 @@ Audio + per-bar transition table delivered to the operator. The demo world's
 material is synthetic (~1s per track): the artefact proves the ROUTING, and
 says so rather than implying musicality it cannot demonstrate.
 
+(This is the pre-PAIR-RULE, pre-BS-0-guard run, kept as the historical record
+of what the tool measured at the time. §BS.5 below supersedes its numbers with
+the current tool's default-parameter output, and records a vacuity bug this
+run's own harness later turned out to have.)
+
 ## BS.3 PROVEN NEGATIVE — arrival does not occur
 
 Registered in `REGISTRY.jsonl` as
@@ -1089,6 +1094,18 @@ actually cast from (fenced bars only) and is cleared at every click.
 `_live_bridge_click` carries exactly that set. `live.sounding_tracks` and the
 per-track share window are deleted.
 
+**SUPERSEDED same day.** THE PAIR RULE (operator, 2026-08-14; `cloud/tools/
+pair_rule_verify.py`, PR-1..PR-6) replaced this accumulation entirely:
+`_leg_drawn` is now a BANNED identifier in `_live_bridge_click` (PR-4, checked
+statically) and does not exist anywhere in `cloud/companion/`. In its place,
+`from` is MEASURED, not remembered — the dominant-mass track in the bar the
+click lands on (`self._last_shares`) — and a reroute REPLACES the pair
+(`carry_tracks = (from_track,)`) rather than extending it. The admitted set is
+therefore always exactly `{from, to}` (2 tracks) on every bridge bar, never the
+2 -> 3 -> 4 growth Ruling 1's accumulation produced across a run of
+redirections (measured, CL-4 / PR-1). The final paragraph below reports
+against THIS rule, not Ruling 1's.
+
 **Ruling 2.** `live_click` gained the third case: mid-bridge, a click on the
 destination already being traveled to routes to `_live_commit`, which calls
 `_bridge_close(track, t)` — the former `_bridge_arrive`, now reachable only by a
@@ -1114,8 +1131,88 @@ no centre line, because a centre line is what read as a play position.
     CL-2 commit closes within one bar      first bar after commit admitted=(3,)
     CL-4 accumulation impossible           sizes [2,3,4] -> after commit [(3,),(3,)]
 
-BS-1/BS-3/BS-4 re-run under the new admission rule: still PASS, off-pair mass
-none, `leg_drawn=[0,2] -> carry=[0,2]`.
+## BS.5 CORRECTION — the paragraph above was stale, and BS-1 was measured
+## PASSing vacuously (adversarial audit, 2026-08-14)
+
+The claim that used to stand here ("BS-1/BS-3/BS-4 re-run under the new
+admission rule: still PASS, off-pair mass none, `leg_drawn=[0,2] ->
+carry=[0,2]`") was wrong on two counts: `leg_drawn` no longer exists (see the
+SUPERSEDED note under Ruling 1 — THE PAIR RULE replaced it with a measured
+`from` + `carry_tracks`), and the PASS itself was never re-verified against
+what the tool actually composed.
+
+**What an adversarial audit found.** At `bridge_scope_verify.py`'s (then-)
+default `--bars-before 6`, demo.etsworld's tracks hold only ~3 bars of
+straight-mode material from a near-start click (`_playable_bars`, measured —
+see below). Holding 6 bars past that runs the source clean off the end:
+`_compose_bar` calls `live_enter()` and LIVE goes idle BEFORE the "click B"
+step ever executes. `live_click` on an idle/off session takes the
+`live_start` branch (a JUMP) rather than `_live_bridge_click` — so `p._bridge`
+stayed `None` the entire "journey," and the tool's `BS-1 direct holds pair`
+check reported PASS ("off-pair mass: none") over a transition log that was
+pure single-track straight play (`t2=1.00` every bar) — no bridge had ever
+been opened. The tool asserted nothing about whether a bridge existed before
+grading it.
+
+**The fix.** `bridge_scope_verify.py` now (1) runs a BS-0 guard before BS-1/
+BS-2/BS-3/BS-4: it reads the writer's own `write_bar` calls (a
+`functools.wraps`-preserving spy on `StreamWriter.write_bar`, synchronous with
+`_compose_bar` — no polling, no race) to require a non-empty set of bars
+composed with LIVE in `"bridge"` mode toward the clicked destination, AND
+requires BOTH the carried and destination tracks to have actually placed
+nonzero mass across those bars; any check downstream of a failed BS-0 reports
+FAIL, never a skip. (2) `--bars-before`/`--bars-after` are no longer fixed
+constants: the click-B delay defaults to half of the source track's OWN
+measured playable-bar count from the click point (`_playable_bars`, a pure
+simulation of `live.bar_window`'s exhaustion rule over the track's stored
+slice spans), and the post-click hold waits for the engine's own measured
+placement dominance to actually shift, capped at a disclosed multiple of the
+bars the REGISTERED release law (`RegionSlew`/`release_step`) takes to unwind
+— both derived from the world and the engine build, not guessed.
+
+**Re-run at DEFAULT parameters (no flags), demo.etsworld, 2026-08-14:**
+
+    A's own playable straight-bars from t_a=3  release law=6 bars
+      -> bars_before=1 (derived) bars_after=6 (derived)
+    [PASS] BS-0 bridge occurred (A->B)  3 bridge-fenced bars toward track 2,
+           mass drawn by the pair: {0: 1.9316, 2: 1.0684}
+    [PASS] BS-1 direct holds pair       3 verified bridge bars, off-pair mass: none
+    [PASS] BS-3 scope is journey data   start=direct end=direct
+    [PASS] BS-0 bridge occurred (->C)   6 bridge-fenced bars toward track 3,
+           mass drawn by the pair: {2: 3.9041, 3: 2.0959}
+    [PASS] BS-4 pair = dominant+dest    dominant=[2] -> carry=[2] (want [2])
+    [PASS] BS-4 not stale/hardcoded     carry at B=[0], at C=[2]
+    ALL PASS (6 checks, 0 failed)
+
+Non-vacuous this time: BS-0 shows real bridge-fenced bars with BOTH pair
+members drawing placement mass, and BS-1's "off-pair mass: none" is measured
+over exactly those bars.
+
+**The guard's own negative control** — `--bars-before 6` (the tool's OLD
+default, deliberately late enough to exhaust demo.etsworld's source track
+before the click):
+
+    [FAIL] BS-0 bridge occurred (A->B)  NO bar was ever composed with LIVE in
+           'bridge' mode toward track 2 — the click did not open a bridge.
+           p._bridge immediately after the click: {} (mode at click time
+           implied by an empty dict = the click landed on idle/off, so
+           live_click routed to live_start — a JUMP, not _live_bridge_click)
+    [FAIL] BS-1 direct holds pair       SKIPPED-AS-FAIL: no verified bridge
+           bars exist to check off-pair mass over — see BS-0 above
+    [FAIL] BS-3 scope is journey data   start=None end=direct (no verified
+           bridge — see BS-0)
+
+This is the exact scenario the audit found silently PASSing before the fix;
+it now FAILS LOUDLY, with the reason stated in the check output itself.
+
+**Limitation of demo.etsworld, stated plainly.** Its tracks are synthetic
+demo material spanning ~1s each — from a click 5% into a track, only ~3 bars
+of straight-mode material remain before the forward window exhausts. A real
+bridge needs the source to still be playing when the second click lands, so
+`bridge_scope_verify.py`'s default click-B delay is necessarily short (1 bar)
+on this world; a longer corpus would derive a proportionally longer one from
+the same formula. This is a property of the demo world's own material, not of
+the check or the fix.
 
 **Ruling 5 is outstanding**: the admission measurement is to be re-run on a real
 corpus, reported not tuned.
