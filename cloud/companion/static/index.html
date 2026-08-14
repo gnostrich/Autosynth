@@ -3212,7 +3212,11 @@
   var fieldAnchorClock = null;
   function fieldAnchorTick(){
     if(!fieldScrub || !fieldScrub.planted) { fieldAnchorClock = null; return; }
-    if(state !== "playing"){ fieldAnchorClock = null; return; }   // frozen, not drifting
+    // NO TRANSPORT GATE. Freezing the anchor unless the deck was playing was my
+    // own addition, not the operator's spec, and it is exactly why they saw it sit
+    // still: "click and it moves with the track" means it travels once planted.
+    // The lean it carries is only read when bars are produced, so a travelling
+    // anchor on a stopped deck steers nothing — it just shows where it has got to.
     var now = Date.now();
     if(fieldAnchorClock === null){ fieldAnchorClock = now; return; }
     var dt = (now - fieldAnchorClock) / 1000;
