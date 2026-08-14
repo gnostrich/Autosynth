@@ -79,14 +79,32 @@ def main() -> int:
             fh.write(json.dumps(entry, sort_keys=True) + "\n")
     except Exception:
         return 0
-    # regenerate the human both-axes view so LEDGER.md is current at every edit
-    # (documents only; deterministic; never fails the tool call).
-    try:
-        import subprocess
-        subprocess.run(["python3", os.path.join(REPO, "scripts", "build_ledger.py")],
-                       capture_output=True, timeout=10)
-    except Exception:
-        pass
+    # REGENERATION IS HELD (operator ruling, 2026-08-14, PRIORITY ONE).
+    #
+    # This ran build_ledger.py after EVERY tracked edit, with every error
+    # swallowed. build_ledger.py rewrites LEDGER.md from LEDGER_DATA.json, so any
+    # section written by hand -- the engine-edit disclosures for the slot_pin
+    # ratification, the 2026-08-13 TRACKS moving-anchor capture -- is DROPPED on
+    # the next edit of any file. Measured twice on 2026-08-14: the moving-anchor
+    # block was deleted by ff68a4b, restored, and deleted again minutes later; a
+    # second agent independently ran the generator, watched the same block
+    # vanish, and hand-edited instead.
+    #
+    # The loss was invisible to every automated check in this repo and was caught
+    # only because a human read the diff before committing. VERSION_LEDGER.jsonl
+    # (appended above) is unaffected and remains the append-only record.
+    #
+    # A stale ledger is recoverable; a silently truncated one is not. This stays
+    # held until scripts/build_ledger.py carries an append-only guard that FAILS
+    # LOUDLY when a regeneration would remove an existing line.
+    _LEDGER_REGEN_HELD = True
+    if not _LEDGER_REGEN_HELD:
+        try:
+            import subprocess
+            subprocess.run(["python3", os.path.join(REPO, "scripts", "build_ledger.py")],
+                           capture_output=True, timeout=10)
+        except Exception:
+            pass
     return 0
 
 
