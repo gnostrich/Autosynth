@@ -853,3 +853,82 @@ number about a test that should not have been the arrival test at all.
 **The consequence to hold on to:** excursions, back-and-forth and non-monotone
 paths are now *expected output*, not defects. Any future "improvement" that
 smooths them is a regression, and BR-3 exists to catch it.
+
+---
+
+# CORRECTION — ARRIVAL IS SETTLING, NOT A TARGET SHARE (operator, 2026-08-14)
+
+Supersedes B-4 (share ≥ X) and B-5 (stall as a separate state). Physics unchanged.
+
+> ## WHY (operator ruling)
+> B-4 replaced an invented profile-distance threshold with an invented
+> placement-share threshold. Same error, different quantity: 0.75 was
+> picked, never measured, and the first real journey peaked at 0.63 against
+> a gate nobody had shown was reachable. No arrival TARGET may be set.
+>
+> ## THE CORRECTION
+> A-1 ARRIVAL = THE PULL HAS STOPPED PRODUCING PROGRESS. Track the
+>     high-water mark of the destination placement share. When no new high
+>     is set for a settling window W, the system has settled into whatever
+>     basin it reached: close the destination fence THERE, at the share it
+>     actually attained. No target, no comparison to any chosen level.
+> A-2 ARRIVAL AND STALL ARE ONE OBSERVATION, not two states. The same
+>     "stopped setting new highs" event ends every journey. What differs is
+>     only WHERE it settled, and that is reported, never judged:
+>       high share  -> the destination basin (a normal arrival);
+>       low share   -> the corpus's honest limit toward that destination.
+>     Render descriptively ("settled — drawing X% from <track>"), never as
+>     success/failure, never as "stalled" while highs are still being set.
+> A-3 REVERSIBILITY: any new high-water mark before W elapses resets the
+>     window and clears any settling render. A journey may look finished
+>     and then find more road.
+> A-4 W IS DERIVED, NOT PICKED: use the same bar-count over which the
+>     world's wobble floor is measured (already registered). One derived
+>     window; no other constant enters the bridge.
+> A-5 NO TARGET ANYWHERE: the share is reported, logged, and used only via
+>     its high-water dynamics. Any comparison of share to a chosen level,
+>     or of profile distance to a floor, is FORBIDDEN on the arrival path.
+>
+> ## CHECKS (each must bite)
+> AR-1 no-target: static + runtime — no constant share level or distance
+>      floor appears on the arrival path; fixture asserting a hard-coded
+>      level FAILS.
+> AR-2 settling-detect: fixture with a rising-then-flat share closes the
+>      fence after W with no new high; a still-rising share does NOT close.
+> AR-3 reversibility: a new high during W resets the window and clears the
+>      settling render.
+> AR-4 lands-where-it-landed: fence closes at the attained share/state,
+>      whatever it is; no forcing toward a target, no retry loop.
+> AR-5 descriptive-render: end-of-journey copy reports where it settled;
+>      fixture asserts no success/failure vocabulary and no "stalled"
+>      render while highs are still being set.
+> AR-6 W-derivation: W equals the registered wobble-measurement window
+>      (static check against the registry value; a literal FAILS).
+>
+> ## REPORT
+> Per journey: full share trajectory, high-water track, W resets, settling
+> bar, attained share at close. Across ~20 random click-pairs: distribution
+> of attained shares and settling times. This replaces the ceiling-vs-X
+> diagnostic entirely — there is no X to calibrate.
+
+## COR.1 The error, named plainly
+
+I registered 0.75/2-bars as "wall content, registered once" and treated that
+label as if it made the number legitimate. It did not: nobody had measured that
+a journey could reach 0.75, and the first real one peaked at **0.63** — the gate
+was unreachable on that corpus and would have rendered a working traversal as a
+failure forever. Twice now the same mistake: pick a level, name it a convention,
+compare the world to it. The correction removes the comparison entirely.
+
+## COR.2 Implemented
+
+`live.settling(shares, window)` watches ONLY the high-water dynamics: it returns
+`settled` when no new high has been set for W bars, along with the high, the bars
+since it, and the attained share. W is `StreamPlayer._METER_WINDOW` — the same
+registered I-8 window the wobble floor is measured over (A-4), not a literal.
+`settled_render()` produces the descriptive copy. The separate stall state is
+gone; a journey still setting highs is never flagged as anything.
+
+Verified: rising ⇒ not settled; rising-then-flat ⇒ settled at its own high 0.63;
+a new high mid-window ⇒ window resets and the journey continues; and no level
+appears anywhere in the arrival path.

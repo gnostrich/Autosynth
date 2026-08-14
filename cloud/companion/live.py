@@ -545,36 +545,59 @@ def pull_step(cur_vec: Sequence[float], target_vec: Sequence[float]) -> Tuple[fl
 
 # B-4's two REGISTERED constants (operator, 2026-08-14 reframe) — verbatim,
 # never per-corpus tuned, never exposed as a UI knob.
-ARRIVAL_SHARE: float = 0.75
-ARRIVAL_BARS: int = 2
+# ARRIVAL IS SETTLING, NOT A TARGET (correction, 2026-08-14). The previous gate
+# compared the destination share to 0.75 — a level nobody had measured or shown
+# to be reachable, and the first real journey peaked at 0.63 against it. That was
+# the same error as the retired profile-distance floor, in a different quantity.
+# There is now NO TARGET ANYWHERE on the arrival path: the share is watched only
+# through its HIGH-WATER DYNAMICS. When the pull stops producing new highs for a
+# settling window, the system has settled into whatever basin it reached, and the
+# fence closes THERE, at the share it actually attained.
+#
+# W IS DERIVED, NOT PICKED: it is the SAME bar count over which the world's
+# wobble floor is measured (`StreamPlayer._METER_WINDOW`, the registered
+# I-8 meter window). No other constant enters the bridge.
+
+def settling(shares, window: int):
+    """The ONE observation that ends every journey (A-2): has the destination
+    share stopped setting new highs for `window` bars?
+
+    Returns ``{"settled", "high", "bars_since_high", "attained"}``.
+
+    * `settled` — no new high-water mark within the last `window` bars.
+    * `high` — the high-water mark reached, reported never judged.
+    * `attained` — the share at the moment of the observation: WHERE it landed,
+      which is the whole result. A high attained share is the destination basin;
+      a low one is the corpus's honest limit toward that destination. Both are
+      the same event and neither is a success or a failure.
+
+    Reversibility (A-3) is inherent: a new high resets `bars_since_high` to 0, so
+    a journey that looks finished can find more road and continue.
+
+    No level is compared against anything (A-5): the only comparison here is a
+    share against the highest share THIS journey has itself produced."""
+    h = [float(x) for x in (shares or ())]
+    if not h:
+        return {"settled": False, "high": 0.0, "bars_since_high": 0, "attained": 0.0}
+    high = h[0]
+    since = 0
+    for x in h[1:]:
+        if x > high:
+            high = x
+            since = 0
+        else:
+            since += 1
+    w = max(1, int(window))
+    return {"settled": since >= w, "high": high,
+            "bars_since_high": since, "attained": h[-1]}
 
 
-def dest_share(rows, dest_track: int) -> float:
-    """THIS bar's RAW (unsmoothed) placement-mass share of ``dest_track`` —
-    the fraction of the bar's total cast mass that landed on the destination
-    track, read directly off the just-produced bar's rows (``(slot, tid,
-    uid, sec, mass)``), never the EMA-smoothed display telemetry (B-4 wants
-    what THIS bar actually did, not a decayed blend). A bar that cast nothing
-    at all is honestly 0.0 (no invented denominator)."""
-    dest_track = int(dest_track)
-    tot = 0.0
-    dm = 0.0
-    for (_slot, tid, _uid, _sec, mass) in rows:
-        m = float(mass)
-        tot += m
-        if int(tid) == dest_track:
-            dm += m
-    return (dm / tot) if tot > 0.0 else 0.0
-
-
-def arrival_reached(recent_shares: Sequence[float]) -> bool:
-    """B-4 ARRIVAL IS OBSERVED, NOT MEASURED: the destination fence closes iff
-    the LAST ``ARRIVAL_BARS`` bars (consecutive, most-recent-last) each
-    independently placed at least ``ARRIVAL_SHARE`` of their mass on the
-    destination track. No clock, no bar-count timeout, no profile-distance
-    fallback — this is the ONLY arrival gate on the default bridge path."""
-    recent = list(recent_shares)[-ARRIVAL_BARS:]
-    return len(recent) == ARRIVAL_BARS and all(s >= ARRIVAL_SHARE for s in recent)
+def settled_render(track_name, attained: float) -> str:
+    """End-of-journey copy (A-5): descriptive, never success/failure, never the
+    word stalled. It reports WHERE the journey settled, because where it settled
+    is the result."""
+    return "settled — drawing %d%% from %s" % (round(100.0 * float(attained)),
+                                               track_name)
 
 
 # =============================================================================

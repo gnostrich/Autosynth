@@ -1987,7 +1987,14 @@ class StreamPlayer:
                     if dest_placement is not None:
                         self._bridge["dest_current_unit"] = dest_placement[0]
                         self._bridge["dest_current_slice_index"] = dest_placement[1]
-                    arrived = live_mod.arrival_reached(list(self._bridge["share_hist"]))
+                    # SETTLING, NOT A TARGET: the journey ends when the pull
+                    # stops producing new highs for the derived window W — the
+                    # same bar count the wobble floor is measured over. Where it
+                    # settles is the result; nothing is compared to a level.
+                    _set = live_mod.settling(list(self._bridge["share_hist"]),
+                                             self._METER_WINDOW)
+                    self._bridge["settling"] = _set
+                    arrived = bool(_set["settled"])
             if arrived:
                 self._bridge_arrive()
         pcm = _to_int16(audio)
@@ -2453,8 +2460,12 @@ class StreamPlayer:
         if raw_mode == "bridge" and br is not None:
             share_hist = list(br.get("share_hist") or ())
             gap_hist = list(br.get("gap_hist") or ())
-            stalled = (len(share_hist) >= self._METER_WINDOW
-                      and max(share_hist) < live_mod.ARRIVAL_SHARE)
+            # ONE OBSERVATION (A-2): a journey is either still setting new
+            # highs or it has settled. There is no separate stall state and no
+            # level to fall short of, so nothing is rendered as a failure while
+            # the pull is still finding road.
+            _set = live_mod.settling(list(share_hist), self._METER_WINDOW)
+            stalled = False
             floor_diag = live_mod.measure_floor(list(self._live_wobble_hist))
             out.update({
                 "phase": "stalled" if stalled else "bridging",
@@ -2464,8 +2475,9 @@ class StreamPlayer:
                 "dest_slice_index": br.get("dest_current_slice_index"),
                 "share_hist": share_hist,
                 "share": share_hist[-1] if share_hist else 0.0,
-                "arrival_share": live_mod.ARRIVAL_SHARE,
-                "arrival_bars": live_mod.ARRIVAL_BARS,
+                "high_water": _set["high"],
+                "bars_since_high": _set["bars_since_high"],
+                "settle_window": self._METER_WINDOW,
                 "openness": br.get("openness_cur"),
                 "gap_diag": gap_hist[-1] if gap_hist else None,
                 "floor_diag": (floor_diag or {}).get("floor"),
@@ -2479,7 +2491,13 @@ class StreamPlayer:
                     "target": br.get("dest_track"),
                     "share": share_hist[-1] if share_hist else 0.0,
                     "history": list(share_hist),
-                    "stalled": bool(stalled),
+                    # kept for the view's existing contract, but a journey that
+                    # is still setting new highs is NEVER flagged: settling is
+                    # reported descriptively, not as a failure to reach a level.
+                    "stalled": False,
+                    "high_water": _set["high"],
+                    "bars_since_high": _set["bars_since_high"],
+                    "settle_window": self._METER_WINDOW,
                 },
             })
         elif raw_mode == "straight":
