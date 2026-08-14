@@ -1268,7 +1268,14 @@ corpus, reported not tuned.
 
 ## SLOT_PIN — UNDISCLOSED ENGINE EDIT, RETROACTIVE DISCLOSURE (2026-08-14)
 
-> **AWAITING OPERATOR RATIFICATION — not ratified as of this writing.**
+> **RATIFIED RETROACTIVELY, 2026-08-14** (operator, conditional on the §2.1
+> amendment landing before merge — it did, commit `36e97f8`). This section
+> stays as written: a retroactive ratification that does not say it is
+> retroactive repeats the failure. The clause SHIPPED UNDISCLOSED in
+> `7e7b8af`, was DISCOVERED BY ADVERSARIAL AUDIT the same day, and was
+> ratified after the fact. See `REGISTRY.jsonl`
+> `live-mode-slot-pin-ratified-2026-08-14` for the conditions and how each
+> was met.
 
 Commit `7e7b8af` ("LIVE: pin each slot to its own moment of the passage",
 2026-08-14T13:34:33Z) landed a change inside `architecture-v6/ets/writer/` with
@@ -1411,7 +1418,14 @@ trail for 2026-08-14, though `cloud/`-tree edits made that same day (in
 several parallel worktrees) do appear there. See the LEDGER.md entry recording
 both.
 
-> **AWAITING OPERATOR RATIFICATION — not ratified as of this writing.**
+> **RATIFIED RETROACTIVELY, 2026-08-14** (operator, conditional on the §2.1
+> amendment landing before merge — it did, commit `36e97f8`). This section
+> stays as written: a retroactive ratification that does not say it is
+> retroactive repeats the failure. The clause SHIPPED UNDISCLOSED in
+> `7e7b8af`, was DISCOVERED BY ADVERSARIAL AUDIT the same day, and was
+> ratified after the fact. See `REGISTRY.jsonl`
+> `live-mode-slot-pin-ratified-2026-08-14` for the conditions and how each
+> was met.
 ## AMENDMENT 7 — B-1 RELEASE: WHAT ACTUALLY MOVES (measured, 2026-08-14)
 
 An adversarial audit, instrumenting `release_clamp` across a 3-click run on

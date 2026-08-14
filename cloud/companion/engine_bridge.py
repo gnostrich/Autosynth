@@ -1818,8 +1818,16 @@ class StreamPlayer:
                         # own core units. It advances by construction because the
                         # window walks forward. This is NOT a sample position and
                         # the view must not label it as one.
+                        # FROM WHAT THE FENCE ADMITS, not from `core` alone: a
+                        # widened unit is admitted and can lie BEFORE the core
+                        # (the widening bisects pos-1..pos+1), so a core-only
+                        # span under-reports — and mislabels — the admitted
+                        # window. Third instance of the readout-source class
+                        # (lane playhead, bridge source_track, this), so it is
+                        # sourced from `admitted`, the exact set handed to the
+                        # fence one line below.
                         self._live["window"] = live_mod.window_span(
-                            live["slices"], win["core"])
+                            live["slices"], admitted)
         elif live.get("mode") == "bridge" and self._bridge is not None:
             with self._live_lock:
                 br = dict(self._bridge)

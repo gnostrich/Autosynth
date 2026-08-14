@@ -2062,3 +2062,18 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-a7cc04edd740662ae/papers/PREREG-live-mode.md (2026-08-14T18:33:07+00:00)
 - `Edit` .claude/worktrees/agent-a7cc04edd740662ae/papers/PREREG-live-mode.md (2026-08-14T18:33:30+00:00)
 - `Edit` .claude/worktrees/agent-a7cc04edd740662ae/papers/PREREG-live-mode.md (2026-08-14T18:33:43+00:00)
+
+## 2026-08-13 — TRACKS moving anchor: capture file (formal text pending)
+- `Write` papers/PREREG-tracks-moving-anchor.md — captures the operator's spoken
+  rulings (tap plants a travelling anchor; tap elsewhere replants; **tap the
+  anchor again clears it**; no hold-scrub, superseding Amendment 2's hold
+  gesture for TRACKS) so they survive until the formal amendment text lands.
+- **Not buildable yet:** the amendment the operator's M-1/M-2/M-3/MA-1 edit
+  refers to has not been supplied. Clause numbers and checks will not be
+  invented. Three open questions listed for their text to settle.
+- **RESTORED 2026-08-14.** This block was DELETED by commit `ff68a4b`, found by
+  the adversarial audit: `REGISTRY.jsonl` and `VERSION_LEDGER.jsonl` are
+  append-only, but `LEDGER.md` is regenerated and so can silently lose entries.
+  `papers/PREREG-tracks-moving-anchor.md` still exists, so the record was
+  recoverable. A provenance record that can drop rows is not a provenance
+  record; if this recurs the generator needs an append-only guard.
