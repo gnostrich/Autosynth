@@ -196,7 +196,7 @@ def run(world_path: str, bars_before, bars_after, out_wav: str, scope: str) -> i
     # written on 2026-08-14 read column 3 as seconds, so every 'click at
     # 30%% into the track' actually indexed the mass range and resolved to
     # whatever slice that number happened to hit (usually the very start).
-    secs = [float(x[0]) for x in sl]
+        secs = [float(x[0]) for x in sl]
         return sl, min(secs), max(secs)
     sl_a, lo_a, hi_a = _span(A)
     sl_b, lo_b, hi_b = _span(B)

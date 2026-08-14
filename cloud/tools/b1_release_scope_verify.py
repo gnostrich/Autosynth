@@ -121,7 +121,7 @@ def run_bridge_journey(world_path, src_track, src_frac, dst_track, dst_frac, bar
     # written on 2026-08-14 read column 3 as seconds, so every 'click at
     # 30%% into the track' actually indexed the mass range and resolved to
     # whatever slice that number happened to hit (usually the very start).
-    secs = [float(x[0]) for x in sl]
+        secs = [float(x[0]) for x in sl]
         return min(secs) + float(frac) * (max(secs) - min(secs))
 
     q = p.subscribe()

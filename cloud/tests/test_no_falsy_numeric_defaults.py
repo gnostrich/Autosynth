@@ -62,11 +62,21 @@ def _lookup_shaped(node) -> bool:
     return False
 
 
+class Unparseable(Exception):
+    """A file the checker cannot read is NOT a file with no offenders.
+
+    The first version returned [] on SyntaxError, so when a sed-style fix broke
+    the indentation of four tools on 2026-08-14 this check went GREEN while
+    seeing nothing in them — and those four are the tools that produce the
+    off-pair-mass, admitted-set and Amendment 7 evidence. A checker that cannot
+    parse a file must say so, not score it clean."""
+
+
 def _offenders(path: str):
     try:
         tree = ast.parse(open(path).read())
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        raise Unparseable("%s: %s" % (path, exc)) from exc
     out = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)):
@@ -89,6 +99,20 @@ def _py_files(*rels):
             for fn in filenames:
                 if fn.endswith(".py"):
                     yield os.path.join(dirpath, fn)
+
+
+def test_every_scanned_file_actually_parses():
+    """The blind-spot guard: unparseable is a FAILURE, never a silent pass."""
+    broken = []
+    for path in _py_files(os.path.join("cloud", "companion"),
+                          os.path.join("cloud", "tools"),
+                          os.path.join("architecture-v6", "ets")):
+        try:
+            ast.parse(open(path).read())
+        except SyntaxError as exc:
+            broken.append("%s: %s" % (os.path.relpath(path, ROOT), exc))
+    assert not broken, ("files the static checks cannot read (so cannot check): %r"
+                        % broken)
 
 
 def test_no_falsy_numeric_default_on_a_lookup():
