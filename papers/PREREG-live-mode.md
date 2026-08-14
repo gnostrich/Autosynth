@@ -932,3 +932,94 @@ gone; a journey still setting highs is never flagged as anything.
 Verified: rising ⇒ not settled; rising-then-flat ⇒ settled at its own high 0.63;
 a new high mid-window ⇒ window resets and the journey continues; and no level
 appears anywhere in the arrival path.
+
+## BS AMENDMENT — BRIDGE SCOPE (operator, 2026-08-14), verbatim
+
+> S-1 DIRECT (DEFAULT): during a bridge the released fence admits only the
+> {source, destination} tracks.
+> S-2 OPEN (flag): the whole corpus, as before.
+> S-3 Scope is ClampTerms data, chosen at journey start, constant for that
+> journey; logged per journey.
+> S-4 Expect thinner pools; LM-11 stands.
+>
+> ADDENDUM — mid-bridge re-click. The new leg's admitted set = {tracks
+> currently sounding} U {new destination}. "Currently sounding" is read from
+> placement telemetry over the settling window W (the same registered window),
+> not chosen: a track whose material has dropped out is not admitted to the new
+> leg. Consequences (intended): two tracks minimum; three while an unfinished
+> A->B leg is redirected to C; automatic pruning back to two as material stops
+> sounding. No queue, no cross-leg blending logic — each leg is just a fresh
+> fence + fresh latched lean from wherever the music currently is.
+>
+> BS-4: mid-bridge re-click fixture asserts the admitted set equals
+> sounding-tracks-over-W plus destination (a stale or hardcoded set FAILS); and
+> that the set prunes on the following leg once a track's share goes to zero
+> over W.
+
+## BS.1 Three defects found while building it — the operator was right
+
+The operator reported LIVE "routing through other tracks" and repeated it after
+a first fix. Three independent causes, all measured, none of them cosmetic.
+
+**(a) THE ENGINE CAST OUTSIDE THE FENCE.** Both choosers in
+`architecture-v6/ets/writer/realize.py` carried a degenerate early return —
+`if not choices: return (idx.unit_of[(k,b)], False)` — that fires BEFORE the
+ClampTerms fence is evaluated. Any (role, band) with no candidate list cast
+whatever the minimal index named, from any track, mid-fenced-passage. This
+branch predates Amendment 4 R1 (which struck the widen-fallback in the
+neighbouring starving branch) and was missed by it. Measured under a fence
+admitting NOTHING: 56 slots starved correctly and this branch still placed
+three tracks. Now fenced like every other candidate — refused means starve and
+cast nothing (R1: no cast outside ClampTerms, ever). No-op when no fence is
+active, so GRID/TRACKS stay byte-identical (LM-0).
+
+**ENGINE-FILE EDIT, FLAGGED FOR RATIFICATION.** This is a change inside
+`architecture-v6/ets`. It was made because the code contradicted the prereg's
+own registered law, not to introduce new behaviour; it touches neither F,
+settlement, render, nor the world definition. It is nonetheless an engine edit
+and stands or falls on the operator's sign-off.
+
+**(b) THE EXHAUSTION BAR WAS UNFENCED.** When the straight window ran off the
+end of a track, `_compose_bar` called `live_enter()` for idle silence but still
+composed and streamed THAT bar with `clamp_terms = None` — i.e. against the
+whole corpus, so every track sounded for one bar. It now carries
+`live.silent_fence(track)`: admit-nothing spelled through `track_mask` (the way
+clamp0's own error message names it; an empty unit pin is correctly rejected as
+not being a pin). Plus a fall-through guard — in LIVE, any branch that cannot
+build a fence casts silence, never unfenced.
+
+**(c) THE ADMITTED SET WAS SEEDED FROM UNFENCED BARS.** `_finish_bar` runs
+behind `_compose_bar` under the pipeline, so a GRID bar composed before the
+first LIVE click was finished AFTER it, read the then-current mode, and entered
+the per-track share history. Every track in that one bar counted as "currently
+sounding" and so entered the next leg's admitted set — a DIRECT mask of
+{0,1,2,3} on a four-track world. Bars now carry whether they were cast under a
+LIVE fence (`_fenced_bar`), and only fenced bars feed `_live_share_hist`.
+
+Also fixed on the way: `release_clamp` returned None once openness decayed to
+0, dropping the track fence entirely — and clamp0's rule
+(`track_mask.get(t,0.0) >= openness`) admits every unmasked track at openness
+exactly 0. So every DIRECT journey silently became OPEN. Under DIRECT the fence
+now persists for the whole journey at `DIRECT_FLOOR`; what releases over a
+journey is the source's forward-walking UNIT PIN, not the track fence.
+
+## BS.2 Measured, in process, on the real transport
+
+`cloud/tools/bridge_scope_verify.py` plays a journey through the engine's own
+produce loop (subscribing as a browser does) and reads each bar's actual
+per-track placement off the produced rows. Hand-cranking `produce_one_bar`
+alongside the loop composes bars OUTSIDE the transport gate, with no fence at
+all — an artefact that reads exactly like the defect under test, and one this
+harness made and then eliminated.
+
+demo.etsworld, 4 tracks, W=16:
+
+    A->B   24 bars, off-pair placement mass: NONE. Mask {0,2} at every
+           openness from 1.0 down through full release.
+    B->C   mid-bridge re-click carries [0,2] and admits 3 -> three tracks
+           while the unfinished leg is redirected (BS-4 as specified).
+    BS-1 PASS   BS-3 PASS (direct at start and end)   BS-4 PASS   not-stale PASS
+
+Audio + per-bar transition table delivered to the operator. The demo world's
+material is synthetic (~1s per track): the artefact proves the ROUTING, and
+says so rather than implying musicality it cannot demonstrate.

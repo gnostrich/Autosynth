@@ -1993,3 +1993,19 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` cloud/companion/live.py (2026-08-14T15:31:29+00:00)
 - `Edit` cloud/companion/engine_bridge.py (2026-08-14T15:31:35+00:00)
 - `Edit` cloud/companion/engine_bridge.py (2026-08-14T15:31:48+00:00)
+
+### BRIDGE SCOPE + three unfenced-cast defects (2026-08-14, `27d9370`)
+- S-1..S-4 + BS-4 addendum implemented: scope is ClampTerms data, chosen at
+  journey start, constant, logged; DIRECT default, OPEN behind
+  `ETS_BRIDGE_SCOPE=open`; mid-bridge re-click admits sounding-over-W U dest.
+- Restored `live.dest_share` (deleted in the arrival-settling commit while
+  `engine_bridge` still called it every bridge bar -> engine failed on the
+  deployed site with AttributeError).
+- Closed three unfenced-cast paths: the engine's degenerate `unit_of` fallback
+  (ENGINE EDIT in `architecture-v6/ets/writer/realize.py`, made under Amendment
+  4 R1, flagged for operator ratification), the end-of-track exhaustion bar,
+  and DIRECT's fence vanishing at openness 0.
+- Only fenced bars now feed the per-track "currently sounding" history.
+- New standalone proof `cloud/tools/bridge_scope_verify.py`; BS-1/BS-3/BS-4 PASS
+  with zero off-pair mass across a 24-bar A->B leg. See papers/PREREG-live-mode.md
+  BS.1/BS.2 for the measurements.
