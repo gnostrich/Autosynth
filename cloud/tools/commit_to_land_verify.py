@@ -161,9 +161,16 @@ def run(world_path: str) -> int:
         r = p.live_click(C, _t_of(p, C, 0.60))      # COMMIT: same destination
         after = _wait(seen, 1)
         st3 = p.live_state()
+        # "landed" (not "arrived" — readout sweep, 2026-08-14): naming this
+        # phase "arrived" implied a detected convergence the registered
+        # proven-negative (BS.3) says never occurs; the fence closing CREATES
+        # the destination state on a human commit, per Amendment 6 ruling 2's
+        # own word ("landing is a human act"). engine_bridge.py::live_state()
+        # renamed the phase string; this assertion is updated in the same
+        # commit so nothing is left dangling on the old name.
         check("CL-2 commit closes within one bar",
               bool(r.get("committed")) and len(after) >= 1
-              and after[0]["admitted"] == (C,) and st3.get("phase") in ("straight", "arrived"),
+              and after[0]["admitted"] == (C,) and st3.get("phase") in ("straight", "landed"),
               "first bar after commit admitted=%s phase=%s"
               % (after[0]["admitted"] if after else None, st3.get("phase")))
     finally:

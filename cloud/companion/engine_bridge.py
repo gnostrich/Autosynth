@@ -2538,13 +2538,11 @@ class StreamPlayer:
 
         For an ACTIVE bridge, also reports the fields the view needs to
         render the winding honestly (2026-08-14 reframe): the destination
-        track, the RECENT per-bar destination placement-share history (not a
-        smoothed scalar — B-4 reads raw per-bar shares), and a ``phase`` of
-        "straight" | "bridging" | "stalled" | "arrived". "stalled" is a
-        DISPLAY-ONLY read of "share never rose in the recent window" — it
-        never feeds back into the fence/lean (BR-1); only
-        a HUMAN COMMIT (a second click on the destination) can ever close
-        the destination fence. The retired profile-distance floor (B-7)
+        track, this bar's destination placement share (not a smoothed
+        scalar — B-4 reads raw per-bar shares), and a ``phase`` of
+        "straight" | "blending" | "landed". Only a HUMAN COMMIT (a second
+        click on the destination) can ever close the destination fence —
+        nothing here decides that. The retired profile-distance floor (B-7)
         rides along as diagnostics only, never gating anything."""
         from . import live as live_mod
         with self._live_lock:
@@ -2571,8 +2569,28 @@ class StreamPlayer:
             # reported for copy — nothing is compared to anything.
             blend = {int(k): float(v) for k, v in (br.get("blend") or {}).items()}
             carry = list(br.get("carry_tracks") or ())
-            admitted = sorted(set(carry) | ({int(br["dest_track"])}
-                                            if br.get("dest_track") is not None else set()))
+            # READOUT SWEEP item 2 (2026-08-14 audit): admitted/n_admitted must
+            # report what the EMITTED FENCE actually admits, not session
+            # state. `carry_tracks | {dest_track}` alone diverges from the
+            # real fence under ETS_BRIDGE_SCOPE=open once openness has decayed
+            # to 0: release_clamp then returns None (clamp0's own neutral
+            # law, A-2) — no restriction on any track — while the old formula
+            # still named exactly two tracks as "admitted". Reconstruct the
+            # SAME admission decision _compose_bar's release_clamp makes
+            # every bar, from this bar's own carrier inputs: track admission
+            # depends only on openness_cur/scope/carry_tracks/dest_track,
+            # never on pin_units/slot_pin (those restrict which UNITS within
+            # an admitted track are pinned, not which tracks are admitted),
+            # so this is bit-for-bit the same track_mask/openness the writer
+            # was actually handed. None means clamp0's neutral law fired, so
+            # every track in the corpus is admitted — not just the pair.
+            fence = live_mod.release_clamp(
+                br.get("openness_cur", 0.0), br.get("source_track"),
+                dest_track=br.get("dest_track"),
+                scope=br.get("scope", live_mod.BRIDGE_SCOPE_DIRECT),
+                carry_tracks=carry)
+            admitted = (list(self._channel_tids) if fence is None
+                       else sorted(fence.track_mask.keys()))
             floor_diag = live_mod.measure_floor(list(self._live_wobble_hist))
             out.update({
                 "phase": "blending",
@@ -2601,7 +2619,17 @@ class StreamPlayer:
                 },
             })
         elif raw_mode == "straight":
-            out["phase"] = "arrived" if live.get("via_bridge") else "straight"
+            # READOUT SWEEP item 3 (2026-08-14 audit): "arrived" names an
+            # event the registered proven-negative (BS.3) says does not
+            # occur — the fence closing CREATES the destination state, it
+            # does not recognize/detect one, so there is no telemetry an
+            # "arrival" could honestly derive from. `via_bridge` itself stays
+            # (it is a true record of HOW this straight state came to be: set
+            # only by `_bridge_close`, reachable only from a human's second
+            # click on the destination already being traveled to — Amendment
+            # 6 ruling 2, "landing is a human act") — only the dishonest name
+            # is retired, for the amendment's own word.
+            out["phase"] = "landed" if live.get("via_bridge") else "straight"
         return out
 
     def wav_header(self, data_len: int = 0xFFFFFFFF - 44) -> bytes:
