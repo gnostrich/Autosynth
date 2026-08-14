@@ -1907,8 +1907,13 @@ class StreamPlayer:
                 # The session track's own cursor now lives in that member's
                 # window entry (B-1 REVISED advances each per bar), so mirror it
                 # back rather than keeping a second, divergent count.
-                _w = (self._bridge or {}).get("windows", {}).get(
-                    int(self._live.get("track") or -1))
+                # TRACK 0 IS A REAL TRACK: `or -1` treats it as absent, so the
+                # first track in every world silently lost its window (measured
+                # 2026-08-14 -- a metric zero BY CONSTRUCTION, not by
+                # measurement). Compare against None explicitly.
+                _lt = self._live.get("track")
+                _w = (None if _lt is None
+                      else (self._bridge or {}).get("windows", {}).get(int(_lt)))
                 if _w is not None:
                     self._live["bars_elapsed"] = int(_w.get("bars", 0))
         # IN LIVE, NEVER CAST UNFENCED. Every branch above that fails to build a
@@ -2520,7 +2525,9 @@ class StreamPlayer:
         windows = {}
         if int(from_track) in prior_windows:
             windows[int(from_track)] = prior_windows[int(from_track)]
-        elif int(from_track) == int(live_now.get("track") or -1) and live_now.get("slices"):
+        elif (live_now.get("track") is not None
+              and int(from_track) == int(live_now["track"])
+              and live_now.get("slices")):
             windows[int(from_track)] = {
                 "slices": live_now["slices"], "plan": live_now.get("plan"),
                 "start_group": int(live_now.get("start_group", 0)),
