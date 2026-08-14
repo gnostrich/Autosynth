@@ -764,3 +764,92 @@ arrived") rather than animating a traversal that has nothing to traverse.
 floor ⇒ fewer destinations inside the breathing ⇒ longer journeys. Warmer T_s
 does the opposite. This is a consequence of the physics already registered, not
 a new control: nothing is added to make it true.
+
+---
+
+# LIVE BRIDGE v0 — THE NATURAL TRANSITION (operator, 2026-08-14, verbatim)
+
+Supersedes Amendment 1's native-pace MECHANICS and Amendment 3's ratchet FOR THE
+BRIDGE; Amendment 2 (idle silent) stands. Sampler / F / world / engine modules
+untouched — carrier + mode only.
+
+> ## THE REFRAME (operator ruling)
+> The transition already exists in the object: the succession bridge
+> (the KL tether to the propagated past) IS the transition operator. A
+> musical transition is the system relaxing between two basins at finite
+> temperature — winding in and out as the past tether and the destination
+> pull trade dominance, finding the cheap crossing. That winding is the
+> physics, not meander.
+> Therefore: do not schedule it, do not corridor it, do not threshold it in
+> profile space. Release the wall, apply the pull, do not intervene.
+>
+> ## BRIDGE v0
+> B-1 RELEASE: on a second click, the source fence opens on the adopted
+>     registered slew (no timetable, no N-bar schedule).
+> B-2 PULL: latch the destination's stored w_r as a COLUMN lean (existing
+>     tilt jack, sigma-clamped, slewed). Nothing else is emitted.
+> B-3 TRAVERSE: no corridor, no ratchet, no monotonicity requirement, no
+>     profile-space arrival test. The path is whatever the tether makes
+>     cheap given the committed past. Excursions and back-and-forth are
+>     expected and must not be suppressed or smoothed.
+> B-4 ARRIVAL IS OBSERVED, NOT MEASURED: close the destination fence when
+>     the casting is already drawing predominantly from the destination
+>     track — registered convention: placement share >= X sustained over N
+>     bars (ONE human convention, registered once, never per-corpus tuned;
+>     it is wall content, which is where human content belongs).
+> B-5 STALL: if the share never rises, render honestly ("the corpus has no
+>     road there"); never force-close, never time out into arrival.
+> B-6 TEMPERATURE IS THE CHARACTER KNOB (no new parameter): cold = direct
+>     crossing, few excursions, slow over barriers; hot = wider excursions,
+>     faster crossing, more surprising connective material. Document; do
+>     not add a transition-length control.
+> B-7 RETIRED FROM THE CRITICAL PATH: the profile-distance arrival floor
+>     (it misfired at ~18% of the space) stays as a DIAGNOSTIC only, never
+>     as the arrival test. The ratchet corridor stays specced behind a flag
+>     for A/B measurement only, never default.
+>
+> ## CHECKS (each must bite)
+> BR-1 no-intervention: static + runtime — no schedule, corridor, easing, or
+>      monotonicity logic on the bridge path; the only bridge inputs are the
+>      fence release and the latched lean.
+> BR-2 arrival-observed: fence closes only on the placement-share condition
+>      (fixture: frozen telemetry -> no close; rising share -> close);
+>      any profile-distance or timer-driven close FAILS.
+> BR-3 winding-preserved: fixture with a known two-basin world must show
+>      non-monotone gap trajectory permitted (a run that suppresses
+>      excursions FAILS).
+> BR-4 stall-honesty: share never rises => stall renders, fence stays open,
+>      no timeout arrival.
+> BR-5 hard fence intact: LM-11 rerun during release/close (no cast outside
+>      the active ClampTerms at any point of the transition).
+> BR-6 reset: V-1 view switch drops fence + lean mid-bridge to neutral
+>      carrier (byte-identical).
+>
+> ## REPORT WITH THE TRAIN (one page)
+> - placement-share trajectory per journey (so the winding is visible, not
+>   inferred), plus gap trajectory as diagnostic;
+> - fraction of random click-pairs whose journeys stall vs arrive;
+> - observed effect of T_s on crossing time and excursion width;
+> - what is NOT claimed.
+
+## BRv0.1 THE REGISTERED CONVENTION (X, N) — fixed here, once
+
+**X = 0.75 placement share, N = 2 bars.** The destination fence closes when the
+casting has drawn ≥75% of its placements from the destination track for two
+consecutive bars. Registered once, never per-corpus tuned; changing either value
+is a new amendment. This is wall content — a human convention about when we
+agree the journey has landed — and the wall is exactly where human content
+belongs.
+
+## BRv0.2 WHAT THIS REFRAME RETIRES, AND WHY IT MATTERS
+
+The corridor, the ratchet, the monotone `best_gap`, and the profile-distance
+arrival test are all **off the critical path**. They were attempts to *drive* the
+transition; the ruling is that the transition is already an object in the physics
+and driving it is what makes it sound designed. Notably this retires the very
+thing I measured at §A5.2: the 0.252 floor spanning ~18% of the metric was a real
+number about a test that should not have been the arrival test at all.
+
+**The consequence to hold on to:** excursions, back-and-forth and non-monotone
+paths are now *expected output*, not defects. Any future "improvement" that
+smooths them is a regression, and BR-3 exists to catch it.
