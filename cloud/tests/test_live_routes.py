@@ -41,6 +41,18 @@ class _FakeLivePlayer:
             raise self._start_exc
         return self._start_result
 
+    def live_click(self, track, t):
+        # THE route's real entry point since the 2026-08-14 bridge reframe:
+        # StreamPlayer.live_click dispatches internally to live_start (idle)
+        # or the bridge (already-playing) — that dispatch logic is exercised
+        # against the REAL engine in test_live_engine_integration.py; this
+        # fake only pins the ROUTE's own contract (status/body shape), so it
+        # reuses the SAME canned result/exception live_start already had.
+        self.calls.append(("live_click", track, t))
+        if self._start_exc is not None:
+            raise self._start_exc
+        return self._start_result
+
     def live_stop(self):
         self.calls.append(("live_stop",))
 
@@ -88,7 +100,7 @@ def test_live_start_routes_track_and_t_and_returns_the_straight_contract(
         status, body = _post(url, "/api/live/start", {"track": 2, "t": 4.5})
         assert status == 200, body
         assert body == {"ok": True, "mode": "straight", "track": 2, "unit": 137}
-        assert fake.calls == [("live_start", 2, 4.5)]
+        assert fake.calls == [("live_click", 2, 4.5)]
     finally:
         httpd.shutdown(); httpd.server_close()
 

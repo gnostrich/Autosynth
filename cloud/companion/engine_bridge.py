@@ -732,12 +732,26 @@ class StreamPlayer:
         #                restriction = the free blend, exactly what B-0
         #                forbids sounding in LIVE).
         #   "straight" — B-1 amended: a full fence is set; straight play runs.
+        #   "bridge"   — a second click while playing: THE BRIDGE (2026-08-14
+        #                reframe; see live.py's module docstring section).
+        #                ``self._bridge`` (below) carries the journey's own
+        #                state; ``self._live["track"]`` stays the SOURCE track
+        #                (the release fence's own pin) until arrival flips it.
         self._live: dict = {"mode": "off", "clamp": None, "track": None,
                             "uid_index": {}, "current_unit": None,
                             "current_slice_index": None, "starved": False,
                             "pin_units": (), "bars_elapsed": 0,
                           "slices": (), "core_units": frozenset(),
                           "n_widened": 0, "off_window": 0, "n_cast": 0}
+        # THE BRIDGE (default v0: release + pull, no intervention). None
+        # whenever mode != "bridge". See live.py's "DEFAULT BRIDGE v0" section
+        # for every field's meaning; built fresh by ``_live_bridge_click``.
+        self._bridge: Optional[dict] = None
+        # DIAGNOSTIC-ONLY wobble history (B-7): achieved column-share vectors
+        # from recent STRAIGHT-phase bars, used SOLELY to report the retired
+        # profile-distance floor as a readout (never to gate arrival). Bounded
+        # exactly like the I-8 gauge-meter windows (reusing _METER_WINDOW
+        # below, defined later in __init__ — see its own assignment).
         self._live_lock = threading.Lock()
         self._lock = threading.Lock()
         self._playing = threading.Event()
@@ -777,6 +791,11 @@ class StreamPlayer:
         self._METER_WINDOW = 16
         self._O_window: "deque" = deque(maxlen=self._METER_WINDOW)
         self._frame_hist: "deque" = deque(maxlen=self._METER_WINDOW)
+        # DIAGNOSTIC-ONLY (B-7): achieved column-share vectors from recent
+        # STRAIGHT-phase bars, the SAME bounded-window convention as the two
+        # meters just above — reported as the retired profile-distance floor
+        # readout only (live_state()), never consulted by the arrival gate.
+        self._live_wobble_hist: "deque" = deque(maxlen=self._METER_WINDOW)
         # STATIC per-world field telemetry (computed ONCE, here at load): the SAME
         # read-only reductions the desktop engine emits over /ets/profiles +
         # /ets/unitpool (ets.engine.engine.track_anchor_profiles / role_unit_pool).
@@ -1735,42 +1754,22 @@ class StreamPlayer:
         """COMPOSE one bar: tilt → write_bar (settlement + fiber choice; MUTATES
         the writer/tape — the strictly-serial half) → schedule. Returns (r, sched)."""
         from ets.engine.engine import bar_schedule
+        from . import live as live_mod
         self._ensure_bank()
-        u = self._current_lane()
-        with self._lock:                                     # second-moment shape (PREREG):
-            a = None if self._wobble is None else np.asarray(self._wobble).copy()
-        # FIELD-BIAS (PREREG-field-bias-REV3, SOFT multi-grain): fold the per-TRACK
-        # amplify vector (roll-up) AND the per-UNIT amplify map (the ultimate
-        # "channel") into the ONE TiltTerms via `channel_logbias` — a soft lean in
-        # the fiber choice measure, NOT a clamp, resolved ADDITIVELY per candidate
-        # (β_track[tid]+β_unit[uid]). Empty at BOTH grains ⇒ no addend ⇒ byte-
-        # identical to the un-biased tilt. Assembled at the SAME single tilt-
-        # construction point as every other setter (a rides it too); no new channel.
-        with self._lock:
-            bias = None if self._channel_bias is None else self._channel_bias.copy()
-            unit_amp = None if self._unit_bias is None else dict(self._unit_bias)
-            cell_amp = None if self._track_role_bias is None else dict(self._track_role_bias)
-        from .channel_bias import (channel_logbias, grain_logbias, field_logbias,
-                                   track_role_logbias)
-        track_w = channel_logbias(bias, self._channel_tids) if bias is not None else None
-        unit_w = grain_logbias(unit_amp) if unit_amp else None
-        cell_w = track_role_logbias(cell_amp) if cell_amp else None
-        clogbias = field_logbias(track=track_w, unit=unit_w, track_role=cell_w)
-        tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
-        # LIVE MODE (Train B2): the Part-A ClampTerms carrier, delivered to the
-        # writer ALONGSIDE tilt (A-1) — the ONE restriction channel, never a
-        # second settlement/casting path (A-5). None (GRID/TRACKS, or LIVE
-        # never touched) -> clamp_call_kwargs returns {} WITHOUT introspecting
+        # LIVE MODE: the Part-A ClampTerms carrier, delivered to the writer
+        # ALONGSIDE tilt (A-1) — the ONE restriction channel, never a second
+        # settlement/casting path (A-5). None (GRID/TRACKS, or LIVE never
+        # touched) -> clamp_call_kwargs returns {} WITHOUT introspecting
         # anything, so this call stays the exact write_bar(tilt=tilt) it is
         # today (byte-identical; LM-0/LM-1).
-        from . import live as live_mod
+        #
         # STRAIGHT PLAY WALKS FORWARD (B-1: "bars pinned to that track's
         # CONSECUTIVE slices"). The fence is rebuilt EVERY bar from a moving
         # cursor over the pinned run, so the choice set for this bar is this
         # bar's slices — not the track's whole remaining set, which let the
-        # tape roam inside the track (the measured 2026-08-13 defect). Past the
-        # end of the run the window empties and LIVE returns to idle silence
-        # rather than wrapping, repeating, or inventing material.
+        # tape roam inside the track (the measured 2026-08-13 defect). Past
+        # the end of the run the window empties and LIVE returns to idle
+        # silence rather than wrapping, repeating, or inventing material.
         clamp_terms = None
         with self._live_lock:
             live = dict(self._live)
@@ -1796,6 +1795,67 @@ class StreamPlayer:
                         # inside the fenced track, outside the forward core.
                         self._live["core_units"] = frozenset(win["core"])
                         self._live["n_widened"] = len(win["widened"])
+        elif live.get("mode") == "bridge" and self._bridge is not None:
+            with self._live_lock:
+                br = dict(self._bridge)
+            # B-2 PULL: advance the slewed lean toward the pinned target and
+            # set it on the SAME region-tilt channel every other view drives
+            # (StreamPlayer.set_region -> the ONE _tilt_for(u)) — BEFORE
+            # `_current_lane()` reads it below, so THIS bar's tilt already
+            # carries the freshly-stepped value. Nothing else is emitted.
+            new_lean = live_mod.pull_step(br.get("lean_cur"), br["pull_target"])
+            self.set_region(new_lean)
+            # B-1 RELEASE: while still releasing, continue the source's
+            # forward-walking window at the CURRENT (decaying) openness —
+            # the exact straight-play mechanism, just with a shrinking
+            # threshold instead of a fixed 1.0. Once fully released
+            # (openness_cur <= 0) release_clamp returns None: no restriction
+            # left at all (B-3 — no corridor, no second mask, ever).
+            win = None
+            if br["openness_cur"] > 0.0 and live.get("slices"):
+                win = live_mod.bar_window(live["slices"],
+                                          live.get("bars_elapsed", 0),
+                                          self.s_phase,
+                                          demanded_roles=range(int(self.world.M)),
+                                          start_group=live.get("start_group", 0),
+                                          plan=live.get("plan"))
+            pin_units, slot_pin = None, None
+            if win is not None and not win["exhausted"]:
+                pin_units = tuple(win["core"]) + tuple(win["widened"])
+                slot_pin = win.get("slot_pin")
+            clamp_terms = live_mod.release_clamp(br["openness_cur"], br["source_track"],
+                                                 pin_units=pin_units, slot_pin=slot_pin)
+            nxt_openness = live_mod.release_step(br["openness_cur"])
+            with self._live_lock:
+                if self._bridge is not None:
+                    self._bridge["lean_cur"] = new_lean
+                    self._bridge["openness_cur"] = nxt_openness
+                    self._bridge["bars_elapsed"] = \
+                        int(self._bridge.get("bars_elapsed", 0)) + 1
+                if win is not None and not win["exhausted"]:
+                    self._live["bars_elapsed"] = \
+                        int(self._live.get("bars_elapsed", 0)) + 1
+        u = self._current_lane()
+        with self._lock:                                     # second-moment shape (PREREG):
+            a = None if self._wobble is None else np.asarray(self._wobble).copy()
+        # FIELD-BIAS (PREREG-field-bias-REV3, SOFT multi-grain): fold the per-TRACK
+        # amplify vector (roll-up) AND the per-UNIT amplify map (the ultimate
+        # "channel") into the ONE TiltTerms via `channel_logbias` — a soft lean in
+        # the fiber choice measure, NOT a clamp, resolved ADDITIVELY per candidate
+        # (β_track[tid]+β_unit[uid]). Empty at BOTH grains ⇒ no addend ⇒ byte-
+        # identical to the un-biased tilt. Assembled at the SAME single tilt-
+        # construction point as every other setter (a rides it too); no new channel.
+        with self._lock:
+            bias = None if self._channel_bias is None else self._channel_bias.copy()
+            unit_amp = None if self._unit_bias is None else dict(self._unit_bias)
+            cell_amp = None if self._track_role_bias is None else dict(self._track_role_bias)
+        from .channel_bias import (channel_logbias, grain_logbias, field_logbias,
+                                   track_role_logbias)
+        track_w = channel_logbias(bias, self._channel_tids) if bias is not None else None
+        unit_w = grain_logbias(unit_amp) if unit_amp else None
+        cell_w = track_role_logbias(cell_amp) if cell_amp else None
+        clogbias = field_logbias(track=track_w, unit=unit_w, track_role=cell_w)
+        tilt = self.engine._tilt_for(u, a=a, channel_logbias=clogbias)
         clamp_kwargs = live_mod.clamp_call_kwargs(self.engine.writer.write_bar,
                                                    clamp_terms)
         r = self.engine.writer.write_bar(tilt=tilt, **clamp_kwargs)
@@ -1899,6 +1959,37 @@ class StreamPlayer:
                         self._live["current_unit"] = placement[0]
                         self._live["current_slice_index"] = placement[1]
                     self._live["starved"] = starved_flag
+        # THE BRIDGE (v0): B-4 arrival is OBSERVED off THIS bar's raw rows —
+        # never the EMA-smoothed display telemetry above. B-7's retired
+        # profile-distance gap rides along as a DIAGNOSTIC only (never a
+        # gate). Straight-phase bars feed the SAME column-share reduction
+        # into a bounded wobble history, which is all that diagnostic floor
+        # is ever measured from (never hardcoded, never gating anything).
+        from . import live as live_mod
+        with self._live_lock:
+            raw_mode = self._live.get("mode")
+        if raw_mode == "straight":
+            self._live_wobble_hist.append(
+                live_mod.column_shares(nowplaying_track_role, self.M))
+        elif raw_mode == "bridge" and self._bridge is not None:
+            dest_track = self._bridge.get("dest_track")
+            share = live_mod.dest_share(r.rows, dest_track)
+            gap_diag = live_mod.char_gap(
+                live_mod.column_shares(nowplaying_track_role, self.M),
+                self._bridge.get("pull_target") or ())
+            dest_uid_index = self._bridge.get("dest_uid_index") or {}
+            dest_placement = live_mod.current_placement(r.rows, dest_track, dest_uid_index)
+            arrived = False
+            with self._live_lock:
+                if self._bridge is not None:
+                    self._bridge["share_hist"].append(share)
+                    self._bridge["gap_hist"].append(gap_diag)
+                    if dest_placement is not None:
+                        self._bridge["dest_current_unit"] = dest_placement[0]
+                        self._bridge["dest_current_slice_index"] = dest_placement[1]
+                    arrived = live_mod.arrival_reached(list(self._bridge["share_hist"]))
+            if arrived:
+                self._bridge_arrive()
         pcm = _to_int16(audio)
         return pcm, roles
 
@@ -2124,6 +2215,56 @@ class StreamPlayer:
                 pass
 
     # --- LIVE mode (papers/PREREG-live-mode.md, Train B2) -------------------
+    def _straight_track_slices(self, track: int):
+        """Look up ``track`` and its stored slices, or raise honestly —
+        shared by ``live_start`` (first click) and ``_bridge_arrive`` (a
+        journey's destination close), so both build the FULL FENCE from the
+        exact same slice source (§2 of the prereg), never re-derived twice."""
+        from . import live as live_mod
+        track = int(track)
+        by_id = {int(tr.track_id): tr for tr in self.world.tracks}
+        if track not in by_id:
+            raise ValueError(f"unknown track {track}")
+        slices = track_unit_slices(self.world, by_id[track], self.M)
+        if slices is None:
+            raise live_mod.LiveCarrierUnavailable(
+                "track_unit_slices refused this track (a unit lacks a stored "
+                "role) — the same honest refusal the wavemap gives; LIVE "
+                "cannot fence a track it cannot slice")
+        return track, slices
+
+    def _straight_live_dict(self, track: int, slices, t: float) -> dict:
+        """Build the B-1 STRAIGHT-mode ``self._live`` payload for (``track``,
+        the slice covering second ``t``) — used identically whether this is
+        the FIRST click (``live_start``) or a bridge's destination close
+        (``_bridge_arrive``). May raise ``live.LiveCarrierUnavailable`` (the
+        fence construction, probed against the real writer)."""
+        from . import live as live_mod
+        j0 = live_mod.resolve_start_index(slices, t)
+        unit_ids = live_mod.pin_unit_ids(slices, j0)
+        fence = live_mod.build_full_fence(track, unit_ids)     # may raise
+        # PROBE the writer NOW (not on the first produced bar) so a missing
+        # wiring refuses honestly before straight play is ever promised.
+        live_mod.clamp_call_kwargs(self.engine.writer.write_bar, fence)
+        return {"mode": "straight", "clamp": fence, "track": int(track),
+               "uid_index": live_mod.uid_index_map(slices),
+               "current_unit": None, "current_slice_index": None,
+               "starved": False,
+               # the whole pinned run + the bar cursor over it; the produce
+               # loop narrows this to ONE bar's window each bar so straight
+               # play walks the track forward
+               "pin_units": tuple(unit_ids), "bars_elapsed": 0,
+               # the track's OWN stored slices (span/uid/role), so each bar
+               # can cut its tatum window and widen per role
+               "slices": slices,
+               # straight play starts where the user CLICKED
+               "start_group": live_mod.group_of_index(slices, j0),
+               # built ONCE here, not per bar (the measured stall)
+               "plan": live_mod.build_plan(slices),
+               "core_units": frozenset(),
+               "n_widened": 0, "off_window": 0, "n_cast": 0,
+               "start_unit": int(slices[j0][2])}
+
     def live_start(self, track: int, t: float) -> dict:
         """B-1 amended / LM-3 / LM-10: close the FULL FENCE to (``track``, the
         slice covering second ``t``) and let straight play begin there AT
@@ -2136,49 +2277,23 @@ class StreamPlayer:
         ``live.LiveCarrierUnavailable`` if Part A's carrier isn't ready (not
         importable yet, or importable but not wired into ``write_bar``) — LIVE
         refuses rather than ever falling back to unfenced play."""
-        from . import live as live_mod
-        track = int(track)
-        by_id = {int(tr.track_id): tr for tr in self.world.tracks}
-        if track not in by_id:
-            raise ValueError(f"unknown track {track}")
-        slices = track_unit_slices(self.world, by_id[track], self.M)
-        if slices is None:
-            raise live_mod.LiveCarrierUnavailable(
-                "track_unit_slices refused this track (a unit lacks a stored "
-                "role) — the same honest refusal the wavemap gives; LIVE "
-                "cannot fence a track it cannot slice")
-        j0 = live_mod.resolve_start_index(slices, t)
-        unit_ids = live_mod.pin_unit_ids(slices, j0)
-        fence = live_mod.build_full_fence(track, unit_ids)     # may raise
-        # PROBE the writer NOW (not on the first produced bar) so a missing
-        # wiring refuses honestly before straight play is ever promised.
-        live_mod.clamp_call_kwargs(self.engine.writer.write_bar, fence)
-        idx_map = live_mod.uid_index_map(slices)
-        start_unit = int(slices[j0][2])
+        track, slices = self._straight_track_slices(track)
+        live_dict = self._straight_live_dict(track, slices, t)
+        start_unit = live_dict.pop("start_unit")
         with self._live_lock:
-            self._live = {"mode": "straight", "clamp": fence, "track": track,
-                          "uid_index": idx_map, "current_unit": None,
-                          "current_slice_index": None, "starved": False,
-                          # the whole pinned run + the bar cursor over it; the
-                          # produce loop narrows this to ONE bar's window each
-                          # bar so straight play walks the track forward
-                          "pin_units": tuple(unit_ids), "bars_elapsed": 0,
-                          # the track's OWN stored slices (span/uid/role), so
-                          # each bar can cut its tatum window and widen per role
-                          "slices": slices,
-                          # straight play starts where the user CLICKED
-                          "start_group": live_mod.group_of_index(slices, j0),
-                          # built ONCE here, not per bar (the measured stall)
-                          "plan": live_mod.build_plan(slices),
-                          "core_units": frozenset(),
-                          "n_widened": 0, "off_window": 0, "n_cast": 0}
+            self._live = live_dict
+            self._bridge = None      # a fresh straight start is never mid-journey
+        self.set_region(np.zeros(self.M, dtype=np.float32))   # B-2's job, if any, is done
         self.start()               # ensure the shared produce loop is running
         return {"track": track, "unit": start_unit}
 
     def live_enter(self) -> None:
-        """ENTERING the LIVE view: drop any fence and hold the transport
-        idle-silent (AMENDMENT 2 B-0). The hold is enforced by ``_loop``
-        itself, never by an empty/neutral ClampTerms.
+        """ENTERING the LIVE view: drop any fence AND any bridge, hold the
+        transport idle-silent (AMENDMENT 2 B-0), and neutral the region-tilt
+        lane (BR-6: a lean latched by a prior bridge must not survive into a
+        fresh LIVE session — byte-identical to a player that never touched
+        LIVE). The hold is enforced by ``_loop`` itself, never by an
+        empty/neutral ClampTerms.
 
         This is deliberately SEPARATE from ``live_stop``. The idle hold means
         "the user is in LIVE and has not clicked yet" — it must NOT outlive the
@@ -2191,29 +2306,118 @@ class StreamPlayer:
                           "current_slice_index": None, "starved": False,
                           "pin_units": (), "bars_elapsed": 0,
                           "slices": (), "core_units": frozenset(),
-                          "n_widened": 0, "off_window": 0, "n_cast": 0}
+                          "n_widened": 0, "off_window": 0, "n_cast": 0,
+                          "via_bridge": False}
+            self._bridge = None
+        self.set_region(np.zeros(self.M, dtype=np.float32))
 
     def live_stop(self) -> None:
-        """LEAVING LIVE (V-1): drop the fence AND release the transport back to
-        the other views. Mode returns to "off" — never "idle", which would keep
-        the produce loop parked for GRID/TRACKS as well."""
+        """LEAVING LIVE (V-1 / BR-6): drop the fence AND any bridge, neutral
+        the region-tilt lane, and release the transport back to the other
+        views. Mode returns to "off" — never "idle", which would keep the
+        produce loop parked for GRID/TRACKS as well."""
         with self._live_lock:
             self._live = {"mode": "off", "clamp": None, "track": None,
                           "uid_index": {}, "current_unit": None,
                           "current_slice_index": None, "starved": False,
                           "pin_units": (), "bars_elapsed": 0,
                           "slices": (), "core_units": frozenset(),
-                          "n_widened": 0, "off_window": 0, "n_cast": 0}
+                          "n_widened": 0, "off_window": 0, "n_cast": 0,
+                          "via_bridge": False}
+            self._bridge = None
+        self.set_region(np.zeros(self.M, dtype=np.float32))
 
-    def live_stop(self) -> None:
-        """LEAVING LIVE (V-1): drop the fence AND release the transport back to
-        the other views. Mode returns to "off" — never "idle", which would keep
-        the produce loop parked for GRID/TRACKS as well."""
+    # --- THE BRIDGE (v0 — release + pull, no intervention; see live.py) ----
+    def live_click(self, track: int, t: float) -> dict:
+        """THE click dispatcher (B-1 amended / the 2026-08-14 bridge reframe):
+        from idle/off, the FIRST click is Amendment 2's immediate start —
+        unchanged, no bridge, no lean (LM-10). From an ALREADY-PLAYING state
+        (straight OR mid-bridge), a click is THE BRIDGE: the source fence
+        RELEASES, the destination's stored character PULLS, arrival is
+        OBSERVED — never a second decision channel; both paths land here."""
         with self._live_lock:
-            self._live = {"mode": "off", "clamp": None, "track": None,
-                          "uid_index": {}, "current_unit": None,
-                          "current_slice_index": None, "starved": False,
-                          "pin_units": (), "bars_elapsed": 0}
+            mode = self._live.get("mode")
+        if mode not in ("straight", "bridge"):
+            return self.live_start(track, t)
+        return self._live_bridge_click(int(track), float(t))
+
+    def _live_bridge_click(self, track: int, t: float) -> dict:
+        """B-1/B-2: (re-)latch a journey toward (``track``, ``t``). A click
+        while ALREADY mid-bridge RE-ANCHORS — the release/lean already in
+        flight simply keep going (momentum honest; there is no reason to
+        restart a fence that is already open/opening toward a DIFFERENT
+        target), only the destination and its pull target change, and the
+        arrival window (recent placement-share history) resets — a fresh
+        destination has no bearing on a share earned toward the old one."""
+        from . import live as live_mod
+        dest_track, dest_slices = self._straight_track_slices(track)
+        stored_char = live_mod.stored_character(dest_slices, float(t), self.M)
+        tgt = live_mod.pull_target(stored_char)
+        dest_uid_index = live_mod.uid_index_map(dest_slices)
+        with self._live_lock:
+            source_track = self._live.get("track")
+            prior = self._bridge
+            cur_lean = None if prior is None else prior.get("lean_cur")
+            cur_openness = 1.0 if prior is None else float(prior.get("openness_cur", 1.0))
+        if source_track is None:
+            # Defensive: live_click only reaches here when mode is "straight"
+            # or "bridge", both of which always carry a source track. Refuse
+            # rather than guess one.
+            raise live_mod.LiveCarrierUnavailable(
+                "no source track on record for this session's playing state")
+        from collections import deque
+        with self._live_lock:
+            self._bridge = {
+                "source_track": int(source_track), "dest_track": int(dest_track),
+                "dest_t": float(t), "dest_uid_index": dest_uid_index,
+                "pull_target": tgt,
+                "lean_cur": (tuple(cur_lean) if cur_lean is not None
+                            else tuple(0.0 for _ in range(self.M))),
+                "openness_cur": cur_openness,
+                # bounded window (I-8 convention): recent RAW per-bar dest
+                # shares. arrival_reached reads the last ARRIVAL_BARS of it;
+                # live_state's stall readout reads the whole window.
+                "share_hist": deque(maxlen=self._METER_WINDOW),
+                "gap_hist": deque(maxlen=self._METER_WINDOW),   # diagnostic only (B-7)
+                "T_s_pinned": float(self._T_s), "bars_elapsed": 0,
+                "dest_current_unit": None, "dest_current_slice_index": None,
+            }
+            self._live["mode"] = "bridge"
+            self._live["current_unit"] = None
+            self._live["current_slice_index"] = None
+            self._live["starved"] = False
+            self._live["via_bridge"] = False
+        self.start()
+        return {"track": int(dest_track), "bridge": True}
+
+    def _bridge_arrive(self) -> None:
+        """B-4: destination fence closes — straight play resumes there.
+        Reuses the SAME full-fence construction ``live_start`` uses
+        (``_straight_track_slices`` / ``_straight_live_dict``), pinned at the
+        journey's registered destination rather than a fresh click. The lean
+        drops to neutral — its job is done; a closed fence alone determines
+        content from here, exactly as straight play always has."""
+        with self._live_lock:
+            br = dict(self._bridge) if self._bridge else None
+        if br is None:
+            return
+        try:
+            track, slices = self._straight_track_slices(br["dest_track"])
+            live_dict = self._straight_live_dict(track, slices, br["dest_t"])
+        except Exception:
+            # The destination became unfenceable mid-journey (should not
+            # happen — it was already probed at click time). Never fabricate
+            # arrival: fall back to idle-silent rather than claim a fence
+            # that does not exist.
+            logger.exception("bridge arrival could not close the destination fence")
+            self.live_enter()
+            return
+        live_dict.pop("start_unit", None)
+        live_dict["via_bridge"] = True
+        self.set_region(np.zeros(self.M, dtype=np.float32))     # B-2's job is done
+        with self._live_lock:
+            self._live = live_dict
+            self._bridge = None
 
     def live_state(self) -> dict:
         """Measured, not asserted (the route contract): the unit/slice this
@@ -2221,21 +2425,66 @@ class StreamPlayer:
         bar's rows (the same placement feed the heatmap reads), never a timer
         or the originally-requested position. A session that has never
         touched LIVE ("off") reports "idle" — honest: no fence, nothing
-        playing under one."""
+        playing under one.
+
+        For an ACTIVE bridge, also reports the fields the view needs to
+        render the winding honestly (2026-08-14 reframe): the destination
+        track, the RECENT per-bar destination placement-share history (not a
+        smoothed scalar — B-4 reads raw per-bar shares), and a ``phase`` of
+        "straight" | "bridging" | "stalled" | "arrived". "stalled" is a
+        DISPLAY-ONLY read of "share never rose in the recent window" — it
+        never feeds back into the fence/lean (BR-1); only
+        ``live.arrival_reached`` (B-4's own share/bars rule) can ever close
+        the destination fence. The retired profile-distance floor (B-7)
+        rides along as diagnostics only, never gating anything."""
+        from . import live as live_mod
         with self._live_lock:
             live = dict(self._live)
-        mode = "straight" if live.get("mode") == "straight" else "idle"
-        # DIAGNOSTIC (R2(b) groundwork): how far the fence cursor has walked and
-        # how much of the last bar it could only fill by widening. Measured
-        # counters, not estimates — they are what a stall/short-play report is
-        # judged on.
+            br = dict(self._bridge) if self._bridge else None
+        raw_mode = live.get("mode")
+        mode = "straight" if raw_mode in ("straight", "bridge") else "idle"
         bars_elapsed = int(live.get("bars_elapsed", 0))
         n_widened = int(live.get("n_widened", 0))
-        return {"mode": mode, "track": live.get("track"),
-               "unit": live.get("current_unit"),
-               "slice_index": live.get("current_slice_index"),
-               "starved": bool(live.get("starved", False)),
-               "bars_elapsed": bars_elapsed, "widened": n_widened}
+        out = {"mode": mode, "track": live.get("track"),
+              "unit": live.get("current_unit"),
+              "slice_index": live.get("current_slice_index"),
+              "starved": bool(live.get("starved", False)),
+              "bars_elapsed": bars_elapsed, "widened": n_widened}
+        if raw_mode == "bridge" and br is not None:
+            share_hist = list(br.get("share_hist") or ())
+            gap_hist = list(br.get("gap_hist") or ())
+            stalled = (len(share_hist) >= self._METER_WINDOW
+                      and max(share_hist) < live_mod.ARRIVAL_SHARE)
+            floor_diag = live_mod.measure_floor(list(self._live_wobble_hist))
+            out.update({
+                "phase": "stalled" if stalled else "bridging",
+                "source_track": br.get("source_track"),
+                "dest_track": br.get("dest_track"),
+                "dest_unit": br.get("dest_current_unit"),
+                "dest_slice_index": br.get("dest_current_slice_index"),
+                "share_hist": share_hist,
+                "share": share_hist[-1] if share_hist else 0.0,
+                "arrival_share": live_mod.ARRIVAL_SHARE,
+                "arrival_bars": live_mod.ARRIVAL_BARS,
+                "openness": br.get("openness_cur"),
+                "gap_diag": gap_hist[-1] if gap_hist else None,
+                "floor_diag": (floor_diag or {}).get("floor"),
+                "T_s_pinned": br.get("T_s_pinned"),
+                # THE SHAPE THE VIEW READS. The front end was built in parallel
+                # against this contract; the flat fields above stay for tooling
+                # and the report. `history` is the RAW per-bar share list — never
+                # smoothed, because the winding is the thing being shown.
+                "journey": {
+                    "active": True,
+                    "target": br.get("dest_track"),
+                    "share": share_hist[-1] if share_hist else 0.0,
+                    "history": list(share_hist),
+                    "stalled": bool(stalled),
+                },
+            })
+        elif raw_mode == "straight":
+            out["phase"] = "arrived" if live.get("via_bridge") else "straight"
+        return out
 
     def wav_header(self, data_len: int = 0xFFFFFFFF - 44) -> bytes:
         """A streaming WAV header (mono int16 @ sr) with an open-ended size."""

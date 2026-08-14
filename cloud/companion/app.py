@@ -1874,7 +1874,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             from cloud.companion.live import LiveCarrierUnavailable
             try:
-                out = p.live_start(int(track), float(t))
+                # live_click dispatches: idle/off -> the immediate B-1 start
+                # (unchanged, LM-10); already-playing -> THE BRIDGE (2026-08-14
+                # reframe) — one entry point, never a second decision channel.
+                out = p.live_click(int(track), float(t))
             except LiveCarrierUnavailable as exc:
                 # A-2/A2.3: refuse HONESTLY rather than ever falling back to
                 # unfenced (free-blend) play — B-0 forbids that sound in LIVE.
@@ -1884,11 +1887,12 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(400, {"ok": False, "error": str(exc)})
                 return
             except Exception as exc:
-                log.exception("live_start failed")
+                log.exception("live_click failed")
                 self._json(500, {"ok": False,
                                  "error": f"{type(exc).__name__}: {exc}"})
                 return
-            self._json(200, {"ok": True, "mode": "straight", **out})
+            mode = "bridge" if out.get("bridge") else "straight"
+            self._json(200, {"ok": True, "mode": mode, **out})
             return
         if path == "/api/live/enter":
             # ENTERING LIVE (AMENDMENT 2 B-0): hold the transport idle-silent

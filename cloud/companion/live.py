@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import bisect
 import inspect
-from typing import Optional, Sequence, Tuple
+from typing import Mapping, Optional, Sequence, Tuple
 
 
 class LiveCarrierUnavailable(RuntimeError):
@@ -306,6 +306,405 @@ def clamp_call_kwargs(write_bar_fn, clamp_terms) -> dict:
             "the carrier module imports, but is not wired into the writer. "
             "LIVE refuses rather than emit unfenced audio under a fence.")
     return {name: clamp_terms}
+
+
+# --- THE BRIDGE (papers/PREREG-live-mode.md AMENDMENTS 1, 3, 4, 5, and the
+# operator's 2026-08-14 REFRAME superseding B-2..B-5 of Amendment 5) ---------
+#
+# STRAIGHT play (above) is Train B2. This section is the bridge: the second
+# click, while a track is already playing straight, no longer starts a fresh
+# full fence at once.
+#
+# THE REFRAME (binding; supersedes the corridor/ratchet as the DEFAULT path):
+# the transition already exists in the object — the succession bridge (the
+# KL tether to the propagated past) IS the transition operator. A musical
+# transition is the system relaxing between two basins at finite temperature,
+# winding between the past tether and the destination pull as they trade
+# dominance, finding the cheap crossing. That winding is the physics, not
+# meander — so the default bridge RELEASES the wall, APPLIES the pull, and
+# does NOT intervene:
+#
+#   B-1 RELEASE — the source fence's openness walks 1 -> 0 on the adopted
+#       RegionSlew law (unchanged from the original brief). ``release_step``.
+#   B-2 PULL — the destination's stored column-share character latches as a
+#       COLUMN lean on the EXISTING tilt jack (the region-tilt lane every
+#       other view already drives through ``StreamPlayer.set_region`` / the
+#       ONE ``_tilt_for(u)`` — I-1), sigma-clamped (the panel's own
+#       ``clamp_region`` envelope) and slewed in (the SAME adopted law).
+#       Nothing else is emitted: no clamp, no second channel.
+#       ``pull_target`` / ``pull_step``.
+#   B-3 TRAVERSE — once released (openness reaches 0) there is NO further
+#       restriction: no corridor, no ratchet, no monotonicity requirement, no
+#       profile-space arrival test. The path is whatever the tether makes
+#       cheap given the committed past; excursions and back-and-forth are
+#       EXPECTED and are never suppressed or smoothed.
+#   B-4 ARRIVAL IS OBSERVED, NOT MEASURED — the destination fence closes when
+#       the casting is ALREADY drawing predominantly from the destination
+#       track: placement share >= ARRIVAL_SHARE sustained over ARRIVAL_BARS
+#       consecutive bars, both REGISTERED verbatim, never per-corpus tuned.
+#       ``dest_share`` / ``arrival_reached``.
+#   B-5 STALL — share never rises: rendered honestly by the view (its own
+#       copy/treatment), never a forced/faked arrival and never a timeout.
+#   B-6 TEMPERATURE is the character knob already in the object (documented,
+#       not built): cold -> direct crossing, few excursions; hot -> wider
+#       excursions, more surprising connective material. No new parameter.
+#   B-7 The profile-distance floor (``measure_floor``, the L2-column-share
+#       wobble) is RETIRED from the arrival test — the corpus's own measured
+#       diameter (~0.25 on the one fixture measured) covers too much of the
+#       space (A5.2) to type as a reliable "have we arrived" signal. It is
+#       kept as a DIAGNOSTIC readout only (reported, never gating).
+#
+# ONE METRIC FOR THE DIAGNOSTIC (Amendment 5 / A5.2, kept for the report):
+# ``column_shares``/``char_gap``/``stored_character`` still compute the L2
+# distance between COLUMN-SHARE vectors — an M-length vector that sums to 1 —
+# so "achieved" and "target" live in the same space. This machinery now feeds
+# the report's gap trajectory ONLY; it is never read by the arrival decision.
+#
+# THE RATCHET/CORRIDOR (Amendment 3) IS KEPT BUT DORMANT, FLAGGED, NON-
+# DEFAULT (R-5): a measurement instrument for A/B comparison, never wired
+# into ``engine_bridge.StreamPlayer``'s default bridge path. See the section
+# below headed "RATCHET CORRIDOR — FLAGGED, NON-DEFAULT".
+#
+# THE MODE COMPUTES, THE CARRIER CARRIES (mirrors LM-4/BR-1): every function
+# below is a PURE reduction over data already on hand (stored slices, or
+# already-produced telemetry) or over its own small dict of state — none of
+# it touches settlement/F/render, and the per-bar clamp it hands the writer
+# is built through the SAME single construction point (clamp0) straight play
+# already uses. No schedule/corridor/easing/monotonicity logic exists in
+# architecture-v6/ets (BR-1; see cloud/tests/test_live_bridge.py's static
+# scan).
+
+from math import sqrt
+
+
+def column_shares(track_role_map: Optional[Mapping], M: int) -> Tuple[float, ...]:
+    """The ACHIEVED column-share vector: the SAME reduction the FE's role strip
+    reads (``fieldColShares`` in static/index.html) over the SAME telemetry
+    (``StreamPlayer.telemetry["nowplaying_track_role"]``, keys ``"tid,k"``).
+    Sums placement mass by role k across every track, then normalizes to a
+    share (sums to 1). An empty/all-zero map ⇒ an honest all-zero vector (no
+    invented uniform fallback) — mirrors ``fieldColShares``'s own ``tot>0``
+    guard exactly."""
+    M = int(M)
+    glow = [0.0] * M
+    tot = 0.0
+    for key, v in (track_role_map or {}).items():
+        try:
+            k = int(str(key).split(",")[1])
+        except (ValueError, IndexError):
+            continue
+        v = float(v)
+        if 0 <= k < M:
+            glow[k] += v
+            tot += v
+    if tot <= 0.0:
+        return tuple(0.0 for _ in range(M))
+    return tuple(g / tot for g in glow)
+
+
+def char_gap(a: Sequence[float], b: Sequence[float]) -> float:
+    """L2 distance between two column-share vectors — the ONE metric (Amendment
+    5): every arrival/corridor comparison in this module goes through this
+    single function, so achieved and target are never compared in mismatched
+    spaces."""
+    return sqrt(sum((float(x) - float(y)) ** 2 for x, y in zip(a, b)))
+
+
+def stored_character(slices: Sequence[Sequence], t: float, M: int) -> Tuple[float, ...]:
+    """The TARGET column-share vector for a destination click (track, t): the
+    mass-weighted mixture of the STORED role indicator over the slice(s)
+    whose span contains t — server-side mirror of static/index.html's
+    ``fieldScrubWeights`` (WS-1/W-2), in the SAME column-share space
+    ``column_shares`` produces (sums to 1). A click landing in a gap (no
+    stored slice contains t) is honestly all-zero — no smoothing, no nearest-
+    neighbour guess."""
+    M = int(M)
+    t = float(t)
+    w = [0.0] * M
+    tot = 0.0
+    for row in slices:
+        t0, t1 = float(row[0]), float(row[1])
+        if not (t0 <= t < t1):
+            continue
+        m = float(row[3])
+        q = row[4] if len(row) > 4 else ()
+        for r in range(min(M, len(q))):
+            v = m * float(q[r])
+            w[r] += v
+            tot += v
+    if tot <= 0.0:
+        return tuple(0.0 for _ in range(M))
+    return tuple(x / tot for x in w)
+
+
+def measure_floor(history: Sequence[Sequence[float]]) -> Optional[dict]:
+    """The MEASURED noise floor (Amendment 1 A1.4 / Amendment 5 A5.2): mean +
+    sd of the bar-to-bar L2 distance between consecutive achieved
+    column-share vectors in ``history`` (time order). This is the SAME
+    statistic A5.2 reports (mean, sd, floor=mean+sd) — computed HERE, at
+    runtime, over THIS world's own recent telemetry, never hardcoded.
+
+    B-7 (2026-08-14 reframe): this is now a DIAGNOSTIC readout ONLY — reported
+    per journey (pinned at the journey's start, §A5.3 R-A), never consulted by
+    the arrival decision (``arrival_reached`` below is the only gate).
+
+    Returns ``None`` if fewer than 2 samples exist (a bar-to-bar wobble needs
+    at least one consecutive pair) — an honest absence, never a fabricated
+    floor from insufficient history."""
+    hist = list(history)
+    if len(hist) < 2:
+        return None
+    deltas = [char_gap(hist[i], hist[i + 1]) for i in range(len(hist) - 1)]
+    n = len(deltas)
+    mean = sum(deltas) / n
+    var = sum((d - mean) ** 2 for d in deltas) / n     # population sd, matches A5.2's own report
+    sd = sqrt(var)
+    return {"mean": mean, "sd": sd, "floor": mean + sd, "n": n}
+
+
+# =============================================================================
+# DEFAULT BRIDGE v0 — release + pull, no intervention (the 2026-08-14 reframe)
+# =============================================================================
+
+def release_step(openness_cur: float) -> float:
+    """One bar's RELEASE step (B-1 / A1.3, unchanged by the reframe): the
+    source fence's openness follows ``ets.panel.envelope.RegionSlew`` — the
+    REGISTERED slew law and its REGISTERED ``SLEW_MAX_STEP`` — ADOPTED at
+    LIVE's own per-bar emit cadence rather than the panel's 30 Hz timer
+    (A1.3's disclosed consequence: wall-clock release time differs; no new
+    rate is invented). A fresh ``RegionSlew`` is used as a pure one-shot
+    stepper (n=1, target 0) so this function stays a pure value->value call,
+    while the underlying step math is the SAME imported law, not a
+    reimplementation of it."""
+    from ets.panel.envelope import RegionSlew, SLEW_MAX_STEP
+    rs = RegionSlew(max_step=SLEW_MAX_STEP, n=1)
+    rs.reset([float(openness_cur)])
+    nxt = rs.step([0.0])
+    return float(max(0.0, nxt[0]))
+
+
+def release_clamp(openness_cur: float, source_track: int, pin_units=None, slot_pin=None):
+    """B-1/B-3's ONLY carrier restriction: while ``openness_cur > 0`` a
+    single-track fence to ``source_track`` at the CURRENT (decaying) openness
+    — the source's own forward-walking window (``pin_units``/``slot_pin``,
+    straight play's existing mechanism) continues exactly as it does in
+    straight play. Once fully released (``openness_cur <= 0``) this returns
+    ``None`` — clamp0's OWN neutral-carrier law (A-2/LM-1), not a special
+    case invented here: the traverse (B-3) has no restriction beyond that, by
+    construction (BR-1 — there is nothing left in this function to be a
+    corridor/ratchet)."""
+    if openness_cur <= 0.0:
+        return None
+    try:
+        from ets.writer.clamp import clamp0
+    except ImportError as exc:
+        raise LiveCarrierUnavailable(
+            "ets.writer.clamp.clamp0 is not importable yet: "
+            f"{type(exc).__name__}: {exc}") from exc
+    try:
+        return clamp0(
+            track_mask={int(source_track): float(openness_cur)},
+            openness=float(openness_cur),
+            unit_pin=((int(source_track), tuple(int(u) for u in pin_units))
+                      if pin_units else None),
+            slot_pin=slot_pin)
+    except Exception as exc:
+        raise LiveCarrierUnavailable(
+            f"clamp0(...) failed to construct the release fence: "
+            f"{type(exc).__name__}: {exc}") from exc
+
+
+def pull_target(stored_char: Sequence[float]) -> Tuple[float, ...]:
+    """B-2's sigma-clamped latch: the destination's STORED column-share
+    character, passed through the SAME safe-envelope wall
+    (``ets.panel.envelope.clamp_region`` / ``SAFE_REGION_MAGNITUDE``) the
+    panel's own region lane uses. A column-share vector's components already
+    sum to <= 1 (never exceeding the cap on their own), so this is a genuine
+    reuse of the registered wall, not a no-op dressed up as one — it is the
+    SAME call, on the SAME cap, that would fire if a component ever did
+    exceed it. Computed ONCE at click time and PINNED for the whole journey
+    ("latches")."""
+    from ets.panel.envelope import clamp_region
+    return tuple(float(x) for x in clamp_region(stored_char))
+
+
+def pull_step(cur_vec: Sequence[float], target_vec: Sequence[float]) -> Tuple[float, ...]:
+    """One bar's SLEWED step of the latched region lean toward ``target_vec``
+    — the SAME adopted ``RegionSlew`` law/constant as ``release_step``,
+    applied here to the FULL region vector (length ``len(target_vec)``)
+    instead of a single scalar. This is the ONLY lean the bridge ever emits
+    (B-2: "nothing else is emitted") — it rides the EXISTING region-tilt lane
+    (``StreamPlayer.set_region`` -> the ONE ``_tilt_for(u)``), never a second
+    control channel."""
+    n = len(target_vec)
+    from ets.panel.envelope import RegionSlew, SLEW_MAX_STEP
+    rs = RegionSlew(max_step=SLEW_MAX_STEP, n=n)
+    rs.reset(list(cur_vec) if cur_vec is not None else [0.0] * n)
+    return tuple(float(x) for x in rs.step(list(target_vec)))
+
+
+# B-4's two REGISTERED constants (operator, 2026-08-14 reframe) — verbatim,
+# never per-corpus tuned, never exposed as a UI knob.
+ARRIVAL_SHARE: float = 0.75
+ARRIVAL_BARS: int = 2
+
+
+def dest_share(rows, dest_track: int) -> float:
+    """THIS bar's RAW (unsmoothed) placement-mass share of ``dest_track`` —
+    the fraction of the bar's total cast mass that landed on the destination
+    track, read directly off the just-produced bar's rows (``(slot, tid,
+    uid, sec, mass)``), never the EMA-smoothed display telemetry (B-4 wants
+    what THIS bar actually did, not a decayed blend). A bar that cast nothing
+    at all is honestly 0.0 (no invented denominator)."""
+    dest_track = int(dest_track)
+    tot = 0.0
+    dm = 0.0
+    for (_slot, tid, _uid, _sec, mass) in rows:
+        m = float(mass)
+        tot += m
+        if int(tid) == dest_track:
+            dm += m
+    return (dm / tot) if tot > 0.0 else 0.0
+
+
+def arrival_reached(recent_shares: Sequence[float]) -> bool:
+    """B-4 ARRIVAL IS OBSERVED, NOT MEASURED: the destination fence closes iff
+    the LAST ``ARRIVAL_BARS`` bars (consecutive, most-recent-last) each
+    independently placed at least ``ARRIVAL_SHARE`` of their mass on the
+    destination track. No clock, no bar-count timeout, no profile-distance
+    fallback — this is the ONLY arrival gate on the default bridge path."""
+    recent = list(recent_shares)[-ARRIVAL_BARS:]
+    return len(recent) == ARRIVAL_BARS and all(s >= ARRIVAL_SHARE for s in recent)
+
+
+# =============================================================================
+# RATCHET CORRIDOR — FLAGGED, NON-DEFAULT, MEASUREMENT-ONLY (Amendment 3 R-5)
+# =============================================================================
+# The 2026-08-14 reframe retires the corridor as the DEFAULT bridge mechanism
+# (BR-1: the default path above has no schedule/corridor/easing/monotonicity
+# logic at all). Amendment 3 R-5 keeps a ratcheted-corridor alternative
+# available "as a registered mode flag for comparison/measurement, not
+# exposed in UI v0" — this section IS that flag: a complete, independently
+# testable implementation that NOTHING in ``engine_bridge.StreamPlayer``'s
+# default bridge path calls (see cloud/tests/test_live_bridge.py's
+# ``test_br1_default_engine_bridge_path_never_calls_the_ratchet`` static
+# scan). It exists for an explicit, opt-in A/B run, never for a listener.
+#
+# It also demonstrates WHY B-7 retired the profile-distance floor from the
+# arrival test (A5.2): ``corridor_mask`` below can legitimately compute an
+# EMPTY admissible set on bar 1 of a corridor phase (the blended ACHIEVED
+# telemetry can sit closer to target than any SINGLE track's own static
+# character), which is exactly the honest-stall risk the reframe's B-4
+# (observed placement share, no profile distance) sidesteps by construction.
+
+def track_character(slices: Sequence[Sequence], M: int) -> Tuple[float, ...]:
+    """A TRACK'S OWN static column-share vector: the SAME mass-weighted q
+    reduction as ``stored_character``, but over the WHOLE track's stored
+    slices rather than one clicked window — the corridor's per-track ranking
+    input (a buildable proxy for "material whose [own] character" — computed
+    once from stored data, never a prediction of a future settlement outcome,
+    which is not knowable before the draw). DORMANT: only the ratchet
+    functions below call this."""
+    M = int(M)
+    w = [0.0] * M
+    tot = 0.0
+    for row in slices:
+        m = float(row[3])
+        q = row[4] if len(row) > 4 else ()
+        for r in range(min(M, len(q))):
+            v = m * float(q[r])
+            w[r] += v
+            tot += v
+    if tot <= 0.0:
+        return tuple(0.0 for _ in range(M))
+    return tuple(x / tot for x in w)
+
+
+def corridor_mask(track_chars: Mapping[int, Sequence[float]], target: Sequence[float],
+                  best_gap: float, floor: float,
+                  prev_mask: Optional[Mapping[int, float]]) -> dict:
+    """R-1/R-3 — one bar's admissible-TRACK set: every track whose OWN static
+    column-share character (``track_chars``) sits within ``best_gap + floor``
+    of ``target``, each admitted at mask value 1.0 (a genuine binary hard
+    set — Amendment 4's hard fence, not a soft ring).
+
+    R-3 NO-SPLICE: if that set is EMPTY (no road within the current corridor)
+    the corridor "simply stops tightening" — ``prev_mask`` is returned
+    UNCHANGED rather than collapsed to nothing. DORMANT (see section header)."""
+    bound = float(best_gap) + float(floor)
+    admissible = {int(tid): 1.0 for tid, ch in track_chars.items()
+                 if char_gap(ch, target) <= bound}
+    if admissible:
+        return admissible
+    return dict(prev_mask) if prev_mask else {}
+
+
+def ratchet_bridge_step(state: dict, achieved: Sequence[float]) -> dict:
+    """ONE bar's pure state transition for the FLAGGED ratchet corridor
+    (release then corridor phase). Never mutates ``state``; returns a NEW
+    dict. DORMANT (see section header) — kept for A/B measurement only.
+
+    ``achieved`` is this bar's measured column-share vector. R-2: ``best_gap``
+    moves ONLY from this achieved sample, monotone non-increasing, NEVER from
+    elapsed bars or a clock — repeated calls with the SAME ``achieved``
+    (frozen telemetry) leave ``best_gap``/the corridor mask BYTE-IDENTICAL
+    (RG-1), by construction: nothing here reads a bar counter or wall clock.
+
+    Fields consumed/produced in ``state``: target, floor (pinned), best_gap,
+    phase ("release"|"corridor"), openness_cur, track_chars, mask (current
+    admissible set), stalled, arrived, gap (last-measured, diagnostic)."""
+    st = dict(state)
+    g = char_gap(achieved, st["target"])
+    st["gap"] = g
+    prev_best = st.get("best_gap")
+    st["best_gap"] = g if prev_best is None else min(float(prev_best), g)
+    st["arrived"] = bool(g < float(st["floor"]))
+
+    if st["phase"] == "release":
+        nxt = release_step(st["openness_cur"])
+        st["openness_cur"] = nxt
+        if nxt <= 0.0:
+            st["phase"] = "corridor"
+
+    if st["phase"] == "corridor":
+        prev_mask = st.get("mask")
+        new_mask = corridor_mask(st["track_chars"], st["target"], st["best_gap"],
+                                 st["floor"], prev_mask)
+        # R-3: "stalled" iff the FRESH computation this bar found no road (the
+        # corridor had to fall back to the frozen prior mask) — never sticky
+        # past a bar that genuinely widens again.
+        fresh = corridor_mask(st["track_chars"], st["target"], st["best_gap"],
+                              st["floor"], None)
+        st["stalled"] = (not fresh) and bool(prev_mask)
+        st["mask"] = new_mask
+    return st
+
+
+def ratchet_bridge_clamp(state: dict, source_track: int, pin_units=None, slot_pin=None):
+    """Build one bar's ClampTerms from ratchet ``state`` (release or corridor
+    phase). Lazy-imports ``clamp0`` exactly like ``release_clamp``; raises
+    ``LiveCarrierUnavailable`` under the same conditions. DORMANT (see
+    section header) — kept for A/B measurement only."""
+    try:
+        from ets.writer.clamp import clamp0
+    except ImportError as exc:
+        raise LiveCarrierUnavailable(
+            "ets.writer.clamp.clamp0 is not importable yet: "
+            f"{type(exc).__name__}: {exc}") from exc
+    try:
+        if state["phase"] == "release":
+            return clamp0(
+                track_mask={int(source_track): float(state["openness_cur"])},
+                openness=float(state["openness_cur"]),
+                unit_pin=((int(source_track), tuple(int(u) for u in pin_units))
+                          if pin_units else None),
+                slot_pin=slot_pin)
+        mask = state.get("mask") or {}
+        return clamp0(track_mask={int(t): 1.0 for t in mask}, openness=1.0)
+    except Exception as exc:
+        raise LiveCarrierUnavailable(
+            f"clamp0(...) failed to construct the ratchet bridge fence: "
+            f"{type(exc).__name__}: {exc}") from exc
 
 
 # --- measured placement (the live-state feed) --------------------------
