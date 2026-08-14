@@ -451,7 +451,20 @@ class FiberThreader:
             is_cont.append(False)
         if not choices:
             fallback = idx.unit_of.get((k, b))    # minimal index / degenerate
-            return (fallback, False) if fallback is not None else None
+            if fallback is None:
+                return None
+            # THE FENCE COVERS THE DEGENERATE BRANCH TOO (Amendment 4 R1: "no
+            # cast outside ClampTerms, ever"). This early return predates the
+            # struck widen-fallback below and was missed by it: it hands back a
+            # unit from the minimal index WITHOUT consulting the fence, so any
+            # (role, band) with no candidate list cast whatever `unit_of` named
+            # — another track's material, in the middle of a fenced passage.
+            # Measured 2026-08-14 under a fence admitting NOTHING: 56 slots
+            # starved correctly and this branch still placed three tracks.
+            if self.clamp is not None and not _admits(self.clamp, fallback, slot):
+                self.starved.append((bar, k, b))
+                return None
+            return (fallback, False)
 
         # ClampTerms fence (prereg §2.1): restricts `choices` ONLY, before the
         # measure below ever runs — the continuation entry (index 0 above, if
@@ -670,7 +683,14 @@ class FiberThreader:
         h = 1 if nxt is not None else 0            # the continuation head, if any
         if n + h == 0:
             fallback = idx.unit_of.get((k, b))     # minimal index / degenerate
-            return (fallback, False) if fallback is not None else None
+            if fallback is None:
+                return None
+            # Same fence coverage as `_choose_original`'s matching branch, in
+            # the same order, so the two paths stay bit-identical under a fence.
+            if self.clamp is not None and not _admits(self.clamp, fallback, slot):
+                self.starved.append((bar, k, b))
+                return None
+            return (fallback, False)
 
         # F's own fiber energies (LAMBDA live; term math from f.py).
         base = self._pool_energies(pool, k, b, psi)

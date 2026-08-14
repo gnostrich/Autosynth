@@ -269,6 +269,30 @@ def build_full_fence(track: int, unit_ids: Sequence[int], slot_pin=None):
             f"{type(exc).__name__}: {exc}") from exc
 
 
+def silent_fence(track: int):
+    """The fence for a bar LIVE has nothing to play — the passage ran off the
+    end of the track, so idle silence is the honest output (LM-9).
+
+    It must still be a FENCE, not ``None``. Composing that bar with no carrier
+    at all is what produced the defect the operator heard on 2026-08-14: the
+    exhaustion bar was cast against the WHOLE CORPUS, so every track sounded
+    for one bar in the middle of a fenced passage. Measured: bars alternating
+    ``placed tracks [0]`` (fenced) with ``placed tracks [0,1,2,3]`` (unfenced).
+
+    "Admit nothing" is spelled the way clamp0's own error message names it —
+    through ``track_mask``, below ``openness`` — not through an empty unit pin
+    (which clamp0 rejects, correctly, as not being a pin at all). Every
+    candidate refuses, every slot starves, the bar casts nothing: silence
+    inside the fence (LM-11), never another track's material."""
+    try:
+        from ets.writer.clamp import clamp0
+    except ImportError as exc:
+        raise LiveCarrierUnavailable(
+            "ets.writer.clamp.clamp0 is not importable yet: "
+            f"{type(exc).__name__}: {exc}") from exc
+    return clamp0(track_mask={int(track): 0.0}, openness=1.0)
+
+
 def clamp_kwarg_name(write_bar_fn) -> Optional[str]:
     """Which keyword of ``write_bar`` accepts the ClampTerms carrier, found
     by reading the signature's annotations for the carrier's TYPE NAME

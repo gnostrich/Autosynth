@@ -1787,6 +1787,11 @@ class StreamPlayer:
                                       start_group=live.get("start_group", 0),
                                       plan=live.get("plan"))
             if win["exhausted"]:
+                # Ran off the end. THIS bar is still composed and streamed, so
+                # it needs a fence of its own — leaving clamp_terms None cast it
+                # against the whole corpus and sounded every track for one bar
+                # (measured 2026-08-14). Silence is inside the fence.
+                clamp_terms = live_mod.silent_fence(live["track"])
                 self.live_enter()              # ran off the end: idle silence
             else:
                 admitted = tuple(win["core"]) + tuple(win["widened"])
@@ -1845,6 +1850,14 @@ class StreamPlayer:
                 if win is not None and not win["exhausted"]:
                     self._live["bars_elapsed"] = \
                         int(self._live.get("bars_elapsed", 0)) + 1
+        # IN LIVE, NEVER CAST UNFENCED. Every branch above that fails to build a
+        # fence (no slices, a bridge dict that vanished under a concurrent stop)
+        # would otherwise fall through with clamp_terms None — which is not
+        # "no restriction chosen" but "the whole corpus", the exact defect the
+        # exhaustion bar had. LIVE's honest output when it cannot fence is
+        # silence, so that is what it casts.
+        if clamp_terms is None and live.get("mode") in ("straight", "bridge"):
+            clamp_terms = live_mod.silent_fence(int(live.get("track") or 0))
         u = self._current_lane()
         with self._lock:                                     # second-moment shape (PREREG):
             a = None if self._wobble is None else np.asarray(self._wobble).copy()
