@@ -502,6 +502,13 @@ def release_step(openness_cur: float) -> float:
 BRIDGE_SCOPE_DIRECT = "direct"
 BRIDGE_SCOPE_OPEN = "open"
 
+# The smallest strictly-positive openness that keeps clamp0's admission rule
+# (`track_mask.get(t, 0.0) >= openness`) biting: masked tracks carry this exact
+# value and pass; unmasked tracks carry an implicit 0.0 and do not. It is not a
+# tuned threshold and never gates anything else — it is how "a fence that admits
+# exactly this set" is spelled in the carrier's existing vocabulary.
+DIRECT_FLOOR = 1e-6
+
 
 def _bridge_track_mask(source_track, dest_track, openness_cur, scope):
     """The fence's per-track admission during a bridge — the ONLY thing scope
@@ -532,17 +539,37 @@ def _bridge_track_mask(source_track, dest_track, openness_cur, scope):
 def release_clamp(openness_cur: float, source_track: int, pin_units=None,
                   slot_pin=None, dest_track=None,
                   scope: str = BRIDGE_SCOPE_DIRECT, carry_tracks=None):
-    """B-1/B-3's ONLY carrier restriction: while ``openness_cur > 0`` a
-    single-track fence to ``source_track`` at the CURRENT (decaying) openness
-    — the source's own forward-walking window (``pin_units``/``slot_pin``,
-    straight play's existing mechanism) continues exactly as it does in
-    straight play. Once fully released (``openness_cur <= 0``) this returns
-    ``None`` — clamp0's OWN neutral-carrier law (A-2/LM-1), not a special
-    case invented here: the traverse (B-3) has no restriction beyond that, by
-    construction (BR-1 — there is nothing left in this function to be a
-    corridor/ratchet)."""
-    if openness_cur <= 0.0:
-        return None
+    """B-1/B-3's ONLY carrier restriction. What RELEASES over the journey is
+    the source's forward-walking UNIT PIN (``pin_units``/``slot_pin``, straight
+    play's own mechanism) — the material stops being tied to the passage the
+    click landed in and the pair's whole corpus becomes available.
+
+    WHAT THE TRACK FENCE DOES DEPENDS ON SCOPE (S-1/S-2), and this is the
+    difference the operator heard on 2026-08-14 ("the transitions are routing
+    through other tracks"):
+
+    * DIRECT (default) — the fence PERSISTS for the whole journey at
+      ``DIRECT_FLOOR``, admitting only the carried set plus the destination.
+      A crossing between two tracks stays between those two tracks. Returning
+      ``None`` here (as this did) drops the fence entirely once openness
+      decays to 0, and since clamp0's rule is ``track_mask.get(t, 0.0) >=
+      openness`` an openness of exactly 0 admits EVERY unmasked track too —
+      measured: a single A->B leg ended up sounding 9 of 10 tracks.
+    * OPEN (flag) — releases to the corpus exactly as before: once fully
+      released this returns ``None``, clamp0's OWN neutral-carrier law
+      (A-2/LM-1), no restriction left at all.
+
+    Either way there is no corridor, no ratchet and no monotonicity here
+    (B-3/BR-1): the only thing this function decides is WHICH TRACKS the
+    fence admits, and it decides it once, from journey-start data."""
+    open_eff = float(openness_cur)
+    if open_eff <= 0.0:
+        if scope != BRIDGE_SCOPE_DIRECT:
+            return None
+        # DIRECT: the pin is released (pin_units is already None by now) but
+        # the pair's fence stands. Strictly positive so the rule keeps biting.
+        open_eff = DIRECT_FLOOR
+        openness_cur = DIRECT_FLOOR
     try:
         from ets.writer.clamp import clamp0
     except ImportError as exc:
