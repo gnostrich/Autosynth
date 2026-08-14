@@ -1119,3 +1119,152 @@ none, `leg_drawn=[0,2] -> carry=[0,2]`.
 
 **Ruling 5 is outstanding**: the admission measurement is to be re-run on a real
 corpus, reported not tuned.
+
+---
+
+## SLOT_PIN — UNDISCLOSED ENGINE EDIT, RETROACTIVE DISCLOSURE (2026-08-14)
+
+> **AWAITING OPERATOR RATIFICATION — not ratified as of this writing.**
+
+Commit `7e7b8af` ("LIVE: pin each slot to its own moment of the passage",
+2026-08-14T13:34:33Z) landed a change inside `architecture-v6/ets/writer/` with
+no accompanying prereg entry, REGISTRY line, or LEDGER row. This section is
+that entry, written after the fact, so the operator can rule on it. Nothing
+below argues for or against keeping the edit — it documents what is in the
+tree.
+
+### What the edit does
+
+`architecture-v6/ets/writer/clamp.py`: `ClampTerms` (frozen dataclass) gains a
+new field —
+
+```
+slot_pin: Optional[Mapping[int, Tuple[int, ...]]] = None
+```
+
+— and `clamp0(track_mask, openness, unit_pin=None, slot_pin=None)` gains the
+matching kwarg, threaded straight into the `ClampTerms(...)` construction.
+
+`architecture-v6/ets/writer/realize.py`: `_admits` gains a third clause and a
+new `slot` parameter —
+
+```
+def _admits(clamp: ClampTerms, c: Tuple[int, int], slot: int = -1) -> bool:
+    ...
+    pin = clamp.unit_pin
+    if pin is not None and pin[0] == tid and uid not in pin[1]:
+        return False
+    sp = getattr(clamp, "slot_pin", None)
+    if sp and slot >= 0:
+        allowed = sp.get(int(slot))
+        if allowed is not None and uid not in allowed:
+            return False
+    return True
+```
+
+This third clause runs AFTER the track-mask/openness comparison and the
+`unit_pin` comparison that were already there. `_choose`, `_choose_original`,
+and `_choose_fast` each gain a `slot: int = -1` parameter and pass it through
+to `_admits`. `place_slot`'s own signature is unchanged, but it now computes
+`int(s) % self.s_phase` — the slot-in-bar index it previously discarded — and
+forwards it into `_choose`, so the value reaches `_admits` on every fiber
+choice made through the streaming path.
+
+Companion, non-engine plumbing (not itself the engine edit, but how
+`slot_pin` gets populated): `cloud/companion/live.py::bar_window` now builds
+`slot_pin = {j: (that slot's own tatum's unit ids)}` per core group and
+returns it in the window dict; `cloud/companion/engine_bridge.py::StreamPlayer`
+reads `win["slot_pin"]` and passes it into `live_mod.build_full_fence(...,
+slot_pin=...)`, which forwards it into `clamp0(...)`.
+
+### Why: the self-mixing bug
+
+Measured 2026-08-13, one bar of straight play under a single-track full fence:
+slot 0 played tatums 0, 8, 15, 16 and 23 at once — the track layered over
+itself, which is what the operator heard and reported as the track "mixing
+with itself." Cause: `unit_pin` admits a whole bar's worth of units as ONE
+pool, so any slot in the bar can draw any unit of that pool; nothing tied slot
+`i` to tatum `i`, and the choice function never even received the slot index
+to tie them with. `slot_pin` maps slot → the units of that slot's own moment
+of the passage, so slot `i` can only draw tatum `i`'s material.
+
+### This is a third comparison — §2.1 is now inaccurate
+
+§2.1 above registers the restriction as **one comparison**:
+
+> `track_mask.get(track_of(candidate), 0.0) >= openness` … plus, when a
+> slice-range pin is present, its unit must lie in the pinned range. This is
+> one comparison
+
+and §2 states plainly: **"ClampTerms restricts `choices` — and nothing
+else… This is the whole engine-side surface of Part A."** The code's own
+`_admits` docstring likewise calls itself "the only engine logic ClampTerms
+adds." All three statements are now false as written. `_admits` evaluates
+three clauses in sequence: (1) the registered track_mask/openness test, (2)
+the `unit_pin` test, (3) the new `slot_pin` test. This is not a restatement
+or a sub-case of the registered comparison — it is a second, independent
+restriction with its own carrier field, its own parameter threaded through
+both choosers, and its own failure mode (a slot can now be refused a
+candidate that the track_mask/openness/unit_pin tests would all admit).
+
+### Two options for the operator
+
+**(A) — the parent's recommendation.** Amend §2.1 to register three
+comparisons instead of one, updating the prose above (and the `_admits`
+docstring, out of scope for this DOCS-ONLY pass) to match what the code does.
+Rationale: `_admits` is the single function both `_choose_original` and
+`_choose_fast` call — §2.1's own stated reason for putting the restriction
+rule there in the first place is that this makes it **one decision channel**.
+Moving the per-slot logic to a second site (anywhere outside `_admits`) would
+recreate exactly the second decision channel that design was built to
+prevent, even though the new logic is neutral when `slot_pin` is absent.
+
+**(B).** Move the per-slot restriction outside `_admits` (e.g., filter
+`choices` for it before the shared function runs, or fold it into the caller
+that builds `slot`). Not the parent's recommendation, for the reason given
+under (A): it reopens the second-channel risk `_admits`'s single-channel
+design exists to close.
+
+Neither option is applied by this pass. This section only presents them.
+
+### Byte-identity evidence
+
+Proven by physically removing the `slot_pin` clause from `_admits` in
+`realize.py` and the `slot_pin` field/kwarg plumbing from `clamp.py`, then
+re-running a 16-bar passage under four fence configurations — unfenced bars,
+a single-track fence, unit-pinned fences, and a two-track decaying fence — all
+with `slot_pin` absent in every case, and hashing the emitted rows plus the
+settled occupancy: `22d27d511b433c86…`, identical with the clause present
+(and unused, `slot_pin=None`) and with the clause physically removed.
+
+This proves the carrier's own neutral law (A-2: absent ClampTerms fields ⇒
+byte-identical output) still holds when `slot_pin` is simply never supplied.
+It does **not** show the three-comparison claim above is wrong — it isn't:
+byte-identity at the neutral default is a necessary property of a well-formed
+carrier extension, not evidence that the extension leaves the comparison set
+unchanged when the field IS supplied, which it now is, live, on every LIVE
+straight-play bar.
+
+### Standing rule triggered by this edit
+
+Any change to a carrier's TYPE (a new field on `ClampTerms` or `TiltTerms`),
+or to the comparison set evaluated inside `_admits`, is an engine edit
+requiring prereg + REGISTRY + operator ratification — **regardless of
+neutrality**, i.e. regardless of whether output is byte-identical when the
+new field is simply left absent. One silent edit of this shape is enough to
+make every "no engine changes" claim elsewhere in this project unverifiable
+by inspection: byte-identity-at-default proves the neutral law holds, it does
+not prove nothing else changed.
+
+### Companion edit, same day, already flagged
+
+The same day, commit `41fa549` ("Close the two unfenced-cast holes: a fenced
+passage stays on its own tracks", 2026-08-14T15:35:27Z) fenced the degenerate
+early-return branch in both choosers — recorded above at §BS.1(a) as
+"ENGINE-FILE EDIT, FLAGGED FOR RATIFICATION" — **and that one IS ratified.**
+Neither this edit nor `41fa549` appears in `VERSION_LEDGER.jsonl`'s per-edit
+trail for 2026-08-14, though `cloud/`-tree edits made that same day (in
+several parallel worktrees) do appear there. See the LEDGER.md entry recording
+both.
+
+> **AWAITING OPERATOR RATIFICATION — not ratified as of this writing.**
