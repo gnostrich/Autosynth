@@ -1848,8 +1848,33 @@ class StreamPlayer:
             if win is not None and not win["exhausted"]:
                 pin_units = tuple(win["core"]) + tuple(win["widened"])
                 slot_pin = win.get("slot_pin")
+            # THE PIN NAMES THE WINDOW'S OWN TRACK, NOT THE MEASURED `from`
+            # (2026-08-14 adversarial-audit finding). `pin_units` above is cut
+            # from `live["slices"]` — always that same track's own consecutive
+            # slices, since `live["track"]`/`live["slices"]` are set together
+            # at `live_start` and never reassigned by a bridge click or reroute
+            # (see the class docstring's LIVE MODE note: "self._live['track']
+            # stays the SOURCE track ... until arrival flips it"). So
+            # `live.get("track")` is "whichever track the fence is actually
+            # continuing from" — the one thing a unit_pin is allowed to claim
+            # (clamp.py's own rule: a pin's ids must be real units OF the
+            # track it names).
+            #
+            # `br["source_track"]` answers a DIFFERENT question — THE PAIR
+            # RULE's MEASURED dominant-mass track, i.e. which track(s) this
+            # bar ADMITS (the track_mask). That is already wired correctly via
+            # `carry_tracks` below, independent of this argument. On a plain
+            # first click the two happen to be the same track (nothing else
+            # has sounded yet), which is why the conflation hid until a
+            # mid-bridge REROUTE re-measures `from` onto a different track
+            # while the window keeps walking the ORIGINAL session track: the
+            # old code pinned unit ids that belong to `live["track"]` under
+            # `br["source_track"]`'s name — on a corpus with disjoint
+            # per-track unit ids that starves the named track outright (its
+            # real units never match the borrowed id list) while the track
+            # that actually owns those ids stays unmasked and silent.
             clamp_terms = live_mod.release_clamp(
-                br["openness_cur"], br["source_track"],
+                br["openness_cur"], live.get("track"),
                 pin_units=pin_units, slot_pin=slot_pin,
                 dest_track=br.get("dest_track"),
                 scope=br.get("scope", live_mod.BRIDGE_SCOPE_DIRECT),
