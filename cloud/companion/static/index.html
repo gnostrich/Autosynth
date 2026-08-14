@@ -336,8 +336,6 @@
     background: var(--muted); }
   .fj-trace .fj-bar.met{ background: var(--accent); }
   .field-journey.stalled .fj-trace .fj-bar{ background: var(--damp); opacity:.55; }
-  .fj-thresh{ position:absolute; left:0; right:0; bottom:75%; height:1px;
-    background: var(--line-soft); pointer-events:none; }
   /* SCROLL CONTAINER: when the (track x role) grid needs more than the viewport, the
      field pans inside here (both axes) so cells keep a legible minimum size instead
      of squashing. overscroll-behavior:contain keeps the PAGE body from scrolling
@@ -1228,7 +1226,7 @@
                     <span class="fj-label" id="fjLabel"></span>
                     <span class="fj-pct" id="fjPct"></span>
                   </div>
-                  <div class="fj-trace" id="fjTrace"><div class="fj-thresh"></div></div>
+                  <div class="fj-trace" id="fjTrace"></div>
                 </div>
               </div>
             </section>
@@ -3911,10 +3909,8 @@
     // the detailed view; this line is the same story in one sentence.
     if(fieldLiveState.journey){
       var jr = fieldLiveState.journey;
-      return { text: jr.stalled
-                 ? "bridging — the corpus has no road there (fence stays open)"
-                 : "bridging — " + Math.round(jr.share * 100) + "% drawn from the destination",
-               warn: !!jr.stalled };
+      return { text: "bridging — " + Math.round(jr.share * 100) + "% drawn from the destination",
+               warn: false };
     }
     if(fieldLiveState.mode !== "straight")
       return { text:"ready — click a spot to start playing from there" + fieldLiveJumpSuffix(),
@@ -3975,10 +3971,6 @@
       admitted: adm
     };
   }
-  // FIELD_JOURNEY_MAX_BARS: a DISPLAY cap only (the trace does not fit unbounded
-  // bars in a fixed-width strip) — bars are dropped from the OLD end, never binned
-  // or averaged, so every bar still shown is exactly what the backend reported.
-  var FIELD_JOURNEY_MAX_BARS = 48;
   var fjEl = $("fieldJourney"), fjLabelEl = $("fjLabel"), fjPctEl = $("fjPct"), fjTraceEl = $("fjTrace");
   function fieldLiveJourneyHide(){
     if(fjEl) fjEl.hidden = true;
@@ -4010,7 +4002,7 @@
       // The blend as proportional segments — this bar's measurement, drawn
       // verbatim. The old trace showed a share history against a 0.75 mark;
       // both the history and the mark are gone.
-      while(fjTraceEl.children.length > 1) fjTraceEl.removeChild(fjTraceEl.lastChild);  // keep .fj-thresh
+      while(fjTraceEl.children.length > 0) fjTraceEl.removeChild(fjTraceEl.lastChild);
       for(var b = 0; b < journey.blend.length; b++){
         var seg = document.createElement("div");
         seg.className = "fj-bar";
