@@ -71,3 +71,48 @@ this file is the "how do I get back to X" index.
 - **What it is:** durable per-KEY owner identity (`owners.json`; one key = one session across logins AND redeploys), orphan ADOPTION on first login (single-key deploys; recovered the operator's real 10-track set live), legacy-token in-place migration, key-gated `/api/recover` (inventory + explicit rebind; refuses `_store`/foreign-owner/outside-base), ASYNC `/api/train` with FE status-reconcile (gateway timeouts/reloads/re-clicks can no longer wedge or double-train), background bank warm on open/restore. NO engine/steering edit — audio byte-identical.
 - **Gate:** 280 cloud tests green incl. 15 new (`cloud/tests/test_owner_identity_recover.py`); ets-auditor FAIL (B1/B2/B3, all reproduced) → fixed + pinned → PASS-WITH-NOTES → notes fixed. Runtime-verified on a live server AND on production: 10-track auto-recovered under the operator's key, streams RMS ~2400.
 - **Prereg:** `papers/PREREG-session-recovery.md`. **Rollback:** `5cfb041` (pre-recovery main).
+
+## 2026-08-14 — the day TRACKS went quiet, and what actually happened
+
+**Restore points**
+| tag / sha | what it is |
+|---|---|
+| `9722190` | before the render-throughput optimization (rolled the live site here mid-day; made NO audible difference — 213Hz vs 215Hz centroid, so the optimization was exonerated) |
+| `9be70af` | before all LIVE work — proven byte-identical in render output to today's HEAD on the same world |
+| `060a119` | main before the TRACKS steering restore |
+| `e5bf64f` | this build: TRACKS cell steering restored + LIVE fence widened |
+
+**The real regression (found, fixed).** Amendment 2 made a TRACKS click emit
+COLUMNS ONLY, dropping the `["role", track, r]` CELL component. The cell grain is
+the measured-strong handle (ratified gate: cell share 0.068 → 0.001 damped,
+→ 0.101 amplified); a settlement column lean is soft and does nothing at all on a
+region-disarmed corpus. So clicks went dead about twelve hours after that shipped,
+exactly as the operator reported. `fieldScrubLeans` now emits BOTH.
+Verified live, A/B on one stream: RMS 0.090 neutral → 0.048 leaned → 0.067 released.
+
+**A regression I introduced and then reduced.** LIVE's fence starved nearly every
+bar (a bar's own tatums often carry no unit of a role the settlement demands), and
+under the hard-fence law those slots correctly fell silent — audibly thin. Widening
+the fence to the surrounding tatums OF THE SAME TRACK cut it from 9/9 samples to
+3/6. Starvation did NOT exist before today; it is a consequence of the fence.
+
+**Three diagnoses I asserted and then had to withdraw** — all the same error, a
+metric compared against the wrong baseline. Recorded so nobody repeats them:
+1. *"The output is 94% bass, therefore not music."* A synthetic normal mix (kick,
+   bass, chords, hats) measures 71% bass / centroid 248Hz; the site measures 93% /
+   213Hz. Power-weighted spectra of bass-heavy dance music legitimately look like
+   this. WITHDRAWN.
+2. *"The deployment mangles audio — same world renders 11kHz locally, 142Hz on the
+   server."* The server was never playing the demo world; closing a set left it
+   serving `trained.etsworld`. Two different worlds. WITHDRAWN.
+3. *"The render destroys the treble — source units are 36% high, output is 0%."*
+   Per-unit spectra are normalised to each unit; the output fraction is absolute. A
+   treble unit can be "100% high" and carry almost no energy. Nothing is destroyed.
+   WITHDRAWN.
+
+**The standing gap this exposed.** Every gate in this repo measures CONTROL
+RESPONSE — does the lean move the placements, is the carrier byte-identical. Not
+one measures what the audio sounds like. That is why a sound complaint had no
+instrument to answer it, and why three bad diagnoses went unchallenged. An
+audio-sanity gate (band balance + centroid against the source material's OWN
+absolute spectrum, not a normalised one) is the missing check.
