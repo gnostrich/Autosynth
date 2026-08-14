@@ -74,9 +74,10 @@ class BarResult:
     n_iter: int
     wall_time_s: float = 0.0                        # production time (latency math)
     starved: Tuple[Tuple[int, int, int], ...] = ()  # (bar, role, band) whose fence
-                                                    # emptied the choice set and was
-                                                    # widened for that slot — recorded,
-                                                    # never a silent no-op (prereg §2.1)
+                                                    # emptied the choice set for that
+                                                    # slot: recorded, cast nothing (the
+                                                    # HARD FENCE, prereg Amendment 4
+                                                    # A4.2 — no unrestricted-set widen)
 
 
 class StreamWriter:

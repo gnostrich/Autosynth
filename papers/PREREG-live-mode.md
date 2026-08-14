@@ -1583,3 +1583,396 @@ unmodified, against the live file:
 The file was restored (`git diff` clean afterward) and the check re-run a
 third time: **ALL PASS (7 checks, 0 failed)**, confirming the restore is
 byte-identical to what shipped. The check bites.
+
+---
+
+# AMENDMENT — PER-TRACK SLOT PIN; PER-ROLE WIDENING REMOVED (operator,
+# 2026-08-14), verbatim
+
+This amendment resolves the `known_consequence_pending_ruling` the slot_pin
+ratification (`REGISTRY.jsonl` `live-mode-slot-pin-ratified-2026-08-14`) left
+open: "per-slot faithfulness and per-role widening" could not both survive,
+and the operator ruled. Registered BEFORE the code lands (this section, the
+REGISTRY entry, and the LEDGER entry are the same commit as the code, per the
+operator's own sequencing ruling for this train).
+
+> THE DECISION: strict per-slot pinning wins; per-role widening is REMOVED.
+> Two halves of one ruling:
+>
+> (1) PER-TRACK SLOT PIN — build it. Today `ClampTerms.slot_pin` is
+> `{slot: (unit_ids,)}` — keyed by slot ALONE, so it is global across tracks.
+> A bridge admits two tracks, each needing its own forward-walking window,
+> and they must share that one map. On a world whose tracks reuse unit ids
+> (demo.etsworld numbers every track 0..191; synthetic_track does the same) a
+> track satisfies the OTHER member's slot entry with its own
+> identically-numbered unit at a different moment, and roams. MEASURED on the
+> current build: straight play unit spread inside a bar 55-63 (correct, one
+> window); bridge 56-62 on the first two bars of a leg then 87-185 once the
+> two windows diverge or one exhausts. Key the slot pin per TRACK so each
+> member is pinned to its own window exactly.
+>
+> (2) WIDENING — REMOVE IT, openly. An adversarial audit proved per-role
+> widening is already structurally uncastable: `bar_window` builds
+> `slot_pin[j]` from core group j's units, so every WIDENED uid is in no core
+> group and therefore in no slot_pin entry; `place_slot` always passes a real
+> slot in `[0, s_phase)` and a full bar has `s_phase` core groups, so on every
+> full bar a widened unit can never be cast. Delete `widened`/`n_widened`
+> rather than leave them naming a mechanism that cannot fire, and correct
+> `bar_window`'s comment calling widening "the only relief" — false as
+> shipped.
+
+## PTSP.1 §2.1 amended openly — the new comparison set
+
+§2.1 above ("The restriction rule", amended 2026-08-14 to register THREE
+comparisons) currently reads clause (iii) as:
+
+> *"(iii) PER-SLOT PIN. when `slot_pin` is present and the caller passed a
+> real slot index, that slot's own unit set must contain the candidate's
+> unit."*
+
+**That wording is now incomplete, in the same way the original one-comparison
+wording became incomplete when `slot_pin` first shipped**: it describes the
+comparison as being keyed on `slot` alone, and as of this amendment it is
+keyed on `(track_id, slot)`. The prior wording is reproduced above verbatim so
+the change is legible, per the house pattern this file already established
+for §2.1's first amendment.
+
+**Corrected clause (iii), as of this amendment:**
+
+> (iii) PER-TRACK PER-SLOT PIN. when `slot_pin` is present and the caller
+> passed a real slot index, THAT CANDIDATE'S OWN TRACK's entry at that slot
+> — keyed `(track_of(candidate), slot)`, not `slot` alone — must contain the
+> candidate's unit, if that key has an entry at all. A key with no entry for
+> the candidate's track leaves the candidate untouched by this clause (only
+> (i)/(ii) can still restrict it).
+
+**Why the re-key, not a new clause.** This is the SAME clause — same
+position in the evaluation order, same "restrict-only" character, same
+neutral-law behaviour when `slot_pin` is absent — with its KEY SHAPE
+corrected. It is not a fourth comparison. `_admits`'s clause count stays
+THREE.
+
+**"THEY CAN ONLY RESTRICT — THE FENCE NEVER WIDENS" still holds, and is
+reproven, not merely re-asserted**, by
+`architecture-v6/tests/writer/test_fence_monotone.py`
+(`test_slot_pin_only_restricts`, `test_every_clause_combination_is_monotone`,
+`test_monotonicity_check_is_non_vacuous`, and the new
+`test_slot_pin_is_track_scoped`) — all re-run against the new key shape,
+5/5 PASS (§PTSP.3 below).
+
+**Byte identity when `slot_pin` is absent** (the neutral-law obligation any
+carrier re-keying carries, mirrored from the original slot_pin disclosure's
+own proof): re-proven at §PTSP.4 below — hash `22d27d511b433c86...`,
+IDENTICAL to the ORIGINAL slot_pin disclosure's own reference hash, with the
+re-keyed clause present-but-unused AND with it physically removed.
+
+## PTSP.2 Widening removed — what changes, what does not
+
+`cloud/companion/live.py::bar_window` no longer builds a `widened` set at
+all: the function returns `{"core": ..., "exhausted": ..., "slot_pin": ...}`
+— `core` and nothing else is ever admitted. `demanded_roles` (the parameter
+that existed solely to drive widening), `_role_of`, and the `role_groups`
+half of `build_plan`'s precomputed index are deleted with it — dead code once
+their only caller is gone, not left as an unreachable mechanism.
+
+`bar_window`'s own comment previously read *"the per-role widening below is
+the only relief, used solely where the core carries nothing for a demanded
+role"* — **false as shipped** (the audit's finding: a widened unit is
+structurally uncastable once the per-slot pin exists, so it was never relief
+at all). Corrected in place (see the module's own history note above
+`_tatum_groups`).
+
+`n_widened`, `off_window`, `n_cast`, and `core_units` are deleted from
+`StreamPlayer._live` and from `live_state()`'s output (`"widened"` is no
+longer a key). These fields were never actually WIRED to a real off-window
+measurement in the first place — every site that read them read a hardcoded
+`0` (see `PTSP.5` below) — so their removal drops a readout that was already
+dishonest-by-omission (a "measured" quantity that was, in the code that
+shipped, a literal), not a working instrument.
+
+`architecture-v6/ets/writer/stream.py::BarResult.starved`'s docstring
+comment ("...whose fence emptied the choice set and was widened for that
+slot") was ALSO stale — it describes the pre-Amendment-4-R1
+widen-to-unrestricted fallback that R1 already struck; corrected in the same
+pass since it uses the same word and would otherwise keep misleading a
+reader who greps for "widen".
+
+## PTSP.3 `test_fence_monotone.py` re-proven — both arms, non-vacuous, bite by mutation
+
+**Normal run** (both arms — subset property and non-vacuity — over the new
+key shape, plus the new track-scoping test):
+
+```
+tests/writer/test_fence_monotone.py::test_unit_pin_only_restricts PASSED
+tests/writer/test_fence_monotone.py::test_slot_pin_only_restricts PASSED
+tests/writer/test_fence_monotone.py::test_slot_pin_is_track_scoped PASSED
+tests/writer/test_fence_monotone.py::test_every_clause_combination_is_monotone PASSED
+tests/writer/test_fence_monotone.py::test_monotonicity_check_is_non_vacuous PASSED
+5 passed in 0.12s
+```
+
+**Bite 1 — INERT-CLAUSE mutation** (`_admits`'s slot_pin branch gated on
+`sp and slot >= 0 and False` — the clause computes nothing and can never
+fire): the SUBSET arms still trivially pass (an inert clause cannot widen
+anything, so it cannot be caught by the "can only shrink" property), but the
+**non-vacuity arm correctly FAILS**, both the file's own check and my new
+track-scoping test:
+
+```
+FAILED test_slot_pin_is_track_scoped -- AssertionError: track 0 admitted
+    unit 11 at slot 0 -- that unit belongs to track 1's own slot-0 entry
+FAILED test_monotonicity_check_is_non_vacuous -- AssertionError:
+    (iii) excluded no candidate  assert 5 < 5
+2 failed, 3 passed in 0.17s
+```
+
+**Bite 2 — GENUINELY-WIDENING mutation** (slot_pin's clause moved BEFORE the
+track_mask/unit_pin checks, and made an early `return True` on a match —
+"the clause admitting before the track mask is consulted", exactly the
+operator's own example): the **subset arms correctly FAIL**:
+
+```
+FAILED test_slot_pin_only_restricts -- AssertionError: slot_pin ADMITTED
+    [(0, 11)] that (i)+(ii) excluded -- the fence widened
+    (slot=0 pin=(0, (10,)) slot_pin={(0, 0): (10, 11), (0, 1): (12,)})
+FAILED test_monotonicity_check_is_non_vacuous -- AssertionError:
+    (iii) excluded no candidate  assert 5 < 5
+2 failed, 3 passed in 0.15s
+```
+
+Both mutations were then reverted (`cp` from a pre-mutation backup) and the
+suite re-run: **5 passed, `git diff` clean** — confirms the restore is
+byte-identical to what ships, the same restore-and-reconfirm discipline
+`b1_release_scope_verify.py`'s BR-D5 already established.
+
+## PTSP.4 PR-6-style byte identity, slot_pin absent — present vs. physically removed
+
+`cloud/tools/slot_pin_track_key_verify.py` (checked in) reproduces the
+ORIGINAL slot_pin disclosure's own tape (16 bars, 4 fence configurations —
+unfenced / single-track / unit-pinned / two-track decaying — `slot_pin`
+never supplied in any of them) and hashes rows + settled occupancy:
+
+```
+[PASS] SPK-1 slot_pin-absent neutral law  got=22d27d511b433c86 want=22d27d511b433c86
+```
+
+`want` is the reference hash the ORIGINAL slot_pin landing recorded
+(`22d27d511b433c86...`, this file's own "Byte-identity evidence" section
+above) — proving the re-keying changes NOTHING when the field is simply
+never supplied, exactly the obligation a carrier re-key carries.
+
+**Physical removal**, run by hand (not automated in-process — "removed"
+means editing the source file, which needs a real edit/revert round trip,
+not a monkeypatch): the `(track_id, slot)` clause was deleted from
+`realize.py::_admits` (replaced with a bare `return True` after the
+`unit_pin` check) and `slot_pin_track_key_verify.py`'s tape re-run:
+
+```
+got=22d27d511b433c86...   (IDENTICAL to present-but-unused, and to the
+                            original reference hash)
+```
+
+The file was then restored from a pre-edit backup; `git diff` on
+`realize.py` after restoring showed only this amendment's real (non-mutated)
+change, confirmed by re-running the full `tests/writer/` suite: **31 passed**.
+
+## PTSP.5 The disjoint-unit-numbering world — reused, not duplicated
+
+`cloud/tools/bridge_pin_track_verify.py` already builds a disjoint-id
+synthetic world (tracks at offsets `t*100000`) for the unit_pin-ownership
+class of bug (BPT-1/BPT-2). This amendment REUSES that exact world builder
+(`_disjoint_world`/`_write_disjoint_worldfile`, imported, not copied) and
+adds four checks to the SAME tool, run against a real `StreamPlayer` bridge
+(not a hand-built `ClampTerms`):
+
+```
+[PASS] BPT-4a slot_pin keys are (track, slot) tuples          n_entries=16
+[PASS] BPT-4b every entry's units belong to its own key's track  n_foreign=0
+[PASS] BPT-4c fixture is non-vacuous (>=2 tracks share a slot index)
+                tracks=[0, 1] shared_slot_indices=[0, 1, 2, 3, 4]
+[PASS] BPT-4d retired scheme (context): slot-only union would have merged
+       2 tracks' windows into 8 shared slot entries -- the new (track,slot)
+       keying gives each track its OWN entry instead
+```
+
+**Disclosed limitation, stated plainly** (mirroring §BS.5's own disclosure
+style): this world's DISJOINT ids cannot reproduce the *numeric-collision*
+symptom the operator's ruling describes (a track satisfying another's slot
+entry "with its own identically-numbered unit") — no id ever repeats across
+tracks here, so a slot-only union could not admit a foreign id by
+coincidence on THIS world. That symptom is proven instead on the
+OVERLAPPING-id grid in `test_slot_pin_is_track_scoped` (§PTSP.3), which
+matches how demo.etsworld/synthetic_track actually number tracks (0..N-1,
+every track). What BPT-4 proves, that the overlapping-id unit test cannot,
+is that the REAL engine's own produced fence — through `bar_window`'s
+per-window output and `engine_bridge.py`'s merge, not a hand-built
+`ClampTerms` — is genuinely per-track-keyed end to end. BPT-4a's structural
+assertion (keys are 2-tuples) would also directly catch a regression back to
+a slot-only key on this same fixture, independent of numeric collision.
+
+`BPT-2` (unit_pin ownership under a mid-bridge REROUTE) remains **RED**,
+confirmed via `git stash` to be **IDENTICAL before and after this
+amendment's changes** (reproduced on unmodified `b186ff1`) — a pre-existing,
+disclosed defect in `_live_bridge_click`'s reroute-window-carryover path (a
+`from_track` measured by THE PAIR RULE that has neither a prior window nor
+equals the session's original track gets no window built for it at all —
+`unit_pin` correctly reports absent rather than fabricating one, but BPT-2's
+assertion expects it present). Out of scope for this train; not touched.
+
+## PTSP.6 Incidental defect found and fixed en route (companion plumbing, not an engine edit)
+
+Measuring PTSP.5 surfaced a second, independent, PRE-EXISTING defect (also
+confirmed identical on unmodified `b186ff1` via `git stash` before any of
+this amendment's edits) that would otherwise have silently defeated this
+very fix on the demo world: `StreamPlayer._live_bridge_click`'s
+window-carryover check used `int(live_now.get("track") or -1)` as a
+"track id is `None`" test. **`0 or -1` evaluates to `-1` in Python** — so a
+session that started on track 0 (the common case: track 0 is almost always
+the first click, and IS the case in every fixture in this file) never
+matched, `from_track`'s window was never built, and the WHOLE first leg's
+`unit_pin`/`slot_pin` carried NOTHING for track 0 — strictly worse than the
+bug this amendment targets (no restriction at all on that member, not merely
+a shared one). The SAME pattern recurred at the per-bar window-cursor
+mirror-back a few lines later. MEASURED on `demo.etsworld` before the fix:
+every bridge bar's fence showed `unit_pin=None, slot_pin_tracks=[<dest
+only>]`. After: the first bridge bar correctly shows `unit_pin=(0, 56),
+slot_pin_tracks=[0, 1]` — both members present.
+
+Both sites now compare against `None` explicitly (`live_track is not None
+and int(from_track) == int(live_track)`), never a truthy/falsy `or`
+fallback against a value where `0` is legitimate. This is companion
+plumbing (`cloud/companion/engine_bridge.py`), not `ets/` or
+`architecture-v6/ets/` — not an engine edit under the standing rule that
+requires prereg+ratification, but disclosed here in full per "walls
+surfaced, not patched" since it materially changes what a bridge admits.
+
+**Separately disclosed, NOT fixed (out of scope):** even with the above fix,
+once a member's forward window EXHAUSTS (a real, PRE-EXISTING,
+ALREADY-DISCLOSED corpus-length property — Amendment 7's own "exhaustion
+wins the race" finding, A7.3), that member's `unit_pin`/`slot_pin`
+contribution goes empty for the rest of the leg while the track_mask still
+admits it — i.e. it reverts to whole-track-unrestricted, not silence. On
+`demo.etsworld` specifically (tracks ~1s; a window exhausts ~1 bar into a
+bridge) this means the per-track slot_pin fix's OWN effect is only visible
+for the first bridge bar or two before exhaustion becomes the dominant,
+unrelated cause of a wide spread — see PTSP.7's honest before/after numbers.
+Fixing this is `STRAIGHT-EXACT` (Amendment 4, A4.5) — "to be pre-registered
+when Train B lands", explicitly a FUTURE amendment, not this one.
+
+## PTSP.7 The sound, measured — spread, and monotonic forward advance
+
+`cloud/tools/bridge_slot_pin_spread_verify.py` (checked in) runs the SAME
+per-bar unit-id-spread reduction the parent's `pileup.py` measurement uses,
+on TWO worlds, both reported:
+
+**Ample (unexhausted) synthetic world** — isolates the fix's own effect from
+the exhaustion confound (the same isolation technique Amendment 7's A7.2
+used for the openness-release mechanism):
+
+```
+straight spread: [23, 31]
+bridge   spread: [31, 31, 31, 31, 31, 31, 31, 31, 31, 31]   (10 bridge bars)
+[PASS] SPT-M2 both members present + monotone forward
+       track0 bars=[3,4,5,6,7,8,9,10,11,12]  track1 bars=[1,2,3,4,5,6,7,8,9,10]
+[PASS] SPT-M1 bridge spread bounded (unexhausted world)
+       straight max=31  bridge max=31  bound(4x straight, floor 4)=124
+[PASS] SPT-M1b no bar spans the whole track  max observed=31 vs span=99999
+```
+
+Bridge spread stays IDENTICAL to straight play's own max (31) across every
+one of 10 bridge bars, and BOTH members' window cursors advance strictly
+forward, every bar, never backward, never stalling while material remains —
+"a bridge bar drawing across the whole track" does not occur on this world.
+
+**`demo.etsworld`** (the parent's own `pileup.py`, re-run post-fix, honest
+report per PTSP.6's disclosed exhaustion confound):
+
+```
+bar  1  n=1 adm=[0]     spread={0: 55}
+bar  2  n=1 adm=[0]     spread={0: 63}
+bar  3  n=2 adm=[0,1]   spread={0: 55}          <-- CLICK: both windows fresh, TIGHT
+bar  4  n=2 adm=[0,1]   spread={0: 180}         <-- track 0's window EXHAUSTED
+bar  5  n=2 adm=[0,1]   spread={0: 125}
+bar  6  n=2 adm=[0,1]   spread={0: 111, 1: 56}
+```
+
+Bar 3 (the one bar where both members' forward windows are still fresh) is
+now TIGHT — 55, matching straight play's own spread, replacing the
+pre-amendment 61-87 the two-window blend produced there. Bars 4+ still show
+a wide spread, but for the SEPARATE, disclosed, unfixed reason in PTSP.6:
+track 0 (a ~1s track) exhausts its forward window almost immediately, and an
+exhausted member currently reverts to unrestricted-within-track rather than
+silence. This is a real, honest limitation of `demo.etsworld`'s own short
+tracks, stated plainly rather than a claim of full fix on this specific
+corpus — the ample-world measurement above is what isolates and proves the
+per-track-keying fix itself.
+
+## PTSP.8 AMENDMENT 4 R2(b) — corrected, not inherited
+
+Amendment 4's R2(b) registered: *"the off-window cast fraction [is] measured
++ logged per world, folded into the B-5 fidelity verdict and label."* That
+registration is **struck as invalid, not carried forward**:
+
+- Per-role widening — the ONLY mechanism that could ever produce an
+  off-window cast — is deleted (PTSP.2). There is no code path left that can
+  cast a unit outside the forward core window; every admitted unit IS a core
+  unit, by construction of `bar_window` alone (the per-slot pin no longer
+  even needs to enforce this — it never gets an out-of-core candidate to
+  reject in the first place).
+- The off-window fraction was, in the code that actually shipped, NEVER a
+  measured quantity at all: `off_window`/`n_cast` were hardcoded `0` at
+  every site that carried them (`cloud/companion/engine_bridge.py`, four
+  initializer sites, grep-confirmed before this amendment's edits) — no code
+  anywhere computed a nonzero value. R2(b)'s "measured" claim was therefore
+  ALREADY invalid before this amendment, for an unrelated reason (an
+  unwired stub, not a widening removal); this amendment's removal makes the
+  fraction correctly, honestly zero BY CONSTRUCTION, which is a DIFFERENT
+  and stronger claim than "measured and happened to read zero."
+
+**Re-derived fidelity, stated openly**: LM-3(a)'s core-window-dominance
+requirement now holds ABSOLUTELY, not merely "dominates" — every cast is a
+core-window cast, always, with no exception and no fallback. The `off_window`
+fraction the fidelity verdict would have folded in is **identically zero on
+every world, by construction, not by measurement, and this is stronger than
+what R2(b) claimed** (a measured-but-possibly-nonzero fraction that R2(b)
+anticipated code would produce and none ever did). What the fidelity verdict
+must still account for, honestly, is DIFFERENT from off-window casting:
+starvation. A demanded role the core window does not carry now casts
+SILENCE (HARD FENCE, Amendment 4 R1) rather than a widened substitute — so
+the reconstruction's fidelity gap, where it exists, shows up as missing
+material (a role/band that goes quiet) rather than as material drawn from
+the wrong moment. This is the SAME "in-fence handling; silence is inside
+every fence" principle R1 already established, now the ONLY way a bar's
+demand can go unmet. `B-5`'s labeling stance (measured, never sold as the
+original) is unaffected — reconstruction is still not claimed exact, and the
+STARVED telemetry (`FiberThreader.starved`) remains the honest record of
+where a bar fell short.
+
+## PTSP.9 Standing checks re-run, all green (or pre-existing-red, disclosed)
+
+| check | result |
+|---|---|
+| `architecture-v6 -m pytest tests/writer` | **31 passed** |
+| `cloud/tests/test_live_bridge.py` | **7 passed** (allowlist extended for `keyed_slot_pin`, a pure re-keying helper, BR-1-compliant) |
+| `cloud/tests/test_live_engine_integration.py` | **PASS** (`"widened"` dropped from two fixed-dict assertions) |
+| `cloud/tests` LIVE files (carrier/idle-hold/routes/view-no-threshold/clamp-carrier) | **59/59 passed** total across the LIVE suite |
+| `cloud/tools/pair_rule_verify.py` | **ALL PASS (7/7)** |
+| `cloud/tools/commit_to_land_verify.py` | **ALL PASS (7/7)** |
+| `cloud/tools/bridge_scope_verify.py` (defaults) | **ALL PASS (6/6)** |
+| `cloud/tools/bridge_pin_track_verify.py` | BPT-1/BPT-4a/b/c/d **PASS**; BPT-2 **pre-existing RED**, confirmed identical on unmodified `b186ff1` (§PTSP.5) |
+| `cloud/tools/slot_pin_track_key_verify.py` (new) | **PASS** |
+| `cloud/tools/bridge_slot_pin_spread_verify.py` (new) | **ALL PASS (4/4)** |
+
+## PTSP.10 Scope guard, unchanged from §5
+
+Touched this amendment: `architecture-v6/ets/writer/clamp.py`,
+`architecture-v6/ets/writer/realize.py` (both engine-adjacent, per §5's
+existing touched list, re-keying an already-ratified field — no new field,
+no new comparison, no F/settlement/render/world-format change);
+`architecture-v6/ets/writer/stream.py` (one stale-comment correction, no
+code change); `cloud/companion/live.py`, `cloud/companion/engine_bridge.py`
+(the widening deletion + the falsy-zero fix, both companion plumbing);
+`cloud/tests/`, `cloud/tools/`, this paper, `REGISTRY.jsonl`,
+`LEDGER_DATA.json`. Never touched: root `ets/`, F, the settlement solver,
+`render/`, the world format, GRID/TRACKS code paths, `place_slot`'s I-7
+clamp. COMPANION_INVARIANTS R1-R5 unaffected.

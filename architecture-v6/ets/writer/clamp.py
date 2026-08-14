@@ -27,21 +27,32 @@ CONTENT (A-3). Per bar, upstream hands the writer:
                straight, phase-locked track this ordered-unit sequence IS the
                slice range, so no separate slice-index field is needed: a real
                unit already carries its position in its source track).
+  slot_pin   : optional {(track_id, slot) -> (unit_id, ...)}  per-track,
+               per-metrical-position admissible-unit set (prereg §2.1 clause
+               (iii); RE-KEYED 2026-08-14 from a slot-only key to a
+               (track_id, slot) key — see the field's own docstring below for
+               why the track has to be part of the key).
 
 THE FENCE RULE (prereg §2.1 — the only engine logic this carrier adds; lives
-in realize.py, not here): a candidate c = (track_id, unit_id) survives iff
+in realize.py, not here): a candidate c = (track_id, unit_id), at output slot
+`slot` (position-in-bar; -1 when unknown/batch), survives iff ALL of:
 
-    track_mask.get(track_of(c), 0.0) >= openness
+    (i)   track_mask.get(track_of(c), 0.0) >= openness
+    (ii)  unit_pin is None, or does not name c's track, or c's unit_id is in
+          the pinned range
+    (iii) slot_pin is None, slot < 0, or (track_of(c), slot) has no entry, or
+          c's unit_id is in that (track, slot)'s admitted set
 
-and, when ``unit_pin`` names c's track, iff c's unit_id is in the pinned
-range. Openness=1 with mask={i:1.0} is a FULL FENCE (only track i survives);
+Openness=1 with mask={i:1.0} is a FULL FENCE (only track i survives);
 openness=0 is NO RESTRICTION (every mask value is >= 0 trivially). Between the
 two, a rising `openness` admits a widening ring of tracks in mask order. This
 carrier does not decide *when* openness moves — that is upstream data (LM-4);
 no schedule, ramp, bar-count, or timeout constant lives in this module or in
 realize.py (prereg Amendment 1, LM-9: the N-bar timetable is retired — the
 prior draft's ``N_BRIDGE_BARS``/ramp-shape constants never landed here and
-must not reappear).
+must not reappear). All three clauses are conjunctive guards that can only
+`return False`: adding any of them can only shrink the admitted set, never
+grow it (pinned by architecture-v6/tests/writer/test_fence_monotone.py).
 
 NEUTRAL LAW (A-2, KILL CONDITION LM-1). Exactly like ``TiltTerms.__post_init__``
 canonicalizing an all-zero ``channel_logbias`` to ``None``, a ClampTerms whose
@@ -131,12 +142,31 @@ class ClampTerms:
     track_mask: Mapping[int, float]
     openness: float
     unit_pin: Optional[Tuple[int, Tuple[int, ...]]] = None
-    # PER-SLOT PIN (straight-play faithfulness). `unit_pin` admits a bar's worth of
-    # material as ONE pool, which lets any slot play any of it: measured, a single
-    # bar drew tatums 0, 8, 15, 16 and 23 at once — the track layered over itself.
-    # This maps slot-in-bar -> the units that slot alone may play, so the bar walks
-    # the passage in order. None ⇒ unchanged behaviour (neutral law untouched).
-    slot_pin: Optional[Mapping[int, Tuple[int, ...]]] = None
+    # PER-TRACK PER-SLOT PIN (straight-play faithfulness; RE-KEYED 2026-08-14 —
+    # prereg PREREG-live-mode.md §2.1's per-track-slot-pin amendment). `unit_pin`
+    # admits a bar's worth of material as ONE pool, which lets any slot play any
+    # of it: measured, a single bar drew tatums 0, 8, 15, 16 and 23 at once — the
+    # track layered over itself. This maps (track_id, slot-in-bar) -> the units
+    # that track's slot alone may play, so the bar walks the passage in order.
+    #
+    # WHY KEYED BY TRACK TOO (not slot alone, as it shipped 2026-08-14 in
+    # 7e7b8af): a bridge admits TWO tracks at once, each walking its OWN
+    # forward window, and a slot-only key forces them to share one map entry
+    # per slot. On a world whose tracks number their units identically (every
+    # stock/demo world here: 0..N-1 per track — demo.etsworld, synthetic_track)
+    # a candidate on track A at slot s is admitted whenever ITS uid appears in
+    # slot s's entry, and that entry was the UNION of track A's own slot-s
+    # tatum AND track B's own slot-s tatum — so track A can satisfy track B's
+    # slot content with its own identically-numbered unit from a DIFFERENT
+    # moment of the passage, and the bar plays several moments of one track at
+    # once (measured: straight-play unit-id spread inside one bar 55-63; the
+    # SAME bridge bar's spread 87-185 out of a 192-unit track once the two
+    # windows diverge). Keying by (track_id, slot) gives each pair member its
+    # own map entries, so a bar can never satisfy one member's slot from the
+    # other member's window. None ⇒ unchanged behaviour (neutral law
+    # untouched) — this is a re-keying of an existing field's content, not a
+    # new field.
+    slot_pin: Optional[Mapping[Tuple[int, int], Tuple[int, ...]]] = None
 
     def __post_init__(self):
         mask = {}

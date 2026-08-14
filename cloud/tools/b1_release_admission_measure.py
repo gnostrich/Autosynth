@@ -150,11 +150,9 @@ def run_journey(world_path, src_track, src_frac, dst_track, dst_frac, bars, labe
         })
         return ct
 
-    def spy_bar_window(slices, bars_elapsed, s_phase, demanded_roles=None,
-                       start_group=0, plan=None):
+    def spy_bar_window(slices, bars_elapsed, s_phase, start_group=0, plan=None):
         w = orig_bar_window(slices, bars_elapsed, s_phase,
-                            demanded_roles=demanded_roles, start_group=start_group,
-                            plan=plan)
+                            start_group=start_group, plan=plan)
         win_calls.append({
             "phase": "bridge" if click_marker["clicked"] else "straight",
             "bars_elapsed": int(bars_elapsed),

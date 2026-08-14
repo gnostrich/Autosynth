@@ -77,10 +77,13 @@ _DORMANT_RATCHET_NAMES = frozenset({
 })
 
 # The only live.py functions the bridge branch of _compose_bar is allowed to
-# call: release (B-1), pull (B-2), and the shared forward-walking window
-# (B-3's own mechanism, reused verbatim from straight play).
+# call: release (B-1), pull (B-2), the shared forward-walking window (B-3's
+# own mechanism, reused verbatim from straight play), and the pure per-window
+# slot_pin re-keying (2026-08-14 per-track-slot-pin amendment — a data
+# reshape, not a schedule/corridor/easing mechanism; it carries no state and
+# is called identically by straight play's build_full_fence).
 _ALLOWED_BRIDGE_BRANCH_CALLS = frozenset({
-    "pull_step", "release_clamp", "release_step", "bar_window",
+    "pull_step", "release_clamp", "release_step", "bar_window", "keyed_slot_pin",
 })
 
 _BANNED = re.compile(r"schedule|corridor|easing|monoton|ratchet", re.IGNORECASE)

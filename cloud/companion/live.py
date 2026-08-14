@@ -31,7 +31,6 @@ must REFUSE the request, not degrade it silently.
 """
 from __future__ import annotations
 
-import bisect
 import inspect
 from typing import Mapping, Optional, Sequence, Tuple
 
@@ -97,12 +96,26 @@ def uid_index_map(slices: Sequence[Sequence]) -> dict:
 # cut in TATUMS: one bar covers `s_phase` tatums, and every unit of those tatums
 # is admitted. Nothing is dialled; both numbers are the world's own geometry.
 #
-# PER-ROLE WIDENING (AMENDMENT 4, operator-approved): a bar may still demand a
-# role the core tatums do not carry. The fence then widens WITHIN THE SAME TRACK
-# — the nearest unit of that role, by time — never to another track. That
-# widening is the "fence-definition change" R1 permits; it is not an escape.
-# Units admitted by widening rather than by the core window are counted as
-# OFF-WINDOW for R2(b) and feed the B-5 fidelity verdict.
+# PER-ROLE WIDENING — REGISTERED, BUILT, THEN REMOVED (operator ruling,
+# 2026-08-14: "strict per-slot pinning wins; per-role widening is REMOVED").
+# AMENDMENT 4 approved widening WITHIN THE SAME TRACK when the core tatums did
+# not carry a demanded role. An adversarial audit then proved it was already
+# structurally uncastable the moment the per-slot pin (below) shipped: this
+# function built `slot_pin[j]` from core group j's OWN units only, so a
+# widened unit — being outside every core group by definition — was in NO
+# slot_pin entry; `place_slot` always passes a real slot in `[0, s_phase)`,
+# and a full bar has `s_phase` core groups, so on every full bar the per-slot
+# pin's clause (iii) rejected every widened candidate before it could ever be
+# cast (`sp.get((tid, slot))` returns the core-only set at every real slot;
+# a widened uid is never a member of it). The two mechanisms were mutually
+# exclusive from the day the second one landed, not merely redundant — the
+# widening code ran, computed a set, and that set never won a single fiber
+# choice on a full bar. See PREREG-live-mode.md's per-track-slot-pin
+# amendment for the operator's ruling and the removal's provenance. What
+# remains: this bar draws from THIS bar's own `s_phase` tatums — the core
+# window — and NOTHING else; a role the core does not carry starves and casts
+# silence, exactly as the HARD FENCE (Amendment 4 R1) already requires for
+# every other starvation case.
 
 def _tatum_groups(slices: Sequence[Sequence]) -> list:
     """`slices` grouped into consecutive same-span runs — the world's tatums, in
@@ -119,23 +132,6 @@ def _tatum_groups(slices: Sequence[Sequence]) -> list:
     return groups
 
 
-def _role_of(row: Sequence) -> Optional[int]:
-    """The stored role of one slice row: argmax of its stored q indicator. None
-    when the row carries no usable indicator — never a guessed role."""
-    q = row[4] if len(row) > 4 else None
-    try:
-        q = list(q)
-    except TypeError:
-        return None
-    if not q:
-        return None
-    best, best_v = 0, float(q[0])
-    for k in range(1, len(q)):
-        if float(q[k]) > best_v:
-            best, best_v = k, float(q[k])
-    return int(best)
-
-
 def group_of_index(slices: Sequence[Sequence], start_index: int) -> int:
     """Which tatum group the clicked slice row falls in. Straight play starts at
     the CLICKED spot, so the cursor is measured from this group — not from the
@@ -148,35 +144,37 @@ def group_of_index(slices: Sequence[Sequence], start_index: int) -> int:
 
 def build_plan(slices: Sequence[Sequence]) -> dict:
     """Everything the per-bar fence needs, computed ONCE per click: the tatum
-    grouping and, per role, that role's (group index, row index) pairs in time
-    order so the nearest carrier is a bisect rather than a full rescan."""
-    groups = _tatum_groups(slices)
-    role_groups: dict = {}
-    for gi, g in enumerate(groups):
-        for i in g:
-            role_groups.setdefault(_role_of(slices[i]), []).append((gi, i))
-    return {"groups": groups, "role_groups": role_groups}
+    grouping, so the per-bar cost is a list slice rather than a rescan.
+
+    (Formerly also carried a per-role nearest-tatum index for PER-ROLE
+    WIDENING — deleted with that mechanism, 2026-08-14; see the removal note
+    above `_tatum_groups`.)"""
+    return {"groups": _tatum_groups(slices)}
 
 
 def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
-               demanded_roles: Optional[Sequence[int]] = None,
                start_group: int = 0, plan: Optional[dict] = None) -> dict:
-    """This bar's fence content, as ``{"core": (...), "widened": (...),
-    "exhausted": bool}``.
+    """This bar's fence content, as ``{"core": (...), "exhausted": bool,
+    "slot_pin": {...}}``.
 
-    ``core``    — every unit of this bar's `s_phase` tatums, walking forward.
-    ``widened`` — for each demanded role the core does not carry, that track's
-                  OWN nearest unit of the role (by tatum distance). Empty when
-                  the core already covers every demanded role.
+    ``core``      — every unit of this bar's `s_phase` tatums, walking forward.
+                    STRICT: this and only this is ever admitted (PER-ROLE
+                    WIDENING removed, 2026-08-14 — see the note above
+                    `_tatum_groups`); a demanded role the core does not carry
+                    starves and casts silence rather than reaching wider.
     ``exhausted`` — the cursor has walked past the end of the track; the caller
-                  returns to idle silence rather than wrapping or repeating.
+                    returns to idle silence rather than wrapping or repeating.
+    ``slot_pin``  — {slot-in-bar -> that tatum's own unit ids}, bar-local (this
+                    function does not know its own track id; the caller keys
+                    it to (track_id, slot) before handing it to the carrier —
+                    see ``build_full_fence`` / the bridge merge in
+                    ``engine_bridge._compose_bar``).
     """
-    # PRECOMPUTED (measured fix): grouping 17k rows and scanning every group per
-    # missing role ONCE PER BAR is O(track) per bar — on an 8-minute track that
-    # is slow enough that the produce loop composed ZERO bars in 45s (measured
-    # live: bars_elapsed stuck at 0, no audio). `plan` carries the grouping and
-    # the per-role nearest-tatum index, built ONCE at click time, so the per-bar
-    # cost is a list slice and a dict lookup.
+    # PRECOMPUTED (measured fix): grouping 17k rows ONCE PER BAR is O(track) per
+    # bar — on an 8-minute track that is slow enough that the produce loop
+    # composed ZERO bars in 45s (measured live: bars_elapsed stuck at 0, no
+    # audio). `plan` carries the grouping, built ONCE at click time, so the
+    # per-bar cost is a list slice.
     if plan is None:
         plan = build_plan(slices)
     groups = plan["groups"]
@@ -184,22 +182,16 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     start = max(0, int(start_group)) + max(0, int(bars_elapsed)) * w
     core_groups = groups[start:start + w]
     if not core_groups:
-        return {"core": (), "widened": (), "exhausted": True}
+        return {"core": (), "exhausted": True}
 
-    # NEIGHBOURHOOD (measured fix): a single bar's worth of tatums often carries no
-    # unit at all for some role the settlement demands, so the fence starved on
-    # nearly every bar and — under the hard-fence law, correctly — those slots fell
-    # silent. The result was audible as thin, skeletal playback. Admitting the
-    # surrounding tatums OF THE SAME TRACK gives the bar enough material to fill its
-    # roles while staying inside the fence: same track, still walking forward, no
-    # cast outside ClampTerms. The forward-walking CORE still starts every bar
-    # (LM-3(a)); this only widens what is admissible around it.
-    # STRICT FORWARD WINDOW. Widening to the surrounding tatums filled the silence
-    # holes but stopped it being linear playback - the operator hears it smear
-    # rather than play the passage ("not playing the track faithfully", "sort of
-    # sidechained"). Faithfulness wins: this bar draws from THIS bar's tatums, and
-    # the per-role widening below is the only relief, used solely where the core
-    # carries nothing for a demanded role.
+    # STRICT FORWARD WINDOW (measured, then re-confirmed as the operator's
+    # standing ruling 2026-08-14): this bar draws from THIS bar's tatums ONLY.
+    # An earlier widen-to-neighbouring-tatums relief (per-role, within-track)
+    # filled starvation silence but stopped this being linear playback — the
+    # operator heard it smear ("not playing the track faithfully"). Then an
+    # adversarial audit found the per-slot pin below made widening
+    # structurally uncastable anyway (see the removal note above). Both
+    # readings now agree: the core window is the whole of what this bar admits.
 
     # slot i plays tatum (start + i) and nothing else — the passage in order
     slot_pin = {}
@@ -209,29 +201,7 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     core_idx = [i for g in core_groups for i in g]
     core = tuple(int(slices[i][2]) for i in core_idx)
 
-    widened: list = []
-    if demanded_roles:
-        have = {_role_of(slices[i]) for i in core_idx}
-        centre = start + len(core_groups) // 2
-        for k in demanded_roles:
-            k = int(k)
-            if k in have:
-                continue
-            # nearest tatum carrying role k — a bisect over that role's own
-            # precomputed, time-ordered group list (was a full rescan per bar)
-            by_role = plan["role_groups"].get(k)
-            if not by_role:
-                continue                      # the track has no role-k material
-            pos = bisect.bisect_left(by_role, (centre,))
-            best_i, best_d = None, None
-            for cand in by_role[max(0, pos - 1):pos + 2]:
-                d = abs(cand[0] - centre)
-                if best_d is None or d < best_d:
-                    best_i, best_d = cand[1], d
-            if best_i is not None:
-                widened.append(int(slices[best_i][2]))
-    return {"core": core, "widened": tuple(widened), "exhausted": False,
-            "slot_pin": slot_pin}
+    return {"core": core, "exhausted": False, "slot_pin": slot_pin}
 
 
 def bar_window_unit_ids(unit_ids: Sequence[int], bars_elapsed: int,
@@ -270,14 +240,38 @@ def window_span(slices: Sequence[Sequence], unit_ids: Sequence[int]):
     return {"t0": lo, "t1": hi, "n": n}
 
 
+def keyed_slot_pin(track: int, slot_pin: Optional[Mapping[int, Tuple[int, ...]]]):
+    """Re-key ONE window's bar-local ``bar_window(...)["slot_pin"]``
+    (``{slot -> that tatum's own unit ids}``, which does not know its own
+    track id) into the carrier's ``{(track_id, slot) -> unit ids}`` shape
+    (prereg §2.1's per-track-slot-pin amendment, 2026-08-14).
+
+    THE ONE PLACE this keying happens for a SINGLE window — straight play
+    calls it directly (below); the bridge merges MULTIPLE windows into one
+    dict, so it calls this per member and updates a shared dict instead (see
+    ``engine_bridge.StreamPlayer._compose_bar``'s bridge branch), but every
+    entry either path produces has the SAME (track_id, slot) key shape, so
+    the two members can never collide: track A's slot-5 entry and track B's
+    slot-5 entry are different keys, never the same map slot forced to hold
+    both tracks' material (the cross-track leak this re-keying exists to
+    close — see the field's own docstring in ``ets.writer.clamp``)."""
+    if not slot_pin:
+        return None
+    t = int(track)
+    return {(t, int(sl)): tuple(int(u) for u in uids)
+            for sl, uids in slot_pin.items()}
+
+
 def build_full_fence(track: int, unit_ids: Sequence[int], slot_pin=None):
     """Construct the B-1 FULL FENCE for straight play: fully fenced to
     ``track`` (``track_mask={track: 1.0}, openness=1.0``), pinned to
     ``unit_ids`` — which for straight play is ONE BAR's consecutive window
     (see ``bar_window_unit_ids``), rebuilt each bar so the tape walks the
-    track forward instead of roaming inside it. Lazy import — Part A may land
-    seconds after this module does; raises ``LiveCarrierUnavailable`` rather
-    than ever proceeding without a real fence."""
+    track forward instead of roaming inside it. ``slot_pin`` is
+    ``bar_window(...)["slot_pin"]`` — bar-local, re-keyed to this track here
+    (``keyed_slot_pin``) before it reaches the carrier. Lazy import — Part A
+    may land seconds after this module does; raises ``LiveCarrierUnavailable``
+    rather than ever proceeding without a real fence."""
     try:
         from ets.writer.clamp import clamp0
     except ImportError as exc:
@@ -288,7 +282,7 @@ def build_full_fence(track: int, unit_ids: Sequence[int], slot_pin=None):
     try:
         return clamp0(track_mask={int(track): 1.0}, openness=1.0,
                       unit_pin=(int(track), tuple(int(u) for u in unit_ids)),
-                      slot_pin=slot_pin)
+                      slot_pin=keyed_slot_pin(track, slot_pin))
     except Exception as exc:
         raise LiveCarrierUnavailable(
             f"clamp0(...) failed to construct the full fence: "

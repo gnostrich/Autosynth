@@ -302,12 +302,15 @@ def _admits(clamp: ClampTerms, c: Tuple[int, int], slot: int = -1) -> bool:
     pin = clamp.unit_pin
     if pin is not None and pin[0] == tid and uid not in pin[1]:
         return False
-    # PER-SLOT PIN: this slot may play only its own moment of the passage. Without
-    # it a bar's whole window is one pool and any slot can take any of it, which is
-    # the track playing over itself. Absent ⇒ nothing changes.
+    # PER-TRACK PER-SLOT PIN: this slot may play only ITS OWN TRACK's own moment
+    # of the passage. Keyed by (track_id, slot) — NOT slot alone (RE-KEYED
+    # 2026-08-14, prereg §2.1) — because a bridge admits two tracks at once, each
+    # walking its own forward window; a slot-only key would force both windows to
+    # share one map entry per slot, so either member could satisfy the OTHER
+    # member's slot content with its own material. Absent ⇒ nothing changes.
     sp = getattr(clamp, "slot_pin", None)
     if sp and slot >= 0:
-        allowed = sp.get(int(slot))
+        allowed = sp.get((tid, int(slot)))
         if allowed is not None and uid not in allowed:
             return False
     return True
