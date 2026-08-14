@@ -1870,7 +1870,11 @@ class StreamPlayer:
             pin_units, slot_pin = None, None
             with self._live_lock:
                 wins = (self._bridge or {}).get("windows") or {}
-                pin_track = int(live.get("track") or 0)
+                # NEVER `or <number>` ON AN ID: track 0 is a real track, so a
+                # falsy-zero default silently substitutes it for "absent". None
+                # means no session track, which is not track 0.
+                _pt = live.get("track")
+                pin_track = None if _pt is None else int(_pt)
                 slot_merged: dict = {}
                 for tid, w in list(wins.items()):
                     if not w.get("slices"):
@@ -1927,7 +1931,8 @@ class StreamPlayer:
         # exhaustion bar had. LIVE's honest output when it cannot fence is
         # silence, so that is what it casts.
         if clamp_terms is None and live.get("mode") in ("straight", "bridge"):
-            clamp_terms = live_mod.silent_fence(int(live.get("track") or 0))
+            _st = live.get("track")
+            clamp_terms = live_mod.silent_fence(0 if _st is None else int(_st))
         u = self._current_lane()
         with self._lock:                                     # second-moment shape (PREREG):
             a = None if self._wobble is None else np.asarray(self._wobble).copy()
@@ -2686,7 +2691,7 @@ class StreamPlayer:
                 "dest_track": br.get("dest_track"),
                 "dest_unit": br.get("dest_current_unit"),
                 "dest_slice_index": br.get("dest_current_slice_index"),
-                "share": float(br.get("share") or 0.0),
+                "share": float(br.get("share") if br.get("share") is not None else 0.0),
                 "blend": blend,
                 "admitted": admitted,
                 "n_admitted": len(admitted),
@@ -2697,7 +2702,7 @@ class StreamPlayer:
                 "journey": {
                     "active": True,
                     "target": br.get("dest_track"),
-                    "share": float(br.get("share") or 0.0),
+                    "share": float(br.get("share") if br.get("share") is not None else 0.0),
                     "blend": blend,
                     "admitted": admitted,
                     "scope": br.get("scope"),

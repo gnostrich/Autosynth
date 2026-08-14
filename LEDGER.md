@@ -2168,3 +2168,39 @@ provenance record, and this one drops them reliably.
   commit; this section's own edits are NOT auto-appended below (the hook
   did not fire for them in this session) and are listed here by hand
   instead so the record is not silently incomplete.
+
+### STANDING RULE — measure the AUDIBLE quantity first (operator, 2026-08-14)
+
+The unit-spread measurement settled in minutes what a day of fence and pair
+work never touched: off-pair mass was 0.000 on every bar and the admitted set
+never exceeded 2, so both the leak hypothesis and the pileup hypothesis were
+already excluded — the pileup was each admitted track drawing across its WHOLE
+corpus every bar, visible only in a quantity nobody had measured.
+
+RULE: when a defect is AUDIBLE, measure the audible quantity FIRST and let it
+choose the layer, before any fixture or audit work. Fence correctness, pair
+size and admitted-set accounting were all green while the instrument was
+unmistakably wrong to the ear.
+
+### FALSY-NUMERIC SWEEP (2026-08-14)
+
+`int(x.get("track") or -1)` — track 0 is falsy, so the FIRST track of every
+world was read as absent and lost its bridge window. Same zero-by-construction
+class logged hours earlier, in code written the same afternoon.
+
+Swept `cloud/companion`, `cloud/tools`, `architecture-v6/ets`:
+- 2 sites were the live bug (`or -1` on a track id), both fixed;
+- 2 sites were `or 0` on a track id — latent, not yet reachable, since None
+  would silently become track 0. Fixed to explicit None comparison;
+- 2 sites were `or 0.0` on a float share — value-identical either way, no
+  behaviour change. Rewritten anyway so the static check can be strict;
+- 2 sites in `architecture-v6/ets/engine/engine.py` (`sigma.get(k, 0.0) or 0.0`)
+  are value-identical AND inside a ratification-gated engine file. NOT changed;
+  listed explicitly in the check's exemption set so the exemption is visible
+  rather than silent.
+
+Static check: `cloud/tests/test_no_falsy_numeric_defaults.py`, AST-based per the
+structure-not-prose convention. Its own non-vacuity arm caught the first draft
+missing the historical shape — `-1` parses as UnaryOp(USub, Constant(1)), not
+Constant(-1), so the detector written FOR that defect could not see it. The arm
+paid for itself immediately.
