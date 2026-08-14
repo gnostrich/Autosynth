@@ -2093,3 +2093,16 @@ Same class as the vacuous BS-1 pass (off-pair mass measured over a bridge that
 never existed) and the prose-scanning PR-4 (a check satisfied by its own
 comments). Three instances in one day; treat a bare zero as unproven until its
 non-vacuity is shown.
+
+### THE LEDGER GUARD IS NOT HYPOTHETICAL — the loss reproduced in minutes (2026-08-14)
+
+Immediately after commit `b186ff1` restored the `2026-08-13 — TRACKS moving
+anchor` block that `ff68a4b` had dropped, the next regeneration DELETED IT AGAIN
+(a 30-line deletion staged in the working tree, caught only because the diff was
+read before committing). So the failure is not a one-off historical accident: any
+regeneration between now and the guard landing will keep eating hand-written
+sections.
+
+Recorded here because the guard is being built in parallel and this is the
+evidence it exists for: a provenance record that silently drops rows is not a
+provenance record, and this one drops them reliably.
