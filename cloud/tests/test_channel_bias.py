@@ -133,8 +133,8 @@ tr_empty_none = (track_role_logbias({}) is None
 # the track key ⇒ MOVES. Census a real slot role k (instrument _choose to see it).
 _stat = {}
 _orig = FiberThreader._choose
-def _probe(self, k, b, psi, bar):
-    r = _orig(self, k, b, psi, bar)
+def _probe(self, k, b, psi, bar, slot=-1):
+    r = _orig(self, k, b, psi, bar, slot)
     if r is not None:
         _stat[(int(r[0][0]), int(k))] = _stat.get((int(r[0][0]), int(k)), 0) + 1
     return r

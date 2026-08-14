@@ -102,10 +102,10 @@ batch_f, batch_o = _batch(True), _batch(False)
 # ---- kill switch: count which implementation actually ran -----------------
 counts = {"fast": 0, "orig": 0}
 _f, _o = FiberThreader._choose_fast, FiberThreader._choose_original
-def _cf(self, k, b, psi, bar):
-    counts["fast"] += 1; return _f(self, k, b, psi, bar)
-def _co(self, k, b, psi, bar):
-    counts["orig"] += 1; return _o(self, k, b, psi, bar)
+def _cf(self, k, b, psi, bar, slot=-1):
+    counts["fast"] += 1; return _f(self, k, b, psi, bar, slot)
+def _co(self, k, b, psi, bar, slot=-1):
+    counts["orig"] += 1; return _o(self, k, b, psi, bar, slot)
 FiberThreader._choose_fast, FiberThreader._choose_original = _cf, _co
 switch = {}
 for tag, val in (("default", None), ("0", "0"), ("false", "false"),
