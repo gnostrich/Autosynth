@@ -216,3 +216,12 @@ path is untouched and still never writes the row.
 NOTHING (columns honest-absent) — the TRACKS click is inert there, with the existing
 disarm messaging surfaced on the strip. The prior casting-lane scrub would have steered;
 this is the ruled trade for one-gesture-one-meaning.
+
+**2026-08-14 — this wall is what commit `f0db9d3` tried to route around** (by silently
+re-adding the CELL grain the click used to send, on an unregistered branch, deleting-then-
+inconsistently-restoring the "TRACK ID IS NOT AN ARGUMENT" comment above `fieldScrubLeans`,
+and putting a second writer on the `(track,role)` cell lane WS-9/WS-10 give exactly one
+owner). Per operator ruling, that hunk is reverted to the columns-only form documented here.
+The wall itself — what a region-disarmed corpus is, why COLUMN goes inert there while CELL
+does not, and MEASURED numbers (not just the commit-message recollection) — is written up in
+`papers/FINDING-column-lean-region-disarmed-corpus.md`.

@@ -65,8 +65,11 @@ def _install_probe():
         return
     orig = FiberThreader._choose
 
-    def wrapped(self, k, b, psi, bar):
-        res = orig(self, k, b, psi, bar)
+    def wrapped(self, k, b, psi, bar, *args, **kwargs):
+        # *args/**kwargs pass through unchanged (e.g. the `slot` param `_choose` gained
+        # since this probe was written) — the probe only OBSERVES the call, it must never
+        # change which arguments `_choose` receives.
+        res = orig(self, k, b, psi, bar, *args, **kwargs)
         if res is not None:
             _STAT[(int(res[0][0]), int(k))] += 1
             _TOT[0] += 1
