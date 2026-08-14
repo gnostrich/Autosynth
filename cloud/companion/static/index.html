@@ -3129,6 +3129,7 @@
   }
   // ---- SCRUB (W-2): the pointer's ONLY effect is this lean map ----------------
   var fieldScrubSent = null;   // last PUBLISHED scrub lean map (JSON) — idempotence only
+  var fieldScrubDragging = false;   // true only between pointer-down and release
   var FIELD_ANCHOR_HIT_PX = 12;   // how near a tap must land to CLEAR the anchor
   function fieldScrubPoint(x, y){
     if(!fieldScrubArmed() || !fieldCanvas) return null;
@@ -3175,12 +3176,16 @@
       }
     }
     fieldScrub = { track:p.track, t:p.t, travel:0, x:ev.clientX - rect.left };
+    fieldScrubDragging = true;
     fieldScrubSent = null;
     try{ fieldCanvas.setPointerCapture(ev.pointerId); }catch(e){}
     fieldScrubPublish();
   }
   function fieldScrubMove(ev){
-    if(!fieldScrub) return;
+    // ONLY WHILE DRAGGING. Without this the anchor kept following the cursor after
+    // release — it stopped being a planted mark and became a hover readout, which
+    // is exactly what the operator saw.
+    if(!fieldScrub || !fieldScrubDragging) return;
     var rect = fieldCanvas.getBoundingClientRect();
     var x = ev.clientX - rect.left;
     var p = fieldScrubPoint(x, ev.clientY - rect.top);
@@ -3200,6 +3205,7 @@
   // gesture changes: same lane resolution, same magnitude law, same columns-only
   // emission through the one steer call. Clearing is its own tap (see fieldScrubStart).
   function fieldScrubEnd(){
+    fieldScrubDragging = false;
     if(!fieldScrub) return;
     fieldScrub.planted = true;
     fieldAnchorClock = null;                    // start the travel from the next tick
@@ -3599,7 +3605,12 @@
     if(!fieldCanvas) return;
     fieldCanvas.addEventListener("wheel", fieldOnWheel, { passive:false });
     fieldCanvas.addEventListener("pointermove", fieldOnMove);
-    fieldCanvas.addEventListener("pointerleave", function(){ fieldScrubEnd(); fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw(); });
+    fieldCanvas.addEventListener("pointerleave", function(){
+      // Ending the DRAG on leave is right; the planted anchor must survive it.
+      // Previously leaving the waveform took the mark with it.
+      fieldScrubDragging = false;
+      fieldHover = null; if(fieldCanvas) fieldCanvas.title = ""; fieldDraw();
+    });
     fieldCanvas.addEventListener("click", fieldOnClick);
     // LIVE (PREREG-live-mode, Train B1): its own click listener, inert outside the LIVE
     // view (fieldLiveOnClick's own first line), so it composes with fieldOnClick above
@@ -3846,15 +3857,14 @@
   // timer still running. Tearing the stream down and reopening it on every fence is
   // also the honest thing for a re-click: the new fence starts at the new spot, so a
   // stream still carrying the old fence's buffered audio would play the wrong place.
+  // ONE STREAM, NEVER TWO. Tearing the stream down and reopening it on every click
+  // left the closing stream and the new one contending for the same session: the new
+  // one delivered about a bar and then died — the "plays 1.2 seconds then nothing"
+  // the operator kept hitting. The fence is server-side state, so an already-open
+  // stream picks up the new fence on its next bar; there is nothing to restart.
   function fieldLiveEnsureTransport(){
-    if(state === "idle"){ startPlayback(); return; }
-    // Already nominally playing. The stream may be DEAD (starved out during B-0's
-    // idle hold) while `state` still says playing, so it does need replacing — but
-    // tearing it down and reopening in the same tick makes our own abort surface as
-    // "Audio stream unavailable. network error", which is what the operator saw.
-    // Let the teardown settle first, then open the new one.
-    stopPlayback();
-    setTimeout(function(){ if(fieldViewMode(fieldView) === "live") startPlayback(); }, 400);
+    if(state === "idle") startPlayback();
+    else if(state === "paused") resumePlayback();
   }
   // FIRST CLICK = IMMEDIATE START, NO BRIDGE (B-1 amended / LM-10): straight play begins
   // at the clicked spot at once, and NOTHING is sent to the tilt carrier — this function
