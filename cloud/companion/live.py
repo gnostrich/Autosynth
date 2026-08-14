@@ -421,9 +421,12 @@ def clamp_call_kwargs(write_bar_fn, clamp_terms) -> dict:
 # already-produced telemetry) or over its own small dict of state — none of
 # it touches settlement/F/render, and the per-bar clamp it hands the writer
 # is built through the SAME single construction point (clamp0) straight play
-# already uses. No schedule/corridor/easing/monotonicity logic exists in
-# architecture-v6/ets (BR-1; see cloud/tests/test_live_bridge.py's static
-# scan).
+# already uses. No schedule/corridor/easing/monotonicity logic exists on the
+# default bridge path (BR-1; see cloud/tests/test_live_bridge.py's
+# test_br1_bridge_branch_in_compose_bar_calls_only_the_default_carrier_functions
+# and test_br1_dormant_ratchet_functions_are_unreachable_from_the_default_bridge_path
+# static AST scans, plus test_br1_default_engine_bridge_path_never_calls_the_ratchet's
+# runtime proof).
 
 from math import sqrt
 
@@ -727,9 +730,15 @@ def dest_share(rows, dest_track: int) -> float:
 # available "as a registered mode flag for comparison/measurement, not
 # exposed in UI v0" — this section IS that flag: a complete, independently
 # testable implementation that NOTHING in ``engine_bridge.StreamPlayer``'s
-# default bridge path calls (see cloud/tests/test_live_bridge.py's
-# ``test_br1_default_engine_bridge_path_never_calls_the_ratchet`` static
-# scan). It exists for an explicit, opt-in A/B run, never for a listener.
+# default bridge path calls, proved three ways in
+# cloud/tests/test_live_bridge.py: two static AST scans
+# (``test_br1_bridge_branch_in_compose_bar_calls_only_the_default_carrier_functions``,
+# ``test_br1_dormant_ratchet_functions_are_unreachable_from_the_default_bridge_path``)
+# plus the runtime proof
+# ``test_br1_default_engine_bridge_path_never_calls_the_ratchet`` (traps
+# ``corridor_mask``/``ratchet_bridge_step``/``ratchet_bridge_clamp`` to raise
+# and drives a real bridge through them). It exists for an explicit, opt-in
+# A/B run, never for a listener.
 #
 # It also demonstrates WHY B-7 retired the profile-distance floor from the
 # arrival test (A5.2): ``corridor_mask`` below can legitimately compute an
