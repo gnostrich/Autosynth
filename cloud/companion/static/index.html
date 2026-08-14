@@ -319,6 +319,25 @@
   .field-status{ position:absolute; right:12px; bottom:10px; pointer-events:none;
     font-size: var(--fs-micro); letter-spacing:.06em; color: var(--muted); }
   .field-status.settling{ color: var(--accent); }
+  /* LIVE BRIDGE v0 journey indicator (PREREG-live-mode). Normal-flow block below the
+     canvas — never overlaid on it — so it never competes with the playhead/lane
+     drawing. ONE bar; the raw per-bar trace is the whole point (BR-3: a run that
+     suppresses excursions FAILS), so no bar is smoothed toward its neighbours. */
+  .field-journey{ margin-top: var(--sp-2); padding:8px 10px; border-radius: var(--r-md);
+    background: var(--panel-inset); border:1px solid var(--line); flex: 0 0 auto; }
+  .field-journey.stalled{ border-color: var(--damp); }
+  .fj-head{ display:flex; align-items:baseline; justify-content:space-between;
+    font-size: var(--fs-micro); letter-spacing:.04em; color: var(--muted); }
+  .field-journey.stalled .fj-head{ color: var(--damp); }
+  .fj-pct{ font-family: var(--font-mono); color: var(--ink-2); }
+  .fj-trace{ position:relative; height:34px; margin-top:6px; display:flex;
+    align-items:flex-end; gap:2px; overflow:hidden; }
+  .fj-trace .fj-bar{ flex:0 0 auto; width:4px; min-height:1px; border-radius:1px 1px 0 0;
+    background: var(--muted); }
+  .fj-trace .fj-bar.met{ background: var(--accent); }
+  .field-journey.stalled .fj-trace .fj-bar{ background: var(--damp); opacity:.55; }
+  .fj-thresh{ position:absolute; left:0; right:0; bottom:75%; height:1px;
+    background: var(--line-soft); pointer-events:none; }
   /* SCROLL CONTAINER: when the (track x role) grid needs more than the viewport, the
      field pans inside here (both axes) so cells keep a legible minimum size instead
      of squashing. overscroll-behavior:contain keeps the PAGE body from scrolling
@@ -1196,6 +1215,21 @@
                     aria-label="The field — every square glows by its live settled weight (the engine's answer, never your input echoed back). Rows are tracks, columns are roles. Scroll or drag a row, column, or cell to bias it (up amplifies, down damps)."></canvas>
                 </div>
                 <div class="field-status" id="fieldStatus" aria-live="polite"></div>
+                <!-- LIVE BRIDGE v0 journey indicator (PREREG-live-mode, "LIVE BRIDGE v0
+                     — THE NATURAL TRANSITION"). ONE bar (the dual schedule/achieved bar
+                     was retired, Amendment 1): the destination placement share the
+                     backend measures off /api/live/state, drawn RAW as a per-bar trace
+                     — never eased, averaged or tweened (winding is the physics, not a
+                     defect to hide). Hidden whenever the backend has not reported an
+                     active journey (fieldLiveJourneyParse in the script): a missing
+                     field renders as no journey, never a fabricated bar. -->
+                <div class="field-journey" id="fieldJourney" hidden aria-live="polite">
+                  <div class="fj-head">
+                    <span class="fj-label" id="fjLabel"></span>
+                    <span class="fj-pct" id="fjPct"></span>
+                  </div>
+                  <div class="fj-trace" id="fjTrace"><div class="fj-thresh"></div></div>
+                </div>
               </div>
             </section>
           </div>
@@ -3651,8 +3685,9 @@
   /* ================= LIVE (deck playback; PREREG-live-mode, Train B1) ========
      A THIRD front-end onto the material-surface canvas, in its OWN new functions (the
      `fieldLive` prefix) — added ALONGSIDE grid/tracks, never inside them. Builds exactly
-     B-0 / B-1-amended / LM-9 / LM-10 from the prereg, and NOTHING past that in this train
-     (no bridge, no journey bar, no fidelity label — those are later trains):
+     B-0 / B-1-amended / LM-9 / LM-10 from the prereg, PLUS the LIVE BRIDGE v0 front end
+     (jump label + journey bar, this train) and NOTHING past that (no fidelity label —
+     that is a later train):
        IDLE  = SILENT. No lean, no request, nothing polled — a fabricated playhead is
                forbidden. Lanes show (fieldLanesPlace + fieldDrawWave, REUSED verbatim,
                never forked) with the row glow pinned DARK.
@@ -3672,13 +3707,46 @@
        PLAYHEAD = read-only: fieldLiveState is written ONLY by fieldLivePoll's GET
                /api/live/state, never by a local clock. A frozen backend state freezes
                the mark; there is no interpolation anywhere in this section.
-     NOT built in this train (disclosed, not faked): the bridge (openness release/
-     convergence-close), the journey bar, and the fidelity label. */
+     JOURNEY = LIVE BRIDGE v0 (papers/PREREG-live-mode.md, "LIVE BRIDGE v0 — THE
+               NATURAL TRANSITION"). The bridge itself (B-1..B-7: fence release, lean
+               latch, no-intervention traverse) is engine-side, built elsewhere. This
+               file only ever RENDERS what the backend already reports:
+                 - while no journey is reported active, the status line says plainly
+                   that a click JUMPS (no bridge => no transition to imply, ever);
+                 - while a journey IS reported active, ONE bar — the destination
+                   placement-share trace (fieldLiveJourneyParse below) — is drawn RAW,
+                   per bar, straight off telemetry: no easing, no averaging, no
+                   monotonicity coercion (BR-3: the winding is the physics);
+                 - B-5 stall gets its own first-class copy/visual, never a spinner or
+                   a countdown;
+                 - arrival is never rendered from a local timer or inferred distance:
+                   the journey simply stops being reported active (the backend closed
+                   the fence per B-4) and straight play at the destination resumes
+                   through the SAME mode:"straight" path above — no separate "arrived"
+                   flag is read or required.
+               CONTRACT (defensive: anything outside this exact shape parses to "no
+               journey" — never a fabricated bar, per the operator's own instruction):
+                 j.journey = {
+                   active:  bool             // a bridge is in progress right now
+                   target:  int|null         // destination track id (display only)
+                   share:   number 0..1      // THIS bar's destination placement share
+                   history: [number 0..1...] // per-bar shares, oldest→newest, backend-
+                                              // owned window; rendered verbatim, never
+                                              // binned/averaged/reordered
+                   stalled: bool             // backend's own honest verdict (B-5) —
+                                              // never inferred here from elapsed time
+                 }
+               A response with no `journey` key, a non-object `journey`, or a
+               non-finite `share` all parse to null (no journey) — this is how the
+               front end stays correct if the backend field lands under a different
+               name or ships later than this file.
+     NOT built in this train (disclosed, not faked): the fidelity label. */
   var FIELD_LIVE_POLL_MS = 300;      // display-refresh cadence for the state GET — a UI
                                       // redraw rate, not a schedule/physics constant; no
                                       // engine/schedule logic lives in this file at all.
   var fieldLiveAvailable = true;     // false once an endpoint answers non-OK (honest degrade)
-  var fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false };
+  var fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false,
+                          journey:null };   // journey: see fieldLiveJourneyParse's contract
   var fieldLivePollTimer = null;
 
   // PURE: pointer (x, y) -> { track, t }, through the SAME lane geometry the TRACKS
@@ -3789,6 +3857,14 @@
   // LIVE's OWN warm clock. worldLoadStart lives in a different <script> block, so
   // reading it here produced the literal string "undefined" in the banner — shipped.
   var fieldWarmSince = null;
+  // LIVE BRIDGE v0, item 1 (the operator's explicit ask): while no journey is
+  // reported active, a click is a HARD CUT (the fence swaps instantly) — the view
+  // must say so plainly, every time, rather than let a bare "ready"/"playing" line
+  // imply anything is winding across. Once a journey IS active this suffix drops
+  // out (fieldLiveMessage's own journey branch, below, describes it instead).
+  function fieldLiveJumpSuffix(){
+    return fieldLiveState.journey ? "" : " — click jumps straight there (bridge not active)";
+  }
   function fieldLiveMessage(){
     if(!fieldLiveAvailable) return { text:"LIVE backend not available", warn:true };
     if(!world.ready)        return { text:"loading your set…", warn:false };
@@ -3806,8 +3882,20 @@
                  : "engine warming up (" + ws + "s) — usually under a minute",
                warn:false };
     fieldWarmSince = null;                      // warmed: the clock resets for next time
+    // JOURNEY (LIVE BRIDGE v0): reported active regardless of what `mode` says —
+    // takes priority over the generic ready/playing text below, since neither of
+    // those is true while a bridge is actually underway. The DOM trace (fjEl) is
+    // the detailed view; this line is the same story in one sentence.
+    if(fieldLiveState.journey){
+      var jr = fieldLiveState.journey;
+      return { text: jr.stalled
+                 ? "bridging — the corpus has no road there (fence stays open)"
+                 : "bridging — " + Math.round(jr.share * 100) + "% drawn from the destination",
+               warn: !!jr.stalled };
+    }
     if(fieldLiveState.mode !== "straight")
-      return { text:"ready — click a spot to start playing from there", warn:false };
+      return { text:"ready — click a spot to start playing from there" + fieldLiveJumpSuffix(),
+               warn:false };
 
     // straight play: is the engine actually producing? bars_elapsed is the engine's
     // own count, so a frozen count means frozen production, and we say that.
@@ -3823,7 +3911,73 @@
                warn:true };
     var nm = fieldWaveTrack(fieldLiveState.track);
     return { text:"playing — " + ((nm && nm.name) || ("track " + fieldLiveState.track))
-                  + " · bar " + n, warn:false };
+                  + " · bar " + n + fieldLiveJumpSuffix(), warn:false };
+  }
+  // PURE: /api/live/state's raw `journey` field -> the normalized shape this file
+  // draws, or null. See the JOURNEY contract comment above fieldLiveState's own
+  // declaration for the exact shape expected. Every check below FAILS CLOSED to
+  // null (no journey) rather than guessing at a partial/malformed payload — a
+  // bridge train landing its fields under different names, later, or not at all
+  // must never surface here as a fabricated bar.
+  function fieldLiveJourneyParse(j){
+    if(!j || typeof j !== "object") return null;
+    var jr = j.journey;
+    if(!jr || typeof jr !== "object") return null;
+    if(!jr.active) return null;
+    var share = +jr.share;
+    if(!isFinite(share)) return null;
+    share = Math.max(0, Math.min(1, share));
+    var rawHist = jr.history;
+    var hist = [];
+    if(Array.isArray(rawHist)){
+      for(var i = 0; i < rawHist.length; i++){
+        var v = +rawHist[i];
+        if(isFinite(v)) hist.push(Math.max(0, Math.min(1, v)));   // clamp only; no reordering/binning
+      }
+    }
+    return {
+      target: (jr.target === undefined || jr.target === null) ? null : (jr.target | 0),
+      share: share,
+      history: hist,
+      stalled: !!jr.stalled
+    };
+  }
+  // FIELD_JOURNEY_MAX_BARS: a DISPLAY cap only (the trace does not fit unbounded
+  // bars in a fixed-width strip) — bars are dropped from the OLD end, never binned
+  // or averaged, so every bar still shown is exactly what the backend reported.
+  var FIELD_JOURNEY_MAX_BARS = 48;
+  var fjEl = $("fieldJourney"), fjLabelEl = $("fjLabel"), fjPctEl = $("fjPct"), fjTraceEl = $("fjTrace");
+  function fieldLiveJourneyHide(){
+    if(fjEl) fjEl.hidden = true;
+  }
+  // Renders (or hides) the ONE journey bar (Amendment 1: the dual schedule/achieved
+  // bar was retired) straight off the parsed telemetry — no local smoothing, easing
+  // or synthesized points anywhere in this function.
+  function fieldLiveJourneyRender(journey, destName){
+    if(!fjEl) return;
+    if(!journey){ fieldLiveJourneyHide(); return; }
+    fjEl.hidden = false;
+    fjEl.classList.toggle("stalled", !!journey.stalled);
+    var nm = destName || (journey.target !== null ? ("track " + journey.target) : "the destination");
+    if(fjLabelEl){
+      fjLabelEl.textContent = journey.stalled
+        ? "the corpus has no road there"
+        : "bridging → " + nm;
+    }
+    if(fjPctEl) fjPctEl.textContent = Math.round(journey.share * 100) + "%";
+    if(fjTraceEl){
+      // Rebuild the tick row from the reported history verbatim (plus the current
+      // share as the newest tick, since B-4's own convention reads THIS bar's share
+      // too) — trimmed to the display cap from the OLD end only.
+      var bars = journey.history.concat([journey.share]).slice(-FIELD_JOURNEY_MAX_BARS);
+      while(fjTraceEl.children.length > 1) fjTraceEl.removeChild(fjTraceEl.lastChild);  // keep .fj-thresh
+      for(var i = 0; i < bars.length; i++){
+        var b = document.createElement("div");
+        b.className = "fj-bar" + (bars[i] >= 0.75 ? " met" : "");   // BR-1: display-only threshold read
+        b.style.height = Math.max(2, Math.round(bars[i] * 34)) + "px";
+        fjTraceEl.appendChild(b);
+      }
+    }
   }
   function fieldLivePoll(){
     fetch("/api/live/state").then(function(r){
@@ -3836,10 +3990,14 @@
         unit: (j.unit === undefined ? null : j.unit),
         sliceIndex: (j.slice_index === undefined ? null : j.slice_index),
         starved: !!j.starved,
-        bars: (j.bars_elapsed | 0)
-      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0 };
+        bars: (j.bars_elapsed | 0),
+        journey: fieldLiveJourneyParse(j)
+      } : { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0, journey:null };
+      var jt = fieldLiveState.journey;
+      var jnm = jt ? (fieldWaveTrack(jt.target) || {}).name : null;
+      fieldLiveJourneyRender(jt, jnm);
       fieldDraw();
-    }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
+    }).catch(function(){ fieldLiveAvailable = false; fieldLiveJourneyHide(); fieldDraw(); });
   }
   function fieldLivePollStart(){
     // NO ENTER HERE. This runs on every live start too, so calling enter from it
@@ -3891,7 +4049,9 @@
         fieldLiveState = { mode: j.mode || "straight",
                            track: (j.track === undefined ? track : j.track),
                            unit: (j.unit === undefined ? null : j.unit),
-                           sliceIndex: fieldLiveState.sliceIndex, starved:false };
+                           sliceIndex: fieldLiveState.sliceIndex, starved:false,
+                           journey: null };   // a fresh fence starts straight, never mid-journey
+        fieldLiveJourneyHide();
         fieldLivePollStart();
         fieldLiveEnsureTransport();
       } else {
@@ -3931,7 +4091,9 @@
   }
   function fieldLiveStop(){
     fieldLivePollStop();
-    fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0 };
+    fieldLiveState = { mode:"idle", track:null, unit:null, sliceIndex:null, starved:false, bars:0,
+                        journey:null };
+    fieldLiveJourneyHide();                     // BR-6: leaving mid-bridge drops the journey too
     fetch("/api/live/stop", { method:"POST" }).catch(noop);
     stopPlayback();
   }
