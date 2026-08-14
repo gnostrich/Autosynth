@@ -2016,3 +2016,29 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - Checks PR-1..PR-6 ALL PASS incl. PR-6 byte-identity of a fixed-pair tape
   against the pre-change build (sha256 05657f72...), proving the physics -
   release slew, latched lean, tether traversal - is untouched.
+
+### STANDING RULES adopted 2026-08-14 (operator)
+
+**MISLABEL — a recurring pattern, second instance in two days.**
+1. the LIVE lane mark drew the bar's highest-mass placement while reading as a
+   sample position (fixed: it now draws, and names, the ADMITTED WINDOW);
+2. the bridge reported the SESSION's track as `source_track` while the fence
+   had been built from the measured dominant track (fixed: the readout is the
+   measured `from`).
+
+STANDING RULE: any readout naming a track, a position, or a state must derive
+from the SAME telemetry the mechanism consumed that bar — never from session
+state, never from config, never from what was requested. A readout built from a
+different source than the mechanism is a mislabel even when both are individually
+correct. If this recurs a third time it becomes a lint check.
+
+**CHECK-WRITING CONVENTION — a static check must read structure, not prose.**
+PR-4 (pair rule, no-history on the admission path) first scanned the function's
+raw source text and failed on the words "history" and "window" appearing in the
+comments that EXPLAIN their absence. A text scan can also pass for the same
+reason — certifying its own comments.
+
+STANDING RULE: any static check asserting the ABSENCE of a concept must walk the
+AST and read identifiers, attributes and call targets. Never substring-match
+source text. A check that can be satisfied or defeated by a comment is not a
+check.
