@@ -2255,3 +2255,33 @@ RULE: before measuring, verify BOTH ends — that the instrument reads what you
 think it reads (against the producer's own docstring), and that the subject can
 exhibit the property under test. State both checks in the report. An instrument
 and a fixture are code, held to the same standard as the code they judge.
+
+### CC-LICENSED FIXTURE CORPUS (2026-08-14) — and what it settles
+
+13 full-length tracks, CC-BY/CC0 only, each licence read from archive.org's own
+`licenseurl` metadata rather than assumed: Chris Zabriskie, Broke For Free, Josh
+Woodward, Jason Shaw/Audionautix, Approaching Nirvana, Steve Combs, Loyalty
+Freak Music. Eight macro-genres (cinematic electronic, downtempo, funk, vocal
+pop-folk, ambient, acoustic folk, dubstep, indie rock, electro-dance, metal) —
+the spread is the point; a fixture of near-identical loops would hide the class
+under test. Audio and the 32.4MB world stay container-local; committed are
+`scripts/fetch_and_train_fixture_corpus.py` and
+`cloud/fixtures/fixture_corpus_receipt.json` (title/artist/source/licence/sha256
+per track), so a fresh clone rebuilds the world from the script alone.
+
+WHAT IT SETTLES: unit numbering is `0..N-1` PER TRACK here too, and ALL 78 of 78
+track pairs share ids (max overlap 11,760). Taken with the operator corpus's 45
+of 45 (max 16,416), the cross-track collision class is a property of TRAINED
+WORLDS GENERALLY — not of one corpus, and not a demo artifact. The per-track
+slot-pin re-key is therefore justified on the mechanism, independently of whose
+music is loaded.
+
+Pileup measurement on it (one bridge, two reroutes): straight spread 52/61/61,
+bridge 33-62, reroutes 22-63 and 56-63, off-pair mass 0.0, max admitted 2 — the
+same shape as the operator corpus. NOTE the honest caveat the builder disclosed:
+several tracks here are 4,064-7,888 units, below the operator corpus's
+11k-20k band, because the genre spread deliberately includes ~3-minute pieces.
+
+Also caught mid-build: `build_trained_world` returns `{"world": <path string>}`,
+not a World object -- a receipt writer that assumed otherwise crashed AFTER an
+800s train. Reload via `worldfile.load_world` before reading world shape.
