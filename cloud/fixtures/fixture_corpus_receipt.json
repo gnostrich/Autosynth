@@ -1,0 +1,188 @@
+{
+ "ts": "2026-08-14",
+ "kind": "fixture-corpus-training-receipt",
+ "id": "cc-fixture-corpus-2026-08-14",
+ "source": "Internet Archive (archive.org), CC-BY/CC0 tracks only -- see TRACKS in scripts/fetch_and_train_fixture_corpus.py",
+ "note": "Freely-licensed counterpart to operator_corpus_receipt.json. The audio and the trained world are container-local and gitignored; this receipt + the fetch script reproduce the world from public CC-BY/CC0 sources -- no private files needed.",
+ "tracks_trained": 13,
+ "train_seconds": 800,
+ "world_bytes": 32368979,
+ "world_sha256": "0ecf128cef3dd595568e1a5b384a3fb750dd721e8e7d879433846355c72cc50f",
+ "world_shape": {
+  "tracks": 13,
+  "M": 5,
+  "units_per_track": [
+   7888,
+   10480,
+   10144,
+   10576,
+   11376,
+   6928,
+   5904,
+   4064,
+   7376,
+   13360,
+   5632,
+   7008,
+   11760
+  ]
+ },
+ "unit_numbering": "0..N-1 PER TRACK on all 13 tracks (each track's unit_id range is exactly [0, n_units-1] -- assert_provenance_complete's own invariant, independently re-measured here); all 78 of the C(13,2)=78 track pairs share overlapping unit-id ranges (every pair overlaps at [0, min(hi_a,hi_b)] since every track starts at 0), max overlap 11760 -- the cross-track collision class reproduces on a freely-licensed corpus exactly as it did on the operator's, confirming it is a universal property of trained worlds and not a demo or operator-corpus artifact.",
+ "measured_spread": {
+  "note": "cloud/tools/../pileup.py journey on this world: 3 bars straight (track 0), then bridge to track 1, reroute to track 2, reroute to track 3. Engine warmed with one throwaway produce_one_bar() before the journey (first-bar cost ~65s, then ~0.4s/bar) so no hold timed out. Per-bar spread = max(unit_id)-min(unit_id) drawn by that track in that bar; column 0 (t0_s), not column 3 (mass), was used for every click-time computation, per engine_bridge.track_unit_slices's own docstring.",
+  "straight": [52, 61, 61],
+  "bridge_0_to_1": [
+   {"bar": 6, "spread": {"0": 62, "1": 33}},
+   {"bar": 7, "spread": {"0": 62, "1": 56}},
+   {"bar": 8, "spread": {"0": 58, "1": 56}},
+   {"bar": 9, "spread": {"0": 58, "1": 62}}
+  ],
+  "reroute_to_2": [
+   {"bar": 10, "spread": {"0": 58, "2": 58}},
+   {"bar": 11, "spread": {"0": 63, "2": 59}},
+   {"bar": 12, "spread": {"2": 63, "0": 22}},
+   {"bar": 13, "spread": {"2": 63}}
+  ],
+  "reroute_to_3": [
+   {"bar": 14, "spread": {"2": 63, "3": 58}},
+   {"bar": 15, "spread": {"2": 63, "3": 58}},
+   {"bar": 16, "spread": {"2": 63, "3": 61}},
+   {"bar": 17, "spread": {"3": 62, "2": 56}}
+  ],
+  "off_pair_mass": 0.0,
+  "max_admitted": 2,
+  "any_size_3plus": false
+ },
+ "tracks": [
+  {
+   "title": "Set This Thing on Fire",
+   "artist": "Chris Zabriskie",
+   "source_url": "https://archive.org/details/cz-blackhole",
+   "file_url": "https://archive.org/download/cz-blackhole/06%20-%20Set%20This%20Thing%20on%20Fire.mp3",
+   "license": "https://creativecommons.org/licenses/by/4.0/",
+   "genre": "indie / orchestral-electronic (vocal)",
+   "bytes": 7287204,
+   "sha256": "0466da47845c994871f75700dc397b3c5edf74188aa378ba220dc0d105e6fd02"
+  },
+  {
+   "title": "We Start the Cure in Paris",
+   "artist": "Chris Zabriskie",
+   "source_url": "https://archive.org/details/cz-ogreatqueenelectric",
+   "file_url": "https://archive.org/download/cz-ogreatqueenelectric/Chris%20Zabriskie%20-%20O%20Great%20Queen%20Electric%2C%20What%20Do%20You%20Have%20Waiting%20for%20Me%C2%BF%20-%2003%20-%20We%20Start%20the%20Cure%20in%20Paris.mp3",
+   "license": "https://creativecommons.org/licenses/by/4.0/",
+   "genre": "electronic",
+   "bytes": 8772219,
+   "sha256": "d04e08ab794bb03a6f668436d1ebc7be48b3530c398e9bf6c3acb6f9ea6c07c4"
+  },
+  {
+   "title": "Direct to Video",
+   "artist": "Chris Zabriskie",
+   "source_url": "https://archive.org/details/ChrisZabriskieDirectToVideo",
+   "file_url": "https://archive.org/download/ChrisZabriskieDirectToVideo/Chris%20Zabriskie%20-%20Direct%20to%20Video%20-%2001%20Direct%20to%20Video.mp3",
+   "license": "http://creativecommons.org/licenses/by/3.0/",
+   "genre": "cinematic electronic",
+   "bytes": 10577408,
+   "sha256": "93c68362f5eed8ddb15e427d4ceab0d099f6edbd4c9bfd137c9bdc5947bae221"
+  },
+  {
+   "title": "My Luck",
+   "artist": "Broke For Free",
+   "source_url": "https://archive.org/details/DirectionlessEP",
+   "file_url": "https://archive.org/download/DirectionlessEP/Broke%20For%20Free%20-%20Directionless%20EP%20-%2004%20My%20Luck.mp3",
+   "license": "http://creativecommons.org/licenses/by/3.0/",
+   "genre": "downtempo electronic",
+   "bytes": 5889536,
+   "sha256": "40bf076bb61c0c9a6ac5a4cf4dc298615fe552e07c1f5b6275c494ae475ac0af"
+  },
+  {
+   "title": "The Great",
+   "artist": "Broke For Free",
+   "source_url": "https://archive.org/details/Slam_Funk-7603",
+   "file_url": "https://archive.org/download/Slam_Funk-7603/Broke_For_Free_-_03_-_The_Great.mp3",
+   "license": "http://creativecommons.org/licenses/by/3.0/",
+   "genre": "funk / electronic",
+   "bytes": 14569355,
+   "sha256": "834ca6d81563133b52fb5ae9ac13104418a26cbd180a8c83208fbbf429027657"
+  },
+  {
+   "title": "Perfect Recipe",
+   "artist": "Josh Woodward",
+   "source_url": "https://archive.org/details/josh-woodward-perfect-recipe",
+   "file_url": "https://archive.org/download/josh-woodward-perfect-recipe/JoshWoodward-PerfectRecipe.mp3",
+   "license": "https://creativecommons.org/licenses/by/4.0/",
+   "genre": "vocal pop / folk",
+   "bytes": 8677504,
+   "sha256": "1f1a22e3d70886816101acd5788d3297bd48e15d56d49e27ab17405f55bd225f"
+  },
+  {
+   "title": "Essence 2",
+   "artist": "Jason Shaw (Audionautix)",
+   "source_url": "https://archive.org/details/Essence2",
+   "file_url": "https://archive.org/download/Essence2/RP-Essence2.mp3",
+   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+   "genre": "ambient (CC0)",
+   "bytes": 4574608,
+   "sha256": "17befc5a8f1f8cef56cb014a375fa3443ad77cc2bc0d6ce9c8e60259b8c3504c"
+  },
+  {
+   "title": "Pioneers",
+   "artist": "Jason Shaw (Audionautix)",
+   "source_url": "https://archive.org/details/Pioneers",
+   "file_url": "https://archive.org/download/Pioneers/RP-Pioneers.mp3",
+   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+   "genre": "electronic (CC0)",
+   "bytes": 6941302,
+   "sha256": "15ee51da71c8f001900755a1d2f053f51e3128583260087b37d95f7944642eed"
+  },
+  {
+   "title": "Solo Acoustic Guitar",
+   "artist": "Jason Shaw (Audionautix)",
+   "source_url": "https://archive.org/details/Audionautix_Acoustic-9870",
+   "file_url": "https://archive.org/download/Audionautix_Acoustic-9870/Jason_Shaw_-_SOLO_ACOUSTIC_GUITAR.mp3",
+   "license": "http://creativecommons.org/licenses/by/3.0/us/",
+   "genre": "acoustic instrumental folk",
+   "bytes": 7663326,
+   "sha256": "fed4d2d6afa845cf1c5742428a629ed5328e06f25382257b4d11a3e91a994658"
+  },
+  {
+   "title": "The Long Night",
+   "artist": "Approaching Nirvana",
+   "source_url": "https://archive.org/details/gs_approaching-nirvana-not-even-once",
+   "file_url": "https://archive.org/download/gs_approaching-nirvana-not-even-once/04%20The%20Long%20Night.mp3",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "genre": "dubstep / electronic",
+   "bytes": 10026610,
+   "sha256": "c21ad8b3de59bcfe1b237206e8522fd66f46c5ad1101c7558a4bf535b3bb56bf"
+  },
+  {
+   "title": "Our Wasted Youth",
+   "artist": "Steve Combs",
+   "source_url": "https://archive.org/details/ourwastedyouth",
+   "file_url": "https://archive.org/download/ourwastedyouth/2-06%20Our%20Wasted%20Youth.mp3",
+   "license": "http://creativecommons.org/licenses/by/3.0/",
+   "genre": "indie rock",
+   "bytes": 6173554,
+   "sha256": "3f29353ff831616d6763c76bf1325502f665fe96029c6a57e32578194c6e9b41"
+  },
+  {
+   "title": "Everyone is so alive",
+   "artist": "Loyalty Freak Music",
+   "source_url": "https://archive.org/details/ROBOTDANCE",
+   "file_url": "https://archive.org/download/ROBOTDANCE/Loyalty%20Freak%20Music%20-%20ROBOT%20DANCE%20%21%20-%2001%20Everyone%20is%20so%20alive.mp3",
+   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+   "genre": "electro / dance (CC0)",
+   "bytes": 5723132,
+   "sha256": "c34e37e414a20bf4ca05833d5a83ce0bf2723162bbd79c7723dcadbffc0b8171"
+  },
+  {
+   "title": "Ultimate Metal",
+   "artist": "Loyalty Freak Music",
+   "source_url": "https://archive.org/details/LoyaltyFreakMusicHYPERMETAL2017122060804395",
+   "file_url": "https://archive.org/download/LoyaltyFreakMusicHYPERMETAL2017122060804395/LoyaltyFreakMusic-HyperMetal-08UltimateMetal.mp3",
+   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+   "genre": "metal (CC0)",
+   "bytes": 10856501,
+   "sha256": "1162c0ebe990418ce47f1729fe708c052592e7a8141e8c5f546e7e2bec4d4851"
+  }
+ ]
+}
