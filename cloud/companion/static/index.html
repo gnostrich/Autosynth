@@ -1650,7 +1650,14 @@
     // the LIVE pulse dot (CSS .hb/breathe) — a real "still checking, not dead"
     // signal, refreshed by the SAME 3s poll (pollTick -> refreshEngineState)
     // that clears this note the instant warmed flips true. No fake percentage.
-    el.innerHTML = '<span class="hb"></span>engine warming up — first sound can take a few minutes';
+    // MEASURED, not vague. "a few minutes" overstated it: on the operator's
+    // 10-track set, timed from a cold session, the engine reported warmed after
+    // 44s and the first sound arrived 2s after a click. An elapsed counter is the
+    // honest form — it is a real reading, it visibly moves, and a warm that DOES
+    // run long shows its own number instead of hiding behind a phrase.
+    var warmS = Math.max(0, Math.round((Date.now() - worldLoadStart) / 1000));
+    el.innerHTML = '<span class="hb"></span>engine warming up — ' + warmS +
+                   's so far (usually under a minute)';
     el.hidden = !(world.ready && !world.warmed);
   }
   // Slim /api/world re-read for the warmed/last_error flags ONLY. It must never
@@ -3758,9 +3765,10 @@
     // played, and the contradiction was mine. A click during the warm is still
     // honoured (the fence is set), so say exactly that rather than refusing it.
     if(!world.warmed)
+      var ws = Math.max(0, Math.round((Date.now() - worldLoadStart) / 1000));
       return { text: (fieldLiveState.mode === "straight")
-                 ? "engine warming up — your spot is set; sound starts when it is ready"
-                 : "engine warming up — first sound can take a few minutes",
+                 ? "engine warming up (" + ws + "s) — your spot is set; sound starts when it is ready"
+                 : "engine warming up (" + ws + "s) — usually under a minute",
                warn:false };
     if(fieldLiveState.mode !== "straight")
       return { text:"ready — click a spot to start playing from there", warn:false };
