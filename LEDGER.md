@@ -2000,3 +2000,19 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 
 ### at `90bcdeb`
 - `Write` cloud/tools/commit_to_land_verify.py (2026-08-14T16:19:00+00:00)
+
+### at `fe5eac0`
+- `Write` cloud/tools/pair_rule_verify.py (2026-08-14T17:25:48+00:00)
+
+### THE PAIR RULE (2026-08-14)
+- A bridge is always exactly two tracks {from, to}; a mid-bridge reroute REPLACES
+  the pair rather than extending it. Supersedes the history-free per-leg carry
+  set, whose admitted side grew 2 -> 3 -> 4 across a run of redirections.
+- `from` is measured at the click bar (dominant placement mass), not remembered:
+  `StreamPlayer._last_shares` holds ONE bar's shares, overwritten each bar, and
+  the accumulating `_leg_drawn` set is deleted.
+- Reported `source_track` is now that measured `from` (it was the session's own
+  track, which left the fence correct but the readout stale).
+- Checks PR-1..PR-6 ALL PASS incl. PR-6 byte-identity of a fixed-pair tape
+  against the pre-change build (sha256 05657f72...), proving the physics -
+  release slew, latched lean, tether traversal - is untouched.

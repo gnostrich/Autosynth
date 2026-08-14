@@ -798,9 +798,12 @@ class StreamPlayer:
         self._live_wobble_hist: "deque" = deque(maxlen=self._METER_WINDOW)
         # BS-4: per-bar PER-TRACK placement shares over the registered window W.
         # The only input to "which tracks are currently sounding" at a re-click.
-        # THE CURRENT LEG's drawn-from set (Amendment 6 ruling 1) — cleared at
-        # every click, so it can never accumulate across legs.
-        self._leg_drawn: set = set()
+        # THE LAST FENCED BAR'S measured per-track shares. This is the ONLY
+        # input to `from` (THE PAIR RULE, P-2): the dominant track at the bar a
+        # click lands on. One bar, overwritten each time — deliberately NOT an
+        # accumulation structure (PR-4), because a bridge is always exactly two
+        # tracks and nothing about earlier bars can widen it.
+        self._last_shares: dict = {}
         # bar index -> was that bar composed under a LIVE fence (see _compose_bar)
         self._fenced_bar: dict = {}
         # S-3 default scope for a journey (env-flagged; DIRECT unless asked).
@@ -2014,15 +2017,11 @@ class StreamPlayer:
         with self._live_lock:
             raw_mode = self._live.get("mode")
         if raw_mode in ("straight", "bridge") and self._fenced_bar.get(int(r.bar)):
-            # THE CURRENT LEG'S DRAWN-FROM SET (Amendment 6, ruling 1). Not a
-            # window, not a trend, not a decay: the set of tracks THIS LEG has
-            # actually cast from, cleared at every click. Nothing accumulates
-            # across legs, so there is no history for a smoothing constant to
-            # be needed on.
+            # THE BAR'S measured shares, overwritten (never appended to): the
+            # dominant one is `from` if a click lands on the next bar (P-2).
             with self._live_lock:
-                for _t, _v in live_mod.track_shares(r.rows).items():
-                    if float(_v) > 0.0:
-                        self._leg_drawn.add(int(_t))
+                self._last_shares = {int(k): float(v)
+                                     for k, v in live_mod.track_shares(r.rows).items()}
         if raw_mode == "straight":
             self._live_wobble_hist.append(
                 live_mod.column_shares(nowplaying_track_role, self.M))
@@ -2444,23 +2443,31 @@ class StreamPlayer:
             # rather than guess one.
             raise live_mod.LiveCarrierUnavailable(
                 "no source track on record for this session's playing state")
-        # ADMISSION IS HISTORY-FREE (Amendment 6, ruling 1): the new leg carries
-        # exactly the tracks THE CURRENT LEG ACTUALLY DREW FROM, then that record
-        # is cleared. No window, no trend, no decay — measurement showed there is
-        # nothing to trend on (AUC 0.486 / 0.552 against 0.5, zero zero-share
-        # bars), and that admission is self-fulfilling, so a sounding-over-W test
-        # could only ever ratify what the fence already allowed. Clearing per leg
-        # is what makes accumulation impossible (CL-4).
+        # THE PAIR RULE: a bridge is ALWAYS EXACTLY TWO TRACKS, {from, to}, and a
+        # reroute REPLACES the pair rather than extending it. The abandoned track
+        # leaves the fence on the very next bar, so nothing piles up and nothing
+        # lingers. This supersedes the per-leg drawn-from set, whose carried side
+        # grew 2 -> 3 -> 4 across a run of redirections (measured, CL-4).
+        #
+        # `from` is MEASURED, not remembered and not chosen by the UI (P-2): the
+        # dominant placement mass in the bar this click lands on. Straight play
+        # yields the playing track by construction (it is the only one sounding);
+        # mid-blend it yields whichever of the two is currently carrying more. If
+        # no bar has been produced yet there is nothing to measure, and the
+        # session's own track is the honest answer.
         with self._live_lock:
-            drawn = set(int(x) for x in self._leg_drawn)
-            self._leg_drawn = set()
-        carried = drawn | {int(source_track)}
-        carried.discard(int(dest_track))          # the destination is admitted by scope
-        carry = tuple(sorted(carried)) or (int(source_track),)
-        from collections import deque
+            shares = dict(self._last_shares)
+        shares.pop(int(dest_track), None)         # `to` cannot also be `from`
+        from_track = (max(shares.items(), key=lambda kv: kv[1])[0]
+                      if shares else int(source_track))
+        carry = (int(from_track),)
         with self._live_lock:
             self._bridge = {
-                "source_track": int(source_track), "dest_track": int(dest_track),
+                # `from` is the MEASURED dominant track (P-2), and it is what is
+                # reported: carrying the session's own track here left the fence
+                # correct but `source_track` stale, which is the same mislabel
+                # class as a mark that shows one thing and names another.
+                "source_track": int(from_track), "dest_track": int(dest_track),
                 # S-3: scope is fence DATA, chosen at journey start, constant
                 # for this journey, logged. DIRECT (default) admits only the
                 # carried set plus the destination; OPEN releases to the corpus.
