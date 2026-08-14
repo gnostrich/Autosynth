@@ -2548,12 +2548,22 @@
   // TRACK ID IS NOT AN ARGUMENT — this function structurally cannot write a per-track
   // lean. A zero-weight role gets NO entry (the same byte-clean omission fieldAddBias
   // makes). No unit key, no unit id, ever.
-  function fieldScrubLeans(mag, w){
+  // RESTORED CELL COMPONENT (branch experiment, 2026-08-14). Amendment 2 made this
+  // columns-only, and the operator reports TRACKS went dead at exactly that point.
+  // The (track, role) CELL grain is the measured-strong handle — the ratified gate
+  // recorded it moving a cell's share 0.068 -> 0.001 damped and -> 0.101 amplified,
+  // whereas a settlement column lean is soft by construction and does nothing at all
+  // on a region-disarmed corpus. This emits BOTH: the cell that used to work, and the
+  // column Amendment 2 asked for.
+  function fieldScrubLeans(tid, mag, w){
     var out = {};
     if(!(mag > 0)) return out;
     for(var r = 0; r < (w ? w.length : 0); r++){
       var v = mag * (+w[r] || 0);
-      if(v > 0) out[fieldKeyStr(["col", r])] = v;
+      if(v > 0){
+        out[fieldKeyStr(["role", tid | 0, r])] = v;
+        out[fieldKeyStr(["col", r])] = v;
+      }
     }
     return out;
   }
@@ -2568,7 +2578,7 @@
     if(!tr) return null;
     var sw = fieldScrubWeights(tr.slices, scrub.t, M);
     if(!sw.sel.length) return null;
-    return fieldScrubLeans(fieldScrubMag(scrub.travel), sw.w);
+    return fieldScrubLeans(scrub.track, fieldScrubMag(scrub.travel), sw.w);
   }
   // Sum a transient lean map onto the persistent ledger through the EXISTING saturating
   // accumulator — one clamp law for every gesture. `base` is never mutated.
