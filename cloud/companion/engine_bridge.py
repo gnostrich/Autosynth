@@ -1785,7 +1785,8 @@ class StreamPlayer:
                 self.live_enter()              # ran off the end: idle silence
             else:
                 admitted = tuple(win["core"]) + tuple(win["widened"])
-                clamp_terms = live_mod.build_full_fence(live["track"], admitted)
+                clamp_terms = live_mod.build_full_fence(live["track"], admitted,
+                                                       slot_pin=win.get("slot_pin"))
                 with self._live_lock:
                     if self._live.get("mode") == "straight":
                         self._live["clamp"] = clamp_terms

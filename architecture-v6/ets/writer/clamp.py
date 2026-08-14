@@ -131,6 +131,12 @@ class ClampTerms:
     track_mask: Mapping[int, float]
     openness: float
     unit_pin: Optional[Tuple[int, Tuple[int, ...]]] = None
+    # PER-SLOT PIN (straight-play faithfulness). `unit_pin` admits a bar's worth of
+    # material as ONE pool, which lets any slot play any of it: measured, a single
+    # bar drew tatums 0, 8, 15, 16 and 23 at once — the track layered over itself.
+    # This maps slot-in-bar -> the units that slot alone may play, so the bar walks
+    # the passage in order. None ⇒ unchanged behaviour (neutral law untouched).
+    slot_pin: Optional[Mapping[int, Tuple[int, ...]]] = None
 
     def __post_init__(self):
         mask = {}
@@ -191,7 +197,8 @@ class ClampTerms:
 
 
 def clamp0(track_mask: Mapping[int, float], openness: float,
-           unit_pin: Optional[Tuple[int, Tuple[int, ...]]] = None
+           unit_pin: Optional[Tuple[int, Tuple[int, ...]]] = None,
+           slot_pin: Optional[Mapping[int, Tuple[int, ...]]] = None
           ) -> Optional[ClampTerms]:
     """THE single construction point (A-1) for a live ClampTerms restriction.
 
@@ -203,6 +210,7 @@ def clamp0(track_mask: Mapping[int, float], openness: float,
     ``realize.FiberThreader`` treats ``clamp is None`` as "skip the fence
     branch entirely" — no extra computation, no extra rng draw, ever."""
     terms = ClampTerms(track_mask=dict(track_mask), openness=float(openness),
+                       slot_pin=(dict(slot_pin) if slot_pin else None),
                        unit_pin=unit_pin)
     return None if terms.is_neutral else terms
 

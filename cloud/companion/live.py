@@ -201,6 +201,11 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     # the per-role widening below is the only relief, used solely where the core
     # carries nothing for a demanded role.
 
+    # slot i plays tatum (start + i) and nothing else — the passage in order
+    slot_pin = {}
+    for j, g in enumerate(core_groups):
+        slot_pin[j] = tuple(int(slices[i][2]) for i in g)
+
     core_idx = [i for g in core_groups for i in g]
     core = tuple(int(slices[i][2]) for i in core_idx)
 
@@ -225,7 +230,8 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
                     best_i, best_d = cand[1], d
             if best_i is not None:
                 widened.append(int(slices[best_i][2]))
-    return {"core": core, "widened": tuple(widened), "exhausted": False}
+    return {"core": core, "widened": tuple(widened), "exhausted": False,
+            "slot_pin": slot_pin}
 
 
 def bar_window_unit_ids(unit_ids: Sequence[int], bars_elapsed: int,
@@ -238,7 +244,7 @@ def bar_window_unit_ids(unit_ids: Sequence[int], bars_elapsed: int,
     return tuple(int(u) for u in unit_ids[start:start + w])
 
 
-def build_full_fence(track: int, unit_ids: Sequence[int]):
+def build_full_fence(track: int, unit_ids: Sequence[int], slot_pin=None):
     """Construct the B-1 FULL FENCE for straight play: fully fenced to
     ``track`` (``track_mask={track: 1.0}, openness=1.0``), pinned to
     ``unit_ids`` — which for straight play is ONE BAR's consecutive window
@@ -255,7 +261,8 @@ def build_full_fence(track: int, unit_ids: Sequence[int]):
             f"{type(exc).__name__}: {exc}") from exc
     try:
         return clamp0(track_mask={int(track): 1.0}, openness=1.0,
-                      unit_pin=(int(track), tuple(int(u) for u in unit_ids)))
+                      unit_pin=(int(track), tuple(int(u) for u in unit_ids)),
+                      slot_pin=slot_pin)
     except Exception as exc:
         raise LiveCarrierUnavailable(
             f"clamp0(...) failed to construct the full fence: "

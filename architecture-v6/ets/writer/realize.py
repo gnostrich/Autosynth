@@ -272,7 +272,7 @@ def _frozen(a: np.ndarray) -> np.ndarray:
     return a
 
 
-def _admits(clamp: ClampTerms, c: Tuple[int, int]) -> bool:
+def _admits(clamp: ClampTerms, c: Tuple[int, int], slot: int = -1) -> bool:
     """THE fence rule (prereg §2.1) — the only engine logic ClampTerms adds,
     and the only place it is evaluated (both `_choose_original` and
     `_choose_fast` call this SAME function, so there is one decision channel,
@@ -302,6 +302,14 @@ def _admits(clamp: ClampTerms, c: Tuple[int, int]) -> bool:
     pin = clamp.unit_pin
     if pin is not None and pin[0] == tid and uid not in pin[1]:
         return False
+    # PER-SLOT PIN: this slot may play only its own moment of the passage. Without
+    # it a bar's whole window is one pool and any slot can take any of it, which is
+    # the track playing over itself. Absent ⇒ nothing changes.
+    sp = getattr(clamp, "slot_pin", None)
+    if sp and slot >= 0:
+        allowed = sp.get(int(slot))
+        if allowed is not None and uid not in allowed:
+            return False
     return True
 
 
@@ -408,7 +416,7 @@ class FiberThreader:
                 out[key] = bar - last
         return out
 
-    def _choose(self, k: int, b: int, psi: float, bar: int):
+    def _choose(self, k: int, b: int, psi: float, bar: int, slot: int = -1):
         """One (slot, band) fiber choice. Returns ((tid, uid), is_continuation)
         or None if either no material exists for (k, b) at all, or (HARD
         FENCE, prereg Amendment 4 A4.2/LM-11) a ClampTerms fence is active
@@ -423,10 +431,10 @@ class FiberThreader:
         the measure is selected at call time by ``fast_realize_enabled()`` and
         is bit-identical either way (see that function's note)."""
         if fast_realize_enabled():
-            return self._choose_fast(k, b, psi, bar)
-        return self._choose_original(k, b, psi, bar)
+            return self._choose_fast(k, b, psi, bar, slot)
+        return self._choose_original(k, b, psi, bar, slot)
 
-    def _choose_original(self, k: int, b: int, psi: float, bar: int):
+    def _choose_original(self, k: int, b: int, psi: float, bar: int, slot: int = -1):
         """The reference implementation of the fiber choice — the measure
         written out candidate-by-candidate. Kept verbatim as the definition the
         vectorized path is verified against (ETS_FAST_REALIZE=0 runs it)."""
@@ -450,7 +458,7 @@ class FiberThreader:
         # present) is a candidate like any other and is fenced too.
         clamp = self.clamp
         if clamp is not None:
-            kept = [i for i, c in enumerate(choices) if _admits(clamp, c)]
+            kept = [i for i, c in enumerate(choices) if _admits(clamp, c, slot)]
             if kept:
                 choices = [choices[i] for i in kept]
                 is_cont = [is_cont[i] for i in kept]
@@ -648,7 +656,7 @@ class FiberThreader:
         pool.cbias = (fb, arr)
         return arr
 
-    def _choose_fast(self, k: int, b: int, psi: float, bar: int):
+    def _choose_fast(self, k: int, b: int, psi: float, bar: int, slot: int = -1):
         """The vectorized fiber choice (see `_choose`; bit-identical to
         `_choose_original`, INCLUDING under a ClampTerms fence — see the
         block below the tilt branch)."""
@@ -720,7 +728,7 @@ class FiberThreader:
         # here equals filter-then-compute there).
         clamp = self.clamp
         if clamp is not None:
-            admit = np.fromiter((_admits(clamp, c) for c in keys),
+            admit = np.fromiter((_admits(clamp, c, slot) for c in keys),
                                 dtype=bool, count=len(keys))
             if admit.any():
                 if not admit.all():
@@ -776,7 +784,7 @@ class FiberThreader:
             if e[b] <= 0:
                 continue                               # no settled energy: nothing
             k = int(np.argmax(col * B[:, b]))          # role carrying band b here
-            got = self._choose(k, b, psi, bar)
+            got = self._choose(k, b, psi, bar, int(s) % self.s_phase)
             if got is None:
                 continue
             (place, cont) = got

@@ -158,10 +158,11 @@ _FAKE_CLAMP0_PROBE = r'''
 import sys, types, json
 calls = {}
 
-def fake_clamp0(track_mask=None, openness=None, unit_pin=None):
+def fake_clamp0(track_mask=None, openness=None, unit_pin=None, slot_pin=None):
     calls["track_mask"] = track_mask
     calls["openness"] = openness
     calls["unit_pin"] = list(unit_pin)
+    calls["slot_pin"] = (None if slot_pin is None else {int(k): list(v) for k, v in slot_pin.items()})
     return ["FAKE_CLAMP_TERMS"]
 
 fake_mod = types.ModuleType("ets.writer.clamp")
@@ -191,4 +192,8 @@ def test_build_full_fence_calls_clamp0_with_the_exact_b1_shape():
     d = json.loads(lines[-1][len("PROBE "):])
     assert d["out"] == ["FAKE_CLAMP_TERMS"]
     assert d["calls"] == {"track_mask": {"3": 1.0}, "openness": 1.0,
-                          "unit_pin": [3, [10, 11, 12]]}
+                          "unit_pin": [3, [10, 11, 12]],
+                          # per-slot pin: absent when the caller passes none, so
+                          # this pins the B-1 shape AND that the new argument is
+                          # genuinely optional (no fence gains a slot pin by accident)
+                          "slot_pin": None}
