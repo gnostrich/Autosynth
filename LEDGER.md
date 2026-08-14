@@ -1929,11 +1929,21 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 ### at `20fbd95`
 - `Write` papers/PREREG-tracks-moving-anchor.md (2026-08-13T19:36:33+00:00)
 
-## 2026-08-13 — TRACKS moving anchor: capture file (formal text pending)
-- `Write` papers/PREREG-tracks-moving-anchor.md — captures the operator's spoken
-  rulings (tap plants a travelling anchor; tap elsewhere replants; **tap the
-  anchor again clears it**; no hold-scrub, superseding Amendment 2's hold
-  gesture for TRACKS) so they survive until the formal amendment text lands.
-- **Not buildable yet:** the amendment the operator's M-1/M-2/M-3/MA-1 edit
-  refers to has not been supplied. Clause numbers and checks will not be
-  invented. Three open questions listed for their text to settle.
+### at `25277c9`
+- `Edit` .claude/worktrees/agent-ae6cde3a84b712739/cloud/companion/live.py (2026-08-14T13:55:52+00:00)
+
+## 2026-08-14 — LIVE BRIDGE v0: the natural transition (operator reframe)
+- `Append` papers/PREREG-live-mode.md — Bridge v0 verbatim. The succession
+  bridge (KL tether to the propagated past) IS the transition operator: release
+  the wall, apply the pull, do not intervene.
+- **Supersedes** Amendment 1's native-pace mechanics and Amendment 3's ratchet
+  for the bridge. Amendment 2 (idle silent) stands.
+- **Retired from the critical path:** corridor, ratchet, monotone best_gap, and
+  the profile-distance arrival test — including the 0.252 floor measured earlier
+  today, which was a true number about a test that should not have been the
+  arrival test. Diagnostic only from here.
+- **Registered once (wall content):** arrival = placement share ≥ 0.75 sustained
+  over 2 bars. Never per-corpus tuned; changing it is a new amendment.
+- **Held for the future:** excursions and non-monotone paths are EXPECTED
+  output. BR-3 fails any later change that smooths them.
+- Bridge train redirected mid-flight (it was building the corridor).
