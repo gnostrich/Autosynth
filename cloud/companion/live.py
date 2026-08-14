@@ -186,6 +186,18 @@ def bar_window(slices: Sequence[Sequence], bars_elapsed: int, s_phase: int,
     if not core_groups:
         return {"core": (), "widened": (), "exhausted": True}
 
+    # NEIGHBOURHOOD (measured fix): a single bar's worth of tatums often carries no
+    # unit at all for some role the settlement demands, so the fence starved on
+    # nearly every bar and — under the hard-fence law, correctly — those slots fell
+    # silent. The result was audible as thin, skeletal playback. Admitting the
+    # surrounding tatums OF THE SAME TRACK gives the bar enough material to fill its
+    # roles while staying inside the fence: same track, still walking forward, no
+    # cast outside ClampTerms. The forward-walking CORE still starts every bar
+    # (LM-3(a)); this only widens what is admissible around it.
+    lo = max(0, start - w)
+    hi = min(len(groups), start + 2 * w)
+    core_groups = groups[lo:hi]
+
     core_idx = [i for g in core_groups for i in g]
     core = tuple(int(slices[i][2]) for i in core_idx)
 
