@@ -3760,6 +3760,15 @@
   // LIVE's OWN warm clock. worldLoadStart lives in a different <script> block, so
   // reading it here produced the literal string "undefined" in the banner — shipped.
   var fieldWarmSince = null;
+  // LIVE BRIDGE v0, item 1 (the operator's explicit ask, landed first / standalone):
+  // the bridge (fence release + destination pull) is not built in this view yet, so
+  // EVERY click is a hard cut — the fence swaps instantly. The view must say so
+  // plainly, every time, rather than let a bare "ready"/"playing" line imply anything
+  // is winding across. Once a bridge journey is reported (a later piece of this same
+  // train), this is expected to consult that state instead of being unconditional.
+  function fieldLiveJumpSuffix(){
+    return " — click jumps straight there (bridge not active)";
+  }
   function fieldLiveMessage(){
     if(!fieldLiveAvailable) return { text:"LIVE backend not available", warn:true };
     if(!world.ready)        return { text:"loading your set…", warn:false };
@@ -3778,7 +3787,8 @@
                warn:false };
     fieldWarmSince = null;                      // warmed: the clock resets for next time
     if(fieldLiveState.mode !== "straight")
-      return { text:"ready — click a spot to start playing from there", warn:false };
+      return { text:"ready — click a spot to start playing from there" + fieldLiveJumpSuffix(),
+               warn:false };
 
     // straight play: is the engine actually producing? bars_elapsed is the engine's
     // own count, so a frozen count means frozen production, and we say that.
@@ -3794,7 +3804,7 @@
                warn:true };
     var nm = fieldWaveTrack(fieldLiveState.track);
     return { text:"playing — " + ((nm && nm.name) || ("track " + fieldLiveState.track))
-                  + " · bar " + n, warn:false };
+                  + " · bar " + n + fieldLiveJumpSuffix(), warn:false };
   }
   function fieldLivePoll(){
     fetch("/api/live/state").then(function(r){
