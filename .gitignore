@@ -36,3 +36,7 @@ disk_guard.log
 # clone shows the temperature axis without recomputing.
 *.sweep.json
 !demo.etsworld.sweep.json
+
+# operator corpus + trained world: container-local, never committed
+/tmp/corpus/
+corpus_world.etsworld

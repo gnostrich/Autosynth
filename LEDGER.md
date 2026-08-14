@@ -2232,3 +2232,26 @@ measures at straight-play spread (61-63) across three reroutes, off-pair mass
 RULE: a measurement harness is code under the same standard as the thing it
 measures. A column index is an assumption; state it, and check it against the
 producer's own docstring before building a day of conclusions on it.
+
+### BOTH OF 2026-08-14's ERRORS ARE ONE CLASS
+
+The mass-read-as-seconds bug and the demo-world-as-proxy mistake are not two
+lessons. Both are: TRUSTING AN UNVERIFIED MEASUREMENT SETUP AND THEN REASONING
+CONFIDENTLY FROM WHAT IT SAID.
+
+  * the instrument was unverified — column 3 was assumed to be seconds and was
+    mass, in eight tools, for a day;
+  * the subject was unverified — demo.etsworld (192 units/track, uniform
+    numbering, seconds of material) was assumed to stand in for a real world
+    (11k-20k units/track, all 45 track pairs sharing ids).
+
+Neither error produced an error message. Both produced confident numbers, and
+those numbers drove real decisions: a build shipped hedged, then rolled back, on
+a diagnosis ("the tracks are only ~1s long, exhaustion dominates") that was an
+artifact of reading the wrong column on a world that could not exhibit the
+defect anyway.
+
+RULE: before measuring, verify BOTH ends — that the instrument reads what you
+think it reads (against the producer's own docstring), and that the subject can
+exhibit the property under test. State both checks in the report. An instrument
+and a fixture are code, held to the same standard as the code they judge.

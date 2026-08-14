@@ -1,0 +1,148 @@
+{
+ "ts": "2026-08-14",
+ "kind": "training-receipt",
+ "id": "operator-corpus-2026-08-14",
+ "source": "operator-supplied Google Drive folder (NOT redistributable; not committed)",
+ "note": "The audio and the trained world are container-local and gitignored. This receipt plus scripts/train_operator_corpus.py reproduces the world from the operator's own files; it does not carry them.",
+ "tracks_downloaded": 20,
+ "tracks_trained": 10,
+ "train_seconds": 379,
+ "world_bytes": 41126563,
+ "world_sha256": "2cb5ec9e1f952471bedc600f7e10312c227089f22e88b4dc0650b7251f7492f6",
+ "world_shape": {
+  "tracks": 10,
+  "M": 4,
+  "units_per_track": [
+   13664,
+   13392,
+   16416,
+   14960,
+   13440,
+   14320,
+   19888,
+   13312,
+   11776,
+   11872
+  ]
+ },
+ "unit_numbering": "0..N-1 PER TRACK on every track; all 45 track pairs share ids, max overlap 16416 -- the cross-track collision class is universal on real worlds, not a demo artifact",
+ "measured_spread": {
+  "straight": [
+   61,
+   63,
+   63
+  ],
+  "bridge_0_to_1": [
+   "63/20",
+   "63/60",
+   "63/56",
+   "63/56"
+  ],
+  "reroute_to_2": 63,
+  "reroute_to_3": 63,
+  "off_pair_mass": 0.0,
+  "max_admitted": 2
+ },
+ "files": [
+  {
+   "file": "01 - Mixmag Australia - NZ - PREMIERE- Autogenesis - 'Communion' [Blue Night Jungle].mp3",
+   "bytes": 5484665,
+   "sha256": "fb4cda65150228753101915cea7c9481917e028ec88ade9116cbee394597964c"
+  },
+  {
+   "file": "02 - MEGANESIA - Black Garden - Cybernet (FDH's Reshape).mp3",
+   "bytes": 5932180,
+   "sha256": "0b13051aeb5a1fc94b82e76d7de4d65f2ee4e3789d36d6f96a515d3031b693fc"
+  },
+  {
+   "file": "03 - - CRUDE - - CRUDE Premiere- Astral Bandit - Elation.mp3",
+   "bytes": 7406766,
+   "sha256": "c60d4294c4e43b42c465acd02f58caa1ee1f89b70ba3ca859a9c0bb3a68aafd7"
+  },
+  {
+   "file": "04 - Houseum - PREMIERE- Shjva - Zumi Tek (Jeku Trip to Goa Mix) [Neptune Discs].mp3",
+   "bytes": 6852857,
+   "sha256": "377cc795e579582e9bf8e03401aefcea6249d6c1ffa074259a909a0b5578452f"
+  },
+  {
+   "file": "05 - hurfyd - \ud835\udc07\ud835\udc14\ud835\udc11\ud835\udc05\ud835\udc02\ud835\udc0b\ud835\udc14\ud835\udc12\ud835\udc08\ud835\udc15\ud835\udc04 \u279f Jeku - Introspection.mp3",
+   "bytes": 6113488,
+   "sha256": "928ddcb4ba4a73533ae08d67b1779ca953d726da94fdcefaf2d6b275783b3fcf"
+  },
+  {
+   "file": "06 - space lab - A2 Inner Zone - Folded Realm (Kohra Remix).mp3",
+   "bytes": 6391848,
+   "sha256": "11d3efd8ab88c5325aaf3358f9820dd128279d17d2dceaac316566df0b7b3348"
+  },
+  {
+   "file": "07 - Korl - Ikigai.mp3",
+   "bytes": 7906532,
+   "sha256": "1d6c1a79702fcae4382ef9db224d7fd35b00d325542c9f900572d3e9fab7e5f2"
+  },
+  {
+   "file": "08 - sOmE uNcErTaIn SiR - [PREMIERE] Party Dress (Kick21 Remix) - Pastresdrole - Du\u0308ru\u0308m Records [2023].mp3",
+   "bytes": 5709321,
+   "sha256": "ab1d72b251a196d9cb8606708a3f7a53f8230c0c614063cdaa8f2022a3552a5b"
+  },
+  {
+   "file": "09 - pi pi pi - pi pi pi premiere- Mabel - Erotica (MUSA).mp3",
+   "bytes": 4892629,
+   "sha256": "59140ae4eb16f124450fcac76d1c8ca6fe5c38df94b9d554fbf7dbd15b82cf6a"
+  },
+  {
+   "file": "10 - \u0423\u0420\u0411\u0410\u041d - \u041f\u0420\u0415\u041c\u042c\u0415\u0420\u0410- Von Riu - World of Content (5am Rework) [Discoteca].mp3",
+   "bytes": 4957412,
+   "sha256": "6d88fa563d43cde20efd5512cdb284bb66b8008f662a6d1eada695c9d4a3cc27"
+  },
+  {
+   "file": "11 - Underzone - Santiago Nech - Entidad [Sufrimiento Records].mp3",
+   "bytes": 4425350,
+   "sha256": "fce2e9fa581c229654e0daf35ab088bfa6d1acedc445f86e4d83045ae0fd6c6e"
+  },
+  {
+   "file": "12 - Synthetic Pleasures - Shugo Noss - Anathema.mp3",
+   "bytes": 5411316,
+   "sha256": "2f21248d82d06613a679070c8fa9d04a2cb6b4584722e5539a4190a5b578b1cd"
+  },
+  {
+   "file": "13 - Vile Immerse\u2122 - 32madden - Baryon.mp3",
+   "bytes": 5529181,
+   "sha256": "fad8cebdb692b8844c2963f60a34acf79491157a94eead66dcec9b41a0081363"
+  },
+  {
+   "file": "14 - techlab.bp - premiere- Jo\u0308rmungandr - Black Crowned Night Heron [\u201cCoalescence\u201d V-A].mp3",
+   "bytes": 4981654,
+   "sha256": "fa88c697aad5f35d6e4e4b1950ddb5e3c70fe71d2c8d62fa788175544e9b4346"
+  },
+  {
+   "file": "15 - loopstage - Premiere- Onohno - Spriggan Gathering [127VA002].mp3",
+   "bytes": 5973053,
+   "sha256": "3e8ae8af70ea06024052d06c728d579e055272cd394976824401e102404a4d4c"
+  },
+  {
+   "file": "16 - silencer - shugo noss - schlesi resident demon.mp3",
+   "bytes": 5465233,
+   "sha256": "9f99f6f9f9630c16daff4a337a464060aae08ece66b82e0bdd690b162b4fc435"
+  },
+  {
+   "file": "17 - area127 - \u2727 nonova - Non e\u0300 Vero [CPCD007].mp3",
+   "bytes": 5215755,
+   "sha256": "114056056460534fc6be1990797b7830d41fb9e7fc88441cfa1ed0b4dda98731"
+  },
+  {
+   "file": "18 - MUSA - IRA - circe.mp3",
+   "bytes": 6656834,
+   "sha256": "e9c44cb6397dcb7d1d87a54e6dc5f3e501a4c2d3f3f3f0204d66a1beec68fd3d"
+  },
+  {
+   "file": "19 - Vile Immerse\u2122 - Matriark & maurinstarr - Bossone.mp3",
+   "bytes": 6543150,
+   "sha256": "c724b78102d2873fb443e223fbb083024f8a1d154a6463a1ced61add55f86241"
+  },
+  {
+   "file": "20 - - CRUDE - - CRUDE Exclusive- Indebraendt - Ashes To Ashes.mp3",
+   "bytes": 8467016,
+   "sha256": "0da39a279491a117b060bd6ee3de11b755dfc088ad5f4b7982ed79818a8a753e"
+  }
+ ]
+}
