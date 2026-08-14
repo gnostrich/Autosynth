@@ -138,7 +138,7 @@ exactly what A-5 forbids. LIVE never touches `clamp_unit`. Under a full fence
 the candidate set is narrowed to one and **the unchanged casting measure still
 runs over it** (argmax/draw over a 1-element set). One engine, one path.
 
-### 2.1 The restriction rule (the only engine logic added)
+### 2.1 The restriction rule (the only engine logic added — AMENDED 2026-08-14: THREE comparisons, not one)
 
 Per bar, the carrier supplies `track_mask: {track_id -> m in [0,1]}` and a
 scalar `openness in [0,1]`. A candidate survives iff
@@ -148,9 +148,56 @@ track_mask.get(track_of(candidate), 0.0) >= openness
 ```
 
 plus, when a slice-range pin is present, its unit must lie in the pinned range.
-This is one comparison — monotone in `openness`, with **no schedule logic in the
-engine**: the ramp is a sequence of (mask, openness) values authored upstream
-(LM-4 static check).
+> **AMENDED 2026-08-14 (operator ratification of `slot_pin`). THIS SECTION
+> PREVIOUSLY CLAIMED ONE COMPARISON. THAT CLAIM WAS WRONG.** What follows is
+> the open amendment; the retroactive-disclosure section below carries the
+> provenance. This is not a quiet edit — the original wording is reproduced
+> here so the change is legible:
+>
+> > *"This is one comparison — monotone in `openness`, with no schedule logic
+> > in the engine"*, and the section heading, *"the only engine logic added"*.
+>
+> Both were inaccurate from the moment `slot_pin` shipped. The restriction rule
+> is **THREE comparisons**, evaluated in this order inside the one function
+> `_admits`:
+>
+> **(i) TRACK / OPENNESS.** `track_mask.get(tid, 0.0) >= openness`. WHY: this is
+> the fence proper — which TRACKS may sound at all. It is the comparison this
+> section originally registered, and it alone carries the openness polarity and
+> the neutral law.
+>
+> **(ii) UNIT PIN.** when `unit_pin` names the candidate's track, the candidate's
+> unit must lie in the pinned set. WHY: straight play is a passage, not a bag —
+> the pin is the forward-walking window that makes LIVE play a track from the
+> clicked spot onward instead of roaming inside it. Present in the original
+> build (the "plus, when a slice-range pin is present" clause above), but never
+> counted as a comparison.
+>
+> **(iii) PER-SLOT PIN.** when `slot_pin` is present and the caller passed a real
+> slot index, that slot's own unit set must contain the candidate's unit. WHY:
+> `unit_pin` admits a whole bar's worth of units as ONE pool, so any slot could
+> draw any of them — measured, a single bar drew tatums 0, 8, 15, 16 and 23 at
+> once, the track layered over itself. This clause is what makes each metrical
+> position play its own moment of the passage.
+>
+> **THEY CAN ONLY RESTRICT — THE FENCE NEVER WIDENS (proven, not asserted).**
+> `_admits` is a conjunction of guards: every clause can only `return False`,
+> and the sole `return True` is reached when no clause fired. So adding a clause
+> can only shrink the admitted set, never grow it; `slot_pin` cannot admit a
+> candidate that (i) or (ii) would exclude. The amendment is therefore purely
+> DESCRIPTIVE — it registers a restriction that was already running, and the
+> "fence never widens" invariant holds unchanged. Pinned by
+> `architecture-v6/tests/writer/test_fence_monotone.py`, which exhausts every
+> combination of the three clauses over a candidate grid and asserts that
+> enabling any clause is a subset of leaving it off.
+>
+> Monotonicity in `openness` and "no schedule logic in the engine" are
+> unaffected: (ii) and (iii) are pins — already-decided data handed in from
+> outside — not schedules.
+
+This is three comparisons (see the amendment box above) — monotone in
+`openness`, with **no schedule logic in the engine**: the ramp is a sequence of
+(mask, openness) values authored upstream (LM-4 static check).
 
 - `openness = 0` ⇒ every mask value ≥ 0 ⇒ **no restriction** (the neutral law).
 - `openness = 1` ⇒ only mask-1.0 tracks survive ⇒ **full fence**.
