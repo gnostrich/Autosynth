@@ -3751,6 +3751,17 @@
   function fieldLiveMessage(){
     if(!fieldLiveAvailable) return { text:"LIVE backend not available", warn:true };
     if(!world.ready)        return { text:"loading your set…", warn:false };
+    // WARMED, NOT MERELY READY. `world.ready` means the world file loaded; the engine
+    // can still be minutes from its first sound, which the instrument's own banner
+    // already says. Reading `ready` here made this line announce "ready — click a
+    // spot" directly underneath "engine warming up" — the operator clicked, nothing
+    // played, and the contradiction was mine. A click during the warm is still
+    // honoured (the fence is set), so say exactly that rather than refusing it.
+    if(!world.warmed)
+      return { text: (fieldLiveState.mode === "straight")
+                 ? "engine warming up — your spot is set; sound starts when it is ready"
+                 : "engine warming up — first sound can take a few minutes",
+               warn:false };
     if(fieldLiveState.mode !== "straight")
       return { text:"ready — click a spot to start playing from there", warn:false };
 
@@ -3822,7 +3833,7 @@
       body: JSON.stringify({ track:track, t:t })
     }).then(function(r){
       fieldLiveAvailable = r.ok;
-      return r.ok ? r.json() : null;
+      return r.json().catch(function(){ return null; });   // errors carry a body too
     }).then(function(j){
       if(j && j.ok){
         fieldLiveState = { mode: j.mode || "straight",
@@ -3831,9 +3842,19 @@
                            sliceIndex: fieldLiveState.sliceIndex, starved:false };
         fieldLivePollStart();
         fieldLiveEnsureTransport();
+      } else {
+        // The server refused (no world yet, carrier unreachable, unknown track).
+        // Say so: a refused fence that looks identical to a working one is the
+        // failure mode that cost the operator an afternoon.
+        fieldSetStatus("LIVE could not start there — " +
+                       ((j && j.error) || "the engine refused the fence"), false);
       }
       fieldDraw();
-    }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
+    }).catch(function(){
+      fieldLiveAvailable = false;
+      fieldSetStatus("LIVE could not reach the engine", false);
+      fieldDraw();
+    });
   }
   // LM-7 / V-1 extended: leaving LIVE drops its fence AND stops the shared audio path —
   // the same Stop control call (stopPlayback), reused verbatim, so leaving LIVE never
@@ -3855,13 +3876,22 @@
     fetch("/api/live/stop", { method:"POST" }).catch(noop);
     stopPlayback();
   }
+  // A CLICK EITHER ACTS OR SAYS WHY. Every early return below used to be silent, so
+  // a tap that could not resolve looked exactly like a tap that had failed — which is
+  // what the operator kept hitting. Measured in a real browser: with no wavemap the
+  // page emitted no /api/live/start at all and reported nothing.
   function fieldLiveOnClick(ev){
     if(fieldViewMode(fieldView) !== "live") return;
     if(Date.now() - fieldLastTouchEnd < 700) return;    // suppress touch-synthesized click
-    if(!world.ready) return;
+    if(!world.ready){ fieldSetStatus("still loading your set — one moment", false); return; }
+    if(fieldWaveState !== "ready" || !fieldWave){
+      fieldSetStatus("no waveforms for this set — LIVE cannot place a fence without them",
+                     false);
+      return;
+    }
     var rect = fieldCanvas.getBoundingClientRect();
     var p = fieldLivePointAt(ev.clientX - rect.left, ev.clientY - rect.top);
-    if(!p) return;                                       // header/strip/outside a lane: no click
+    if(!p){ fieldSetStatus("tap inside a waveform to start playing from there", false); return; }
     fieldLiveStart(p.track, p.t);
   }
 
