@@ -376,6 +376,16 @@ def clamp_call_kwargs(write_bar_fn, clamp_terms) -> dict:
 #
 #   B-1 RELEASE — the source fence's openness walks 1 -> 0 on the adopted
 #       RegionSlew law (unchanged from the original brief). ``release_step``.
+#       MEASURED (PREREG AMENDMENT 7, 2026-08-14): under the SHIPPED DEFAULT
+#       (DIRECT scope), "the fence opens" is scoped to the source's
+#       forward-walking UNIT PIN ONLY. The ADMITTED TRACK SET never moves —
+#       it is {source, dest} at every value of openness, by construction
+#       (``_bridge_track_mask`` assigns both tracks the SAME mask value as
+#       the openness compared against them) — that invariance is the point
+#       of the Bridge Scope amendment (S-1), not an accident. See
+#       ``release_clamp``'s docstring below and AMENDMENT 7 in the prereg
+#       for the measured numbers, including the demo-world race where track
+#       exhaustion beats the slew and the pin release is, in practice, moot.
 #   B-2 PULL — the destination's stored column-share character latches as a
 #       COLUMN lean on the EXISTING tilt jack (the region-tilt lane every
 #       other view already drives through ``StreamPlayer.set_region`` / the
@@ -616,7 +626,36 @@ def release_clamp(openness_cur: float, source_track: int, pin_units=None,
 
     Either way there is no corridor, no ratchet and no monotonicity here
     (B-3/BR-1): the only thing this function decides is WHICH TRACKS the
-    fence admits, and it decides it once, from journey-start data."""
+    fence admits, and it decides it once, from journey-start data.
+
+    MEASURED, AMENDMENT 7 (2026-08-14, ``cloud/tools/b1_release_scope_verify.
+    py`` / ``b1_release_admission_measure.py``): under DIRECT, the ADMITTED
+    TRACK SET is literally the SAME at every openness from 1.0 down through
+    ``DIRECT_FLOOR`` — {source, dest}, never more, never fewer — because
+    ``_bridge_track_mask`` assigns both tracks the SAME value handed to
+    ``clamp0`` as ``openness``, so ``track_mask.get(t,0) >= openness`` is
+    true for them at every step by construction, not by coincidence of the
+    numbers on any one world. That is the Bridge Scope amendment's own
+    requirement (S-1: "admits only the {source, destination} tracks")
+    working as specified, not a defect — DIRECT never widens beyond the pair,
+    for the whole journey, by design.
+
+    What DOES move under DIRECT is exactly what the first paragraph says: the
+    UNIT-level pin (``pin_units``/``slot_pin``) — proven on a SYNTHETIC world
+    with ample per-track material (``pin_units`` stays a fixed one-bar window
+    while ``openness_cur > 0``, then releases to the whole source track the
+    bar ``openness_cur`` reaches 0 — a real, openness-caused admission
+    change, not a track-set one).
+
+    On ``demo.etsworld`` SPECIFICALLY this unit-level release is measured to
+    be MOOT: the track's own forward material runs out (``bar_window``'s own
+    ``exhausted``) 2-3 bars into the bridge, well before the ~5-bar slew
+    would have released the pin on its own — exhaustion wins the race. So on
+    the shipped demo, the bridge's observable admission is, for the whole
+    journey, indistinguishable from an instantaneous two-track fence plus the
+    slewed B-2 lean — disclosed, not patched (this is a corpus-length
+    property, not a code defect; inventing a bigger buffer to outrun it would
+    be a new, per-corpus-tuned constant, which nothing here does)."""
     open_eff = float(openness_cur)
     if open_eff <= 0.0:
         if scope != BRIDGE_SCOPE_DIRECT:
