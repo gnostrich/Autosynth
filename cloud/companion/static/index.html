@@ -3826,8 +3826,14 @@
   // also the honest thing for a re-click: the new fence starts at the new spot, so a
   // stream still carrying the old fence's buffered audio would play the wrong place.
   function fieldLiveEnsureTransport(){
-    if(state !== "idle") stopPlayback();
-    startPlayback();
+    if(state === "idle"){ startPlayback(); return; }
+    // Already nominally playing. The stream may be DEAD (starved out during B-0's
+    // idle hold) while `state` still says playing, so it does need replacing — but
+    // tearing it down and reopening in the same tick makes our own abort surface as
+    // "Audio stream unavailable. network error", which is what the operator saw.
+    // Let the teardown settle first, then open the new one.
+    stopPlayback();
+    setTimeout(function(){ if(fieldViewMode(fieldView) === "live") startPlayback(); }, 400);
   }
   // FIRST CLICK = IMMEDIATE START, NO BRIDGE (B-1 amended / LM-10): straight play begins
   // at the clicked spot at once, and NOTHING is sent to the tilt carrier — this function
