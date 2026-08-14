@@ -483,7 +483,55 @@ def release_step(openness_cur: float) -> float:
     return float(max(0.0, nxt[0]))
 
 
-def release_clamp(openness_cur: float, source_track: int, pin_units=None, slot_pin=None):
+# BRIDGE SCOPE (operator ruling, 2026-08-14). Fence CONTENT only — no new
+# machinery, no physics change. The landscape still supplies the crossing within
+# a leg; the ROUTE is the operator's, composed by clicking waypoints one leg at
+# a time. The machine handles how to get there musically; the operator handles
+# where to go.
+#
+#   DIRECT (default) — the released fence admits ONLY {source, destination}.
+#   OPEN   (flag)    — fully released; the whole corpus may supply connective
+#                      material. Kept because it is what the paper describes,
+#                      and for A/B listening. Never the default without the
+#                      measurement.
+#
+# Scope is chosen at journey start and constant for that journey (S-3). Every
+# other bridge mechanic is untouched: release on the adopted slew, the latched
+# lean, tether-driven traversal, settling-based arrival. Same code path, different
+# fence DATA (BS-2).
+BRIDGE_SCOPE_DIRECT = "direct"
+BRIDGE_SCOPE_OPEN = "open"
+
+
+def _bridge_track_mask(source_track, dest_track, openness_cur, scope):
+    """The fence's per-track admission during a bridge — the ONLY thing scope
+    changes. DIRECT admits the two tracks the journey is between, both at the
+    current (decaying) openness, so the crossing happens WITHIN the pair. OPEN
+    admits the source alone, which under a falling openness releases to the
+    whole corpus exactly as before.
+
+    ``source_track`` may be a single track or an iterable of tracks: on a
+    MID-BRIDGE RE-CLICK the carried side is every track still SOUNDING over W
+    (BS-4), measured by ``sounding_tracks`` — not a remembered or hardcoded
+    set — so an unfinished A->B leg redirected to C admits {A,B,C} and prunes
+    back to two on the following leg once A's material stops sounding.
+
+    Nothing here ranks, scores or schedules: it is fence content, chosen once at
+    journey start (S-3)."""
+    try:
+        carried = [int(t) for t in source_track]
+    except TypeError:
+        carried = [int(source_track)]
+    m = {t: float(openness_cur) for t in carried}
+    if scope == BRIDGE_SCOPE_DIRECT and dest_track is not None:
+        m[int(dest_track)] = float(openness_cur)
+    return m
+
+
+
+def release_clamp(openness_cur: float, source_track: int, pin_units=None,
+                  slot_pin=None, dest_track=None,
+                  scope: str = BRIDGE_SCOPE_DIRECT, carry_tracks=None):
     """B-1/B-3's ONLY carrier restriction: while ``openness_cur > 0`` a
     single-track fence to ``source_track`` at the CURRENT (decaying) openness
     — the source's own forward-walking window (``pin_units``/``slot_pin``,
@@ -503,7 +551,9 @@ def release_clamp(openness_cur: float, source_track: int, pin_units=None, slot_p
             f"{type(exc).__name__}: {exc}") from exc
     try:
         return clamp0(
-            track_mask={int(source_track): float(openness_cur)},
+            track_mask=_bridge_track_mask(
+                (carry_tracks if carry_tracks else source_track),
+                dest_track, openness_cur, scope),
             openness=float(openness_cur),
             unit_pin=((int(source_track), tuple(int(u) for u in pin_units))
                       if pin_units else None),
@@ -557,6 +607,55 @@ def pull_step(cur_vec: Sequence[float], target_vec: Sequence[float]) -> Tuple[fl
 # W IS DERIVED, NOT PICKED: it is the SAME bar count over which the world's
 # wobble floor is measured (`StreamPlayer._METER_WINDOW`, the registered
 # I-8 meter window). No other constant enters the bridge.
+
+def track_shares(rows) -> dict:
+    """THIS bar's placement-mass share PER TRACK, read straight off the
+    just-produced bar's rows (``(slot, tid, uid, sec, mass)``) — the same raw,
+    unsmoothed reduction ``dest_share`` does, just not collapsed to one track.
+    A bar that cast nothing is honestly ``{}`` (no invented denominator).
+
+    This is the ONLY source for "which tracks are currently sounding" (BS-4):
+    measured placement, never a remembered or declared set."""
+    tot = 0.0
+    per = {}
+    for (_slot, tid, _uid, _sec, mass) in rows:
+        m = float(mass)
+        tot += m
+        per[int(tid)] = per.get(int(tid), 0.0) + m
+    if tot <= 0.0:
+        return {}
+    return {t: (m / tot) for t, m in per.items()}
+
+
+def dest_share(rows, dest_track: int) -> float:
+    """THIS bar's RAW (unsmoothed) placement-mass share of ``dest_track`` —
+    the fraction of the bar's total cast mass that landed on the destination
+    track, read directly off the just-produced bar's rows, never the
+    EMA-smoothed display telemetry (B-4 wants what THIS bar actually did, not
+    a decayed blend). A bar that cast nothing at all is honestly 0.0."""
+    return float(track_shares(rows).get(int(dest_track), 0.0))
+
+
+def sounding_tracks(share_history, window: int) -> Tuple[int, ...]:
+    """BS-4's admitted-set input: the tracks whose material ACTUALLY SOUNDED
+    over the last ``window`` bars — ``share_history`` is the per-bar sequence
+    of ``track_shares`` dicts kept by the player. A track that has dropped out
+    (no placement anywhere in the window) is NOT admitted to the next leg, so
+    the set prunes itself as material stops sounding; a track still sounding
+    is carried, so an unfinished A->B leg redirected to C spans three.
+
+    Measured over the SAME registered window W the settling test uses — no
+    second constant, no ranking, no threshold beyond "did it place at all".
+    Returns tracks in ascending id order (deterministic fence data)."""
+    w = max(1, int(window))
+    hist = list(share_history or ())[-w:]
+    out = set()
+    for per in hist:
+        for t, s in (per or {}).items():
+            if float(s) > 0.0:
+                out.add(int(t))
+    return tuple(sorted(out))
+
 
 def settling(shares, window: int):
     """The ONE observation that ends every journey (A-2): has the destination

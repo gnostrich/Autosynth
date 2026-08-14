@@ -796,6 +796,12 @@ class StreamPlayer:
         # meters just above — reported as the retired profile-distance floor
         # readout only (live_state()), never consulted by the arrival gate.
         self._live_wobble_hist: "deque" = deque(maxlen=self._METER_WINDOW)
+        # BS-4: per-bar PER-TRACK placement shares over the registered window W.
+        # The only input to "which tracks are currently sounding" at a re-click.
+        self._live_share_hist: "deque" = deque(maxlen=self._METER_WINDOW)
+        # S-3 default scope for a journey (env-flagged; DIRECT unless asked).
+        self._bridge_scope = (os.environ.get("ETS_BRIDGE_SCOPE", "").strip().lower()
+                              or "direct")
         # STATIC per-world field telemetry (computed ONCE, here at load): the SAME
         # read-only reductions the desktop engine emits over /ets/profiles +
         # /ets/unitpool (ets.engine.engine.track_anchor_profiles / role_unit_pool).
@@ -1823,8 +1829,12 @@ class StreamPlayer:
             if win is not None and not win["exhausted"]:
                 pin_units = tuple(win["core"]) + tuple(win["widened"])
                 slot_pin = win.get("slot_pin")
-            clamp_terms = live_mod.release_clamp(br["openness_cur"], br["source_track"],
-                                                 pin_units=pin_units, slot_pin=slot_pin)
+            clamp_terms = live_mod.release_clamp(
+                br["openness_cur"], br["source_track"],
+                pin_units=pin_units, slot_pin=slot_pin,
+                dest_track=br.get("dest_track"),
+                scope=br.get("scope", live_mod.BRIDGE_SCOPE_DIRECT),
+                carry_tracks=br.get("carry_tracks"))
             nxt_openness = live_mod.release_step(br["openness_cur"])
             with self._live_lock:
                 if self._bridge is not None:
@@ -1968,6 +1978,8 @@ class StreamPlayer:
         from . import live as live_mod
         with self._live_lock:
             raw_mode = self._live.get("mode")
+        if raw_mode in ("straight", "bridge"):
+            self._live_share_hist.append(live_mod.track_shares(r.rows))
         if raw_mode == "straight":
             self._live_wobble_hist.append(
                 live_mod.column_shares(nowplaying_track_role, self.M))
@@ -2372,10 +2384,28 @@ class StreamPlayer:
             # rather than guess one.
             raise live_mod.LiveCarrierUnavailable(
                 "no source track on record for this session's playing state")
+        # BS-4 (mid-bridge re-click): the new leg's carried side is every track
+        # whose material ACTUALLY SOUNDED over the registered window W —
+        # measured off produced bars (`_live_share_hist`), never a remembered or
+        # declared set. Before any bar has been produced the only thing sounding
+        # is the source itself. Two tracks minimum; three while an unfinished
+        # A->B leg is redirected to C; pruned automatically on the next leg once
+        # a track's share has gone to zero across W.
+        with self._live_lock:
+            sounded = live_mod.sounding_tracks(list(self._live_share_hist),
+                                               self._METER_WINDOW)
+        carried = (set(int(x) for x in sounded) | {int(source_track)})
+        carried.discard(int(dest_track))          # the destination is admitted by scope
+        carry = tuple(sorted(carried)) or (int(source_track),)
         from collections import deque
         with self._live_lock:
             self._bridge = {
                 "source_track": int(source_track), "dest_track": int(dest_track),
+                # S-3: scope is fence DATA, chosen at journey start, constant
+                # for this journey, logged. DIRECT (default) admits only the
+                # carried set plus the destination; OPEN releases to the corpus.
+                "scope": str(self._bridge_scope),
+                "carry_tracks": carry,
                 "dest_t": float(t), "dest_uid_index": dest_uid_index,
                 "pull_target": tgt,
                 "lean_cur": (tuple(cur_lean) if cur_lean is not None
@@ -2498,6 +2528,9 @@ class StreamPlayer:
                     "high_water": _set["high"],
                     "bars_since_high": _set["bars_since_high"],
                     "settle_window": self._METER_WINDOW,
+                    # S-3/BS-4: the fence's admitted set for THIS leg, logged.
+                    "scope": br.get("scope"),
+                    "carry_tracks": list(br.get("carry_tracks") or ()),
                 },
             })
         elif raw_mode == "straight":

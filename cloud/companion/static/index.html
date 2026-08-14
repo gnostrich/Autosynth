@@ -3875,7 +3875,7 @@
     // played, and the contradiction was mine. A click during the warm is still
     // honoured (the fence is set), so say exactly that rather than refusing it.
     if(!world.warmed)
-      if(fieldWarmSince === null) fieldWarmSince = Date.now();
+      if(!fieldWarmSince) fieldWarmSince = Date.now();   // 0/undefined too, not just null
       var ws = Math.max(0, Math.round((Date.now() - fieldWarmSince) / 1000));
       return { text: (fieldLiveState.mode === "straight")
                  ? "engine warming up (" + ws + "s) — your spot is set; sound starts when it is ready"
