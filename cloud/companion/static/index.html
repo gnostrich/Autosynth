@@ -3267,7 +3267,11 @@
     fieldSyncViewTabs();
     sendSteerNow();                              // the NEUTRAL material-surface carrier
     if(v === "tracks") fieldWaveEnsure();
-    if(v === "live"){ fieldWaveEnsure(); fieldLivePollStart(); }
+    if(v === "live"){
+      fieldWaveEnsure();
+      fieldLiveEnter();        // entering the VIEW is the only thing that holds
+      fieldLivePollStart();
+    }
     fieldSetStatus("", false);
     fieldDraw();
   }
@@ -3838,7 +3842,10 @@
     }).catch(function(){ fieldLiveAvailable = false; fieldDraw(); });
   }
   function fieldLivePollStart(){
-    fieldLiveEnter();                       // B-0 hold, scoped to this view
+    // NO ENTER HERE. This runs on every live start too, so calling enter from it
+    // meant a second click set a fence and then instantly cleared it and stopped
+    // the deck — "it stops when I click elsewhere". Entering the VIEW is the only
+    // thing that may hold the transport; fieldSetView owns that call.
     if(fieldLivePollTimer) return;
     fieldLivePoll();
     fieldLivePollTimer = setInterval(fieldLivePoll, FIELD_LIVE_POLL_MS);
