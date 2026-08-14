@@ -2037,3 +2037,7 @@ Every tracked-file edit, newest last, grouped by the git HEAD it was made agains
 - `Edit` .claude/worktrees/agent-ad3d0fbca1cd43b88/cloud/tools/commit_to_land_verify.py (2026-08-14T18:19:51+00:00)
 - `Write` .claude/worktrees/agent-a4266a5f8d4a5ebd4/cloud/tools/bridge_pin_track_verify.py (2026-08-14T18:20:15+00:00)
 - `Edit` .claude/worktrees/agent-a4266a5f8d4a5ebd4/cloud/tools/bridge_pin_track_verify.py (2026-08-14T18:20:20+00:00)
+
+### at `36e97f8`
+- `Edit` .claude/worktrees/agent-a4266a5f8d4a5ebd4/cloud/companion/engine_bridge.py (2026-08-14T18:21:24+00:00)
+- `Edit` .claude/worktrees/agent-a4266a5f8d4a5ebd4/cloud/companion/live.py (2026-08-14T18:21:34+00:00)
